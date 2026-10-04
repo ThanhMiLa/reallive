@@ -469,11 +469,29 @@ Constraints:
 
 ### 6.1 Tables
 
-*TBD*
+#### 6.1.1 vods
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | VOD ID |
+| stream_id | UUID | UNIQUE, NOT NULL | UNIQUE | Original stream session ID from Stream Service |
+| channel_id | UUID | NOT NULL | INDEX | Channel ID from Channel Service |
+| title | VARCHAR(255) | NOT NULL | - | VOD title copied from the original stream |
+| storage_key | VARCHAR(500) | - | - | Object storage key of the recorded video |
+| thumbnail_key | VARCHAR(500) | - | - | Object storage key of the generated thumbnail |
+| duration_seconds | BIGINT | - | - | Duration of the recorded video in seconds |
+| visibility | VARCHAR(30) | NOT NULL | INDEX | `PUBLIC, PRIVATE, UNLISTED` |
+| status | VARCHAR(30) | NOT NULL | INDEX | `PROCESSING, READY, PUBLISHED, FAILED` |
+| created_at | TIMESTAMP | NOT NULL | INDEX | VOD creation time |
+| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
+
+Constraints:
+- `duration_seconds >= 0`
 
 ### 6.2 Relationships
 
-*TBD*
+- `stream_sessions (Stream Service)` 1 — 0...1 `vods`
+- `channels (Channel Service)` 1 — N `vods`
 
 ---
 
