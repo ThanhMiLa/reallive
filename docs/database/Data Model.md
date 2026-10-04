@@ -212,7 +212,7 @@ Composite Constraint:
 | created_at | TIMESTAMP | NOT NULL | INDEX | Created time |
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
 
-#### 2.1.8 channel_bans
+#### 2.1.8 channel_user_bans
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
 | id | UUID | PK, NOT NULL | Primary | Ban event ID |
@@ -282,8 +282,18 @@ Composite Index:
 ## 4. Chat Service Data Model
 
 ### 4.1 Collections
-
-*TBD*
+| Field | Type | Required | Index | Description |
+|---|---|---|---|---|
+| _id | UUID | YES | Primary | Chat message identifier |
+| stream_id | UUID | YES | INDEX | Stream session ID from Stream Service |
+| channel_id | UUID | YES | INDEX | Channel ID from Channel Service |
+| user_id | UUID | YES | INDEX | Sender user ID from User Service |
+| content | STRING | YES | - | Chat message content |
+| offset_ms | LONG | YES | COMPOSITE | Message position relative to livestream start time |
+| status | STRING | YES | INDEX | `ACTIVE, DELETED` |
+| created_at | DATETIME | YES | COMPOSITE | Message creation time |
+| deleted_at | DATETIME | NO | - | Time when message was deleted |
+| deleted_by | UUID | NO | - | Moderator / streamer user ID who deleted the message |
 
 ### 4.2 Relationships
 
