@@ -499,7 +499,7 @@ Constraints:
 
 ### 7.1 Tables
 
-*TBD*
+*TBD - Will be defined during Notification Service implementation after email delivery requirements are finalized.*
 
 ### 7.2 Relationships
 
