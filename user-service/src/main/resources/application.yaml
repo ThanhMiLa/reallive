@@ -3,4 +3,21 @@ server:
 
 spring:
   application:
-    name: user
+    name: user-service
+
+  datasource:
+    url: ${USER_DB_URL:jdbc:postgresql://localhost:5432/reallive_user}
+    username: ${USER_DB_USERNAME:user_service}
+    password: ${USER_DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+jwt:
+  signerKey: ${JWT_SIGNER_KEY}
