@@ -1,0 +1,224 @@
+# Requires Docker Compose 2.23.1+ for inline MongoDB initialization.
+# Copy .env.example to .env, set passwords, then run: docker compose up -d --wait
+name: reallive
+
+services:
+  postgres-user:
+    container_name: postgres-user
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: user_service
+      POSTGRES_DB: reallive_user
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD:?Set USER_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  postgres-channel:
+    container_name: postgres-channel
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: channel_service
+      POSTGRES_DB: reallive_channel
+      POSTGRES_PASSWORD: ${CHANNEL_DB_PASSWORD:?Set CHANNEL_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-channel-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  postgres-stream:
+    container_name: postgres-stream
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: stream_service
+      POSTGRES_DB: reallive_stream
+      POSTGRES_PASSWORD: ${STREAM_DB_PASSWORD:?Set STREAM_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres-stream-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  postgres-payment:
+    container_name: postgres-payment
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: payment_service
+      POSTGRES_DB: reallive_payment
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:?Set PAYMENT_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  postgres-vod:
+    container_name: postgres-vod
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: vod_service
+      POSTGRES_DB: reallive_vod
+      POSTGRES_PASSWORD: ${VOD_DB_PASSWORD:?Set VOD_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - postgres-vod-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  postgres-notification:
+    container_name: postgres-notification
+    image: postgres:17-alpine
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: notification_service
+      POSTGRES_DB: reallive_notification
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Set NOTIFICATION_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5437:5432"
+    volumes:
+      - postgres-notification-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  mongodb-chat:
+    container_name: mongodb-chat
+    image: mongo:8.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: reallive_admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ADMIN_PASSWORD:?Set MONGODB_ADMIN_PASSWORD in .env}
+      MONGO_INITDB_DATABASE: reallive_chat
+      CHAT_DB_PASSWORD: ${CHAT_DB_PASSWORD:?Set CHAT_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${MONGODB_PORT:-27017}:27017"
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    configs:
+      - source: mongodb-init
+        target: /docker-entrypoint-initdb.d/01-create-chat-user.js
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host 127.0.0.1
+          --username "$$MONGO_INITDB_ROOT_USERNAME"
+          --password "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin
+          --eval 'quit(db.adminCommand({ ping: 1 }).ok === 1 ? 0 : 1)'
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - data
+
+  redis:
+    container_name: redis
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --appendfsync everysec
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - data
+
+networks:
+  data:
+    driver: bridge
+
+volumes:
+  postgres-user-data:
+  postgres-channel-data:
+  postgres-stream-data:
+  postgres-payment-data:
+  postgres-vod-data:
+  postgres-notification-data:
+  mongodb-data:
+  mongodb-config:
+  redis-data:
+
+configs:
+  mongodb-init:
+    content: |
+      const chatPassword = process.env.CHAT_DB_PASSWORD;
+
+      if (!chatPassword) {
+        throw new Error('CHAT_DB_PASSWORD is required to initialize the chat database.');
+      }
+
+      const chatDatabase = db.getSiblingDB('reallive_chat');
+
+      chatDatabase.createUser({
+        user: 'chat_service',
+        pwd: chatPassword,
+        roles: [{ role: 'readWrite', db: 'reallive_chat' }],
+      });
