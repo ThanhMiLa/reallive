@@ -21,6 +21,10 @@ Read the relevant design documents before implementing or changing a feature. Al
 - [Editable architecture diagram](<docs/architecture/System Architecture Design.drawio>): source diagram for architecture changes.
 - [Data model](<docs/database/Data Model.md>): service data models, tables, collections, and relationships.
 
+## Architecture Guidelines
+
+Before implementing, refactoring, or reviewing backend features, read and follow the [Clean Architecture skill](.agents/skills/clean-architecture/SKILL.md). It defines package-by-feature organization, responsibilities of the `domain`, `application`, `infrastructure`, and `presentation` layers, dependency rules, ports and adapters, and microservice independence. Follow its pragmatic guidance: create only the packages and abstractions needed by the feature.
+
 ## Build, Test, and Development Commands
 
 Run commands inside the relevant module; there is no root build orchestrator.
