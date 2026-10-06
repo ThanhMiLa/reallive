@@ -3,6 +3,9 @@ package com.reallive.userservice.auth.service.impl;
 import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.reallive.userservice.auth.dto.request.RegisterRequest;
+import com.reallive.userservice.auth.mapper.UserMapper;
+import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
@@ -15,14 +18,14 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.actuator.HasFeatures;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
-import java.util.StringJoiner;
-import java.util.UUID;
+import java.util.*;
 
 
 @Service
@@ -32,7 +35,9 @@ import java.util.UUID;
 public class AuthServiceImpl implements AuthService {
 
     UserRepository userRepository;
+    UserMapper userMapper;
     PasswordEncoder passwordEncoder;
+    RoleRepository roleRepository;
 
     @NonFinal
     @Value("${jwt.signer-key}")
@@ -48,6 +53,7 @@ public class AuthServiceImpl implements AuthService {
 
 
     @Override
+    @Transactional(readOnly = true)
     public AuthResponse login(AuthRequest authRequest) {
         UserEntity userEntity = userRepository.findByUsername(authRequest.getUsername())
                 .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
@@ -66,6 +72,39 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
+
+    @Override
+    @Transactional
+    public AuthResponse register(RegisterRequest registerRequest) {
+        if (userRepository.existsByUsername(registerRequest.getUsername())) {
+            throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
+        }
+
+        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+        }
+
+        if (!Objects.equals(registerRequest.getPassword(), registerRequest.getConfirmPassword())) {
+            throw new AppException(ErrorCode.PASSWORD_NOT_MATCH);
+        }
+
+
+        UserEntity userEntity = userMapper.toUserEntity(registerRequest);
+        userEntity.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
+        userEntity.setRoles(Collections.singleton(roleRepository.findByName("USER")
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)))
+        );
+        userEntity = userRepository.save(userEntity);
+
+
+        AuthRequest authenticationRequest = AuthRequest.builder()
+                .username(registerRequest.getUsername())
+                .password(registerRequest.getPassword())
+                .build();
+
+        return login(authenticationRequest);
+
+    }
     private String generateToken(UserEntity userEntity, boolean isRefresh) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
 

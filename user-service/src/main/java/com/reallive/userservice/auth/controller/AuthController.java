@@ -1,10 +1,12 @@
 package com.reallive.userservice.auth.controller;
 
 import com.reallive.userservice.auth.dto.request.AuthRequest;
+import com.reallive.userservice.auth.dto.request.RegisterRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.dto.ApiResponse;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -76,9 +78,24 @@ public class AuthController {
     String refreshTokenPath;
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@RequestBody AuthRequest authRequest, HttpServletResponse response) {
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@RequestBody @Valid AuthRequest authRequest, HttpServletResponse response) {
         AuthResponse result = authService.login(authRequest);
         addAuthCookies(response, result);
+        return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Login successful")
+                .result(result)
+                .build());
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<AuthResponse>> register(
+            @RequestBody @Valid RegisterRequest registerRequest, HttpServletResponse response){
+
+        AuthResponse result = authService.register(registerRequest);
+        addAuthCookies(response, result);
+
         return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
                 .status(200)
                 .code(1000)
