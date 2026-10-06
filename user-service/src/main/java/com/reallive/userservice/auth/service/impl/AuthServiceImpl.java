@@ -3,8 +3,11 @@ package com.reallive.userservice.auth.service.impl;
 import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
+import com.reallive.userservice.auth.entity.InvalidatedTokenEntity;
 import com.reallive.userservice.auth.mapper.UserMapper;
+import com.reallive.userservice.auth.repository.InvalidatedTokenRepository;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
@@ -18,12 +21,13 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cloud.client.actuator.HasFeatures;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
@@ -38,6 +42,7 @@ public class AuthServiceImpl implements AuthService {
     UserMapper userMapper;
     PasswordEncoder passwordEncoder;
     RoleRepository roleRepository;
+    InvalidatedTokenRepository invalidatedTokenRepository;
 
     @NonFinal
     @Value("${jwt.signer-key}")
@@ -72,6 +77,40 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
+    @Override
+    @Transactional
+    public void logout(String accessToken, String refreshToken) {
+        if (accessToken != null && !accessToken.isBlank()) {
+            processTokenInvalidation(accessToken, "ACCESS");
+        }
+
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            processTokenInvalidation(refreshToken, "REFRESH");
+        }
+    }
+
+    private void processTokenInvalidation(String token, String type) {
+        try {
+            SignedJWT signedJWT = SignedJWT.parse(token);
+
+            String jti = signedJWT.getJWTClaimsSet().getJWTID();
+            Date expireDate = signedJWT.getJWTClaimsSet().getExpirationTime();
+
+            OffsetDateTime expireOSDT = expireDate.toInstant()
+                    .atOffset(ZoneOffset.UTC);
+
+            InvalidatedTokenEntity invalidatedTokenEntity = InvalidatedTokenEntity
+                    .builder()
+                    .jti(UUID.fromString(jti))
+                    .expiryTime(expireOSDT.toLocalDateTime())
+                    .build();
+
+            invalidatedTokenRepository.save(invalidatedTokenEntity);
+
+        } catch (Exception e) {
+            log.warn("Invalid {} format, skipping blacklist: {}", type, e.getMessage());
+        }
+    }
 
     @Override
     @Transactional
