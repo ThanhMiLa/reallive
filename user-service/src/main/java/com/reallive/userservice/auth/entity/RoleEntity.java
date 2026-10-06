@@ -20,12 +20,14 @@ import jakarta.persistence.UniqueConstraint;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.FieldDefaults;
 
 @Data
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -44,6 +46,7 @@ public class RoleEntity {
 
     @ManyToMany(mappedBy = "roles", fetch = FetchType.LAZY)
     @ToString.Exclude
+    @Builder.Default
     Set<UserEntity> users = new HashSet<>();
 
     @ManyToMany(fetch = FetchType.LAZY)
@@ -54,6 +57,7 @@ public class RoleEntity {
             inverseForeignKey = @ForeignKey(name = "fk_role_permissions_permission"),
             indexes = @Index(name = "idx_role_permissions_permission_id", columnList = "permission_id"))
     @ToString.Exclude
+    @Builder.Default
     Set<PermissionEntity> permissions = new HashSet<>();
 
     @Override

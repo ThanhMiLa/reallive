@@ -22,12 +22,14 @@ import jakarta.persistence.UniqueConstraint;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.FieldDefaults;
 
 @Data
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -57,6 +59,7 @@ public class UserEntity extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
+    @Builder.Default
     UserStatus status = UserStatus.ACTIVE;
 
     @Column(name = "email_verified", nullable = false)
@@ -70,6 +73,7 @@ public class UserEntity extends BaseEntity {
             inverseForeignKey = @ForeignKey(name = "fk_user_roles_role"),
             indexes = @Index(name = "idx_user_roles_role_id", columnList = "role_id"))
     @ToString.Exclude
+    @Builder.Default
     Set<RoleEntity> roles = new HashSet<>();
 
     public boolean isActive() {

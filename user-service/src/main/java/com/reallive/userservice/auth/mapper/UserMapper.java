@@ -2,12 +2,14 @@ package com.reallive.userservice.auth.mapper;
 
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
 import com.reallive.userservice.auth.entity.UserEntity;
+import org.mapstruct.Builder;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.ReportingPolicy;
 
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING,
+        builder = @Builder(disableBuilder = true),
         unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface UserMapper {
 
