@@ -23,7 +23,6 @@ Read the relevant design documents before implementing or changing a feature. Al
 
 ## Architecture Guidelines
 
-Before implementing, refactoring, or reviewing backend features, read and follow the [Clean Architecture skill](.agents/skills/clean-architecture/SKILL.md). It defines package-by-feature organization, responsibilities of the `domain`, `application`, `infrastructure`, and `presentation` layers, dependency rules, ports and adapters, and microservice independence. Follow its pragmatic guidance: create only the packages and abstractions needed by the feature.
 
 ## Build, Test, and Development Commands
 

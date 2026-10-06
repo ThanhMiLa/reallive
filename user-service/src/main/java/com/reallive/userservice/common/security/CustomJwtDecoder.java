@@ -1,7 +1,6 @@
 package com.reallive.userservice.common.security;
 
 import com.nimbusds.jwt.SignedJWT;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
@@ -11,9 +10,6 @@ import java.text.ParseException;
 
 @Component
 public class CustomJwtDecoder implements JwtDecoder {
-
-    @Value("${jwt.signerKey}")
-    private String signerKey;
 
     private NimbusJwtDecoder nimbusJwtDecoder = null;
 

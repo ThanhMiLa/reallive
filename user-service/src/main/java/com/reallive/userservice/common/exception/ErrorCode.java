@@ -8,7 +8,10 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum ErrorCode {
     UNAUTHENTICATED(1001, "Unauthorized", HttpStatus.UNAUTHORIZED),
-    ACCESS_DENIED(1002, "Access Denied", HttpStatus.FORBIDDEN),;
+    ACCESS_DENIED(1002, "Access Denied", HttpStatus.FORBIDDEN),
+    USER_NOT_ACTIVE(1003, "User is not active", HttpStatus.FORBIDDEN),
+    USER_NOT_FOUND(1004, "User not found", HttpStatus.NOT_FOUND),
+    ;
 
     private final int code;
     private final String message;
