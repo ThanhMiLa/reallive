@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:login;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+
+auth:
+  cookie:
+    access-token:
+      secure: true
+      http-only: true
+      same-site: Lax
+    refresh-token:
+      secure: true
+      http-only: true
+      same-site: Lax
+  access-token:
+    ttl: 900
+  refresh-token:
+    ttl: 2592000
+  cors:
+    allowed-origins: http://localhost:5173
