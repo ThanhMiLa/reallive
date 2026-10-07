@@ -188,7 +188,7 @@ public class AuthServiceImpl implements AuthService {
 
         JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
                 .subject(userEntity.getId().toString())
-                .issuer("codelearning.thanhmila.com")
+                .issuer("reallive.com")
                 .issueTime(new Date())
                 .expirationTime(new Date(
                         Instant.now().plus(isRefresh ? TTL_REFRESH_TOKEN : TTL_ACCESS_TOKEN, ChronoUnit.SECONDS)
