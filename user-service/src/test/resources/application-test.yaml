@@ -4,19 +4,27 @@ spring:
     username: sa
     password: ""
 
+jwt:
+  signer-key: 1234567890123456789012345678901234567890123456789012345678901234
+  ttl_accessToken: 900
+  ttl_refreshToken: 2592000
+
 auth:
   cookie:
     access-token:
-      secure: true
+      name: access_token
+      max-age: 86400
+      secure: false
       http-only: true
       same-site: Lax
+      path: /
     refresh-token:
-      secure: true
+      name: refresh_token
+      max-age: 86400
+      secure: false
       http-only: true
       same-site: Lax
-  access-token:
-    ttl: 900
-  refresh-token:
-    ttl: 2592000
+      path: /api/auth
   cors:
     allowed-origins: http://localhost:5173
+
