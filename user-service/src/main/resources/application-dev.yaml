@@ -40,14 +40,14 @@ auth:
   cookie:
     access-token:
       name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
-      max-age: ${ACCESS_TOKEN_MAX_AGE:86400}
+      max-age: ${ACCESS_TOKEN_MAX_AGE:900}
       secure: ${ACCESS_TOKEN_SECURE:false}
       http-only: ${ACCESS_TOKEN_HTTP_ONLY:true}
       same-site: ${ACCESS_TOKEN_SAME_SITE:Lax}
       path: ${ACCESS_TOKEN_PATH:/}
     refresh-token:
       name: ${REFRESH_TOKEN_COOKIE_NAME:refresh_token}
-      max-age: ${REFRESH_TOKEN_MAX_AGE:86400}
+      max-age: ${REFRESH_TOKEN_MAX_AGE:2592000}
       secure: ${REFRESH_TOKEN_SECURE:false}
       http-only: ${REFRESH_TOKEN_HTTP_ONLY:true}
       same-site: ${REFRESH_TOKEN_SAME_SITE:Lax}
