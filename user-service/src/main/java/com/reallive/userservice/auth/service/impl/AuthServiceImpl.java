@@ -1,13 +1,15 @@
 package com.reallive.userservice.auth.service.impl;
 
-import com.nimbusds.jose.*;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.JWSObject;
+import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
-import com.reallive.userservice.auth.entity.InvalidatedTokenEntity;
 import com.reallive.userservice.auth.mapper.UserMapper;
-import com.reallive.userservice.auth.repository.InvalidatedTokenRepository;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
@@ -21,15 +23,23 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.StringJoiner;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 
 @Service
@@ -42,7 +52,8 @@ public class AuthServiceImpl implements AuthService {
     UserMapper userMapper;
     PasswordEncoder passwordEncoder;
     RoleRepository roleRepository;
-    InvalidatedTokenRepository invalidatedTokenRepository;
+    StringRedisTemplate redisTemplate;
+
 
     @NonFinal
     @Value("${jwt.signer-key}")
@@ -68,17 +79,10 @@ public class AuthServiceImpl implements AuthService {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
 
-        String accessToken = generateToken(userEntity, false);
-        String refreshToken = generateToken(userEntity, true);
-
-        return AuthResponse.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .build();
+        return generateAuthResponse(userEntity);
     }
 
     @Override
-    @Transactional
     public void logout(String accessToken, String refreshToken) {
         if (accessToken != null && !accessToken.isBlank()) {
             processTokenInvalidation(accessToken, "ACCESS");
@@ -89,26 +93,26 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    private void processTokenInvalidation(String token, String type) {
-        try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
+    @Override
+    @Transactional
+    public AuthResponse refresh(String token) {
+        if (token == null || token.isBlank()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
 
-            String jti = signedJWT.getJWTClaimsSet().getJWTID();
-            Date expireDate = signedJWT.getJWTClaimsSet().getExpirationTime();
+        processTokenInvalidation(token, "REFRESH");
 
-            OffsetDateTime expireOSDT = expireDate.toInstant()
-                    .atOffset(ZoneOffset.UTC);
+        // Cấp lại token mới
+        try{
+            JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
+            String userId = claims.getSubject();
+            UserEntity userEntity = userRepository.findById(UUID.fromString(userId))
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            InvalidatedTokenEntity invalidatedTokenEntity = InvalidatedTokenEntity
-                    .builder()
-                    .jti(UUID.fromString(jti))
-                    .expiryTime(expireOSDT.toLocalDateTime())
-                    .build();
+            return generateAuthResponse(userEntity);
 
-            invalidatedTokenRepository.save(invalidatedTokenEntity);
-
-        } catch (Exception e) {
-            log.warn("Invalid {} format, skipping blacklist: {}", type, e.getMessage());
+        }catch (ParseException parseException){
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
     }
 
@@ -144,6 +148,41 @@ public class AuthServiceImpl implements AuthService {
         return login(authenticationRequest);
 
     }
+
+    private void processTokenInvalidation(String token, String type) {
+        try {
+            JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
+            Duration remainingLifetime = Duration.between(Instant.now(), claims.getExpirationTime().toInstant());
+            if (remainingLifetime.toMillis() <= 0) {
+                return;
+            }
+
+            String blacklistKey = "auth:revoked:" + type.toLowerCase(Locale.ROOT) + ":" + claims.getJWTID();
+            Boolean consumed = redisTemplate.opsForValue()
+                    .setIfAbsent(blacklistKey, "1", remainingLifetime);
+            if (!Boolean.TRUE.equals(consumed)) {
+                throw new AppException(ErrorCode.UNAUTHENTICATED);
+            }
+
+            String storedValue = redisTemplate.opsForValue().get(blacklistKey);
+            Long ttlSeconds = redisTemplate.getExpire(blacklistKey, TimeUnit.SECONDS);
+            log.info("Redis blacklist readback: key={}, value={}, ttlSeconds={}",
+                    blacklistKey, storedValue, ttlSeconds);
+        } catch (ParseException exception) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+    }
+
+    private AuthResponse generateAuthResponse(UserEntity userEntity) {
+        String accessToken = generateToken(userEntity, false);
+        String refreshToken = generateToken(userEntity, true);
+
+        return AuthResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .build();
+    }
+
     private String generateToken(UserEntity userEntity, boolean isRefresh) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
 
@@ -164,7 +203,7 @@ public class AuthServiceImpl implements AuthService {
         JWSObject jwsObject = new JWSObject(header, payload);
 
         try {
-            jwsObject.sign(new MACSigner(SIGNER_KEY.getBytes()));
+            jwsObject.sign(new MACSigner(SIGNER_KEY.getBytes(StandardCharsets.UTF_8)));
             return jwsObject.serialize();
         } catch (JOSEException e) {
             log.error("Cannot create token!");

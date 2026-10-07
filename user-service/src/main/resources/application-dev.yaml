@@ -7,6 +7,16 @@ spring:
   application:
     name: user-service
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_TIMEOUT:2s}
+
   datasource:
     url: ${USER_DB_URL:jdbc:postgresql://localhost:5432/reallive_user}
     username: ${USER_DB_USERNAME:user_service}
@@ -41,7 +51,7 @@ auth:
       secure: ${REFRESH_TOKEN_SECURE:false}
       http-only: ${REFRESH_TOKEN_HTTP_ONLY:true}
       same-site: ${REFRESH_TOKEN_SAME_SITE:Lax}
-      path: ${REFRESH_TOKEN_PATH:/api/auth}
+      path: ${REFRESH_TOKEN_PATH:/user/api/auth}
 
 app:
   cors:

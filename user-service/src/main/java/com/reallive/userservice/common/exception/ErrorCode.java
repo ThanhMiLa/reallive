@@ -17,7 +17,7 @@ public enum ErrorCode {
     USERNAME_INVALID(1008, "Username must be at least 5 characters long", HttpStatus.BAD_REQUEST),
     PASSWORD_INVALID(1009, "Password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
     EMAIL_INVALID(1010, "Email must be valid", HttpStatus.BAD_REQUEST),
-    PASSWORD_CONFIRM_INVALID(1011, "Confirm password must be at least 5 characters long", HttpStatus.BAD_REQUEST)
+    PASSWORD_CONFIRM_INVALID(1011, "Confirm password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
     ;
 
     private final int code;

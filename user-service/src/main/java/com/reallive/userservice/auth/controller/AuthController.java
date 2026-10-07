@@ -16,7 +16,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Slf4j
@@ -103,8 +107,8 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(
-            @CookieValue(name = "access_token", required = false) String accessToken,
-            @CookieValue(name = "refresh_token", required = false) String refreshToken,
+            @CookieValue(name = "${auth.cookie.access-token.name}", required = false) String accessToken,
+            @CookieValue(name = "${auth.cookie.refresh-token.name}", required = false) String refreshToken,
             HttpServletResponse response){
 
         authService.logout(accessToken, refreshToken);
@@ -115,6 +119,22 @@ public class AuthController {
                 .code(1000)
                 .message("Logout successfully")
                 .result(null)
+                .build());
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<AuthResponse>> refresh(
+            @CookieValue(name = "${auth.cookie.refresh-token.name}", required = false) String refreshToken,
+            HttpServletResponse response) {
+
+        var result = authService.refresh(refreshToken);
+        addAuthCookies(response, result);
+
+        return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Refresh token successful")
+                .result(result)
                 .build());
     }
 
