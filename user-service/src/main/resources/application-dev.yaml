@@ -53,6 +53,3 @@ auth:
       same-site: ${REFRESH_TOKEN_SAME_SITE:Lax}
       path: ${REFRESH_TOKEN_PATH:/user/api/auth}
 
-app:
-  cors:
-    allowed-origins: ${AUTH_ALLOWED_ORIGINS:http://localhost:5173}
