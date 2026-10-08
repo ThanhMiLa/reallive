@@ -109,6 +109,10 @@ public class AuthServiceImpl implements AuthService {
             UserEntity userEntity = userRepository.findById(UUID.fromString(userId))
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
+            if (!userEntity.isActive()) {
+                throw new AppException(ErrorCode.USER_NOT_ACTIVE);
+            }
+
             return generateAuthResponse(userEntity);
 
         }catch (ParseException parseException){
@@ -154,6 +158,9 @@ public class AuthServiceImpl implements AuthService {
             JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
             Duration remainingLifetime = Duration.between(Instant.now(), claims.getExpirationTime().toInstant());
             if (remainingLifetime.toMillis() <= 0) {
+                if ("REFRESH".equals(type)) {
+                    throw new AppException(ErrorCode.UNAUTHENTICATED);
+                }
                 return;
             }
 

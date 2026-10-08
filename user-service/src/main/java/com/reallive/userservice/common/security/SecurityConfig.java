@@ -2,6 +2,7 @@ package com.reallive.userservice.common.security;
 
 import jakarta.servlet.http.Cookie;
 import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -12,7 +13,6 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
-import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -38,7 +38,7 @@ public class SecurityConfig {
 
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, BearerTokenResolver bearerTokenResolver) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
@@ -47,7 +47,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .bearerTokenResolver(bearerTokenResolver())
+                        .bearerTokenResolver(bearerTokenResolver)
                         .jwt(jwt -> jwt
                                 .decoder(customJwtDecoder)
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())
@@ -60,26 +60,20 @@ public class SecurityConfig {
     }
 
     @Bean
-    BearerTokenResolver bearerTokenResolver(){
-        DefaultBearerTokenResolver defaultResolver = new DefaultBearerTokenResolver();
+    BearerTokenResolver bearerTokenResolver(@Value("${auth.cookie.access-token.name}") String accessTokenName) {
         return request -> {
-            String token = defaultResolver.resolve(request);
-
-            if (token != null && !token.isBlank()) {
-                return token;
-            }
-
             Cookie[] cookies = request.getCookies();
 
-            if(cookies == null) {
+            if (cookies == null) {
                 return null;
             }
 
-            for (Cookie cookie : cookies){
-                if("access_token".equals(cookie.getName())){
+            for (Cookie cookie : cookies) {
+                if (accessTokenName.equals(cookie.getName())) {
                     String cookieToken = cookie.getValue();
-                    if(cookieToken != null && !cookieToken.isBlank())
+                    if (cookieToken != null && !cookieToken.isBlank()) {
                         return cookieToken;
+                    }
                 }
             }
             return null;

@@ -13,14 +13,14 @@ auth:
   cookie:
     access-token:
       name: access_token
-      max-age: 86400
+      max-age: ${jwt.ttl_accessToken}
       secure: false
       http-only: true
       same-site: Lax
       path: /
     refresh-token:
       name: refresh_token
-      max-age: 86400
+      max-age: ${jwt.ttl_refreshToken}
       secure: false
       http-only: true
       same-site: Lax

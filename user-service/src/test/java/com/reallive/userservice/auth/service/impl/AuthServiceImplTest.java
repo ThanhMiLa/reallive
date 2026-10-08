@@ -447,20 +447,28 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Bypasses Redis invalidation when token lifetime is non-positive (relies on gateway verification)")
-        void refresh_BypassesRedis_WhenTokenRemainingLifetimeNonPositive() throws Exception {
+        @DisplayName("Rejects a refresh token that expires before it can be consumed")
+        void refresh_RejectsExpiredTokenBeforeRedisOrDatabase() throws Exception {
             UUID userId = UUID.randomUUID();
             String token = createSignedToken("REFRESH", userId.toString(), UUID.randomUUID().toString(),
                     Instant.now().minusSeconds(10));
 
-            UserEntity user = createUser("valid_user", "hashed_pwd", UserStatus.ACTIVE);
-            user.setId(userId);
-            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            AppException exception = assertThrows(AppException.class, () -> authService.refresh(token));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verifyNoInteractions(redisTemplate, valueOperations, userRepository);
+        }
 
-            AuthResponse response = authService.refresh(token);
+        @Test
+        void refreshRejectsBannedAccount() throws Exception {
+            UserEntity user = createUser("banned_user", "hashed_pwd", UserStatus.BANNED);
+            String token = createSignedToken("REFRESH", user.getId().toString(), UUID.randomUUID().toString(),
+                    Instant.now().plusSeconds(3600));
+            when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(true);
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
 
-            assertNotNull(response);
-            verifyNoInteractions(redisTemplate, valueOperations);
+            AppException exception = assertThrows(AppException.class, () -> authService.refresh(token));
+
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
         }
 
         @Test
