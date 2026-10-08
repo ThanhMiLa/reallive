@@ -18,6 +18,7 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.common.util.UserValidator;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -112,9 +113,7 @@ public class AuthServiceImpl implements AuthService {
             UserEntity userEntity = userRepository.findById(UUID.fromString(userId))
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            if (!userEntity.isActive()) {
-                throw new AppException(ErrorCode.USER_NOT_ACTIVE);
-            }
+            UserValidator.validateActive(userEntity);
 
             return generateAuthResponse(userEntity);
 

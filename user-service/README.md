@@ -13,6 +13,14 @@ Java 21 / Spring Boot service for accounts and authentication. Development reque
 
 Login accepts `{username, password}`. Register accepts `{username, email, password, confirmPassword}`. Refresh/logout read token cookies, not JSON token fields or Authorization headers. Tokens are removed from the JSON response after being written to `Set-Cookie`.
 
+## Personal profile API
+
+`GET /user/api/users/me` returns the authenticated user's profile using the `access_token` cookie. The user ID comes from the JWT subject; no user ID parameter is required.
+
+The `result` object contains `userId`, `displayName`, `email`, `avatarUrl`, `dob`, and `create_at`. `create_at` is the account creation timestamp from `users.created_at`. `avatarUrl` and `dob` may be `null`. Dates use `YYYY-MM-DD`, and creation timestamps use ISO local date-time format.
+
+The API returns 401 for unauthenticated requests, 404 when the profile is missing, and 403 when the account is inactive.
+
 ## Gateway trust and business authorization
 
 API Gateway verifies every supplied access/refresh cookie, including on public auth endpoints. It checks HS512 signatures, issuer, claims, expiration, token type, and Redis blacklist entries. It rejects client Authorization headers. See [the gateway contract](../api-gateway/README.md) for CORS/CSRF, cookie recovery, error codes, and client examples.
