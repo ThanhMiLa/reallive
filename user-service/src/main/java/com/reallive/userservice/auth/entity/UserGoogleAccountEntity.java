@@ -1,5 +1,7 @@
 package com.reallive.userservice.auth.entity;
 
+import com.reallive.userservice.common.entity.BaseEntity;
+
 import java.util.UUID;
 
 import jakarta.persistence.Column;

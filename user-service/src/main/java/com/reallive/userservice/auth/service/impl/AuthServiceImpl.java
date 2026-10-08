@@ -18,6 +18,9 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.common.util.UserValidator;
+import com.reallive.userservice.user.entity.ProfileEntity;
+import com.reallive.userservice.user.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
@@ -53,6 +56,7 @@ public class AuthServiceImpl implements AuthService {
     PasswordEncoder passwordEncoder;
     RoleRepository roleRepository;
     StringRedisTemplate redisTemplate;
+    ProfileRepository profileRepository;
 
 
     @NonFinal
@@ -84,13 +88,13 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void logout(String accessToken, String refreshToken) {
-        if (accessToken != null && !accessToken.isBlank()) {
-            processTokenInvalidation(accessToken, "ACCESS");
+
+        if(accessToken == null || accessToken.isBlank() || refreshToken == null || refreshToken.isBlank()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
 
-        if (refreshToken != null && !refreshToken.isBlank()) {
-            processTokenInvalidation(refreshToken, "REFRESH");
-        }
+        processTokenInvalidation(accessToken, "ACCESS");
+        processTokenInvalidation(refreshToken, "REFRESH");
     }
 
     @Override
@@ -108,6 +112,8 @@ public class AuthServiceImpl implements AuthService {
             String userId = claims.getSubject();
             UserEntity userEntity = userRepository.findById(UUID.fromString(userId))
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            UserValidator.validateActive(userEntity);
 
             return generateAuthResponse(userEntity);
 
@@ -139,6 +145,8 @@ public class AuthServiceImpl implements AuthService {
         );
         userEntity = userRepository.save(userEntity);
 
+        ProfileEntity profile = buildProfileEntity(userEntity);
+        profileRepository.save(profile);
 
         AuthRequest authenticationRequest = AuthRequest.builder()
                 .username(registerRequest.getUsername())
@@ -149,11 +157,21 @@ public class AuthServiceImpl implements AuthService {
 
     }
 
+    private ProfileEntity buildProfileEntity(UserEntity userEntity) {
+        return ProfileEntity.builder()
+                .user(userEntity)
+                .displayName(userEntity.getUsername())
+                .build();
+    }
+
     private void processTokenInvalidation(String token, String type) {
         try {
             JWTClaimsSet claims = SignedJWT.parse(token).getJWTClaimsSet();
             Duration remainingLifetime = Duration.between(Instant.now(), claims.getExpirationTime().toInstant());
             if (remainingLifetime.toMillis() <= 0) {
+                if ("REFRESH".equals(type)) {
+                    throw new AppException(ErrorCode.UNAUTHENTICATED);
+                }
                 return;
             }
 

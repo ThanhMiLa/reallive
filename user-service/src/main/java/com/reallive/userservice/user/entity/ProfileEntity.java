@@ -1,4 +1,7 @@
-package com.reallive.userservice.auth.entity;
+package com.reallive.userservice.user.entity;
+
+import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.common.entity.BaseEntity;
 
 import java.time.LocalDate;
 import java.util.UUID;

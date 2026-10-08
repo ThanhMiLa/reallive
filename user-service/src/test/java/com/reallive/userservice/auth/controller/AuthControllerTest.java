@@ -345,13 +345,15 @@ class AuthControllerTest {
     class LogoutEndpointTests {
 
         @Test
-        @DisplayName("Returns 200 OK and clears cookies when no cookies are provided")
-        void logout_ReturnsOk_WhenNoCookiesProvided() throws Exception {
+        @DisplayName("Returns 401 Unauthorized when logout cookies are missing")
+        void logout_ReturnsUnauthorized_WhenNoCookiesProvided() throws Exception {
+            doThrow(new AppException(ErrorCode.UNAUTHENTICATED))
+                    .when(authService).logout(null, null);
+
             mockMvc.perform(post("/api/auth/logout"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.message").value("Logout successfully"))
-                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
-                            org.hamcrest.Matchers.hasItem(containsString("Max-Age=0"))));
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHENTICATED.getCode()))
+                    .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
 
             verify(authService).logout(null, null);
         }

@@ -18,6 +18,7 @@ public enum ErrorCode {
     PASSWORD_INVALID(1009, "Password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
     EMAIL_INVALID(1010, "Email must be valid", HttpStatus.BAD_REQUEST),
     PASSWORD_CONFIRM_INVALID(1011, "Confirm password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
+    PROFILE_NOT_FOUND(1012, "Profile not found", HttpStatus.NOT_FOUND),
     ;
 
     private final int code;

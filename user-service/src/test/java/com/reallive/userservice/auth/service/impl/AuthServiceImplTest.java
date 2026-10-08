@@ -18,13 +18,21 @@ import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.user.entity.ProfileEntity;
+import com.reallive.userservice.user.repository.ProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,17 +46,25 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class AuthServiceImplTest {
@@ -59,6 +75,7 @@ class AuthServiceImplTest {
     private UserMapper userMapper;
     private PasswordEncoder passwordEncoder;
     private RoleRepository roleRepository;
+    private ProfileRepository profileRepository;
     private StringRedisTemplate redisTemplate;
     private ValueOperations<String, String> valueOperations;
     private AuthServiceImpl authService;
@@ -70,6 +87,7 @@ class AuthServiceImplTest {
         userMapper = mock(UserMapper.class);
         passwordEncoder = mock(PasswordEncoder.class);
         roleRepository = mock(RoleRepository.class);
+        profileRepository = mock(ProfileRepository.class);
         redisTemplate = mock(StringRedisTemplate.class);
         valueOperations = mock(ValueOperations.class);
 
@@ -80,7 +98,8 @@ class AuthServiceImplTest {
                 userMapper,
                 passwordEncoder,
                 roleRepository,
-                redisTemplate
+                redisTemplate,
+                profileRepository
         );
 
         ReflectionTestUtils.setField(authService, "SIGNER_KEY", SIGNING_KEY);
@@ -222,6 +241,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.USERNAME_ALREADY_EXISTS, exception.getErrorCode());
+            verifyNoInteractions(profileRepository);
         }
 
         @Test
@@ -239,6 +259,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.EMAIL_ALREADY_EXISTS, exception.getErrorCode());
+            verifyNoInteractions(profileRepository);
         }
 
         @Test
@@ -256,6 +277,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.PASSWORD_NOT_MATCH, exception.getErrorCode());
+            verifyNoInteractions(profileRepository);
         }
 
         @Test
@@ -276,10 +298,11 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.USER_NOT_FOUND, exception.getErrorCode());
+            verifyNoInteractions(profileRepository);
         }
 
         @Test
-        @DisplayName("Successfully registers user and automatically logs in")
+        @DisplayName("Registers user, saves a profile with the username as display name, then logs in")
         void register_Success() {
             RegisterRequest request = RegisterRequest.builder()
                     .username("new_user")
@@ -315,7 +338,71 @@ class AuthServiceImplTest {
             assertNotNull(response);
             assertNotNull(response.getAccessToken());
             assertNotNull(response.getRefreshToken());
+            ArgumentCaptor<ProfileEntity> profileCaptor = ArgumentCaptor.forClass(ProfileEntity.class);
+            InOrder registrationOrder = inOrder(userRepository, profileRepository);
+            registrationOrder.verify(userRepository).save(mappedUser);
+            registrationOrder.verify(profileRepository).save(profileCaptor.capture());
+            registrationOrder.verify(userRepository).findByUsername("new_user");
+            verifyNoMoreInteractions(profileRepository);
+
+            ProfileEntity profile = profileCaptor.getValue();
+            assertSame(savedUser, profile.getUser());
+            assertEquals("new_user", profile.getDisplayName());
+            assertNull(profile.getAvatarUrl());
+            assertNull(profile.getDob());
+        }
+
+        @Test
+        @DisplayName("Does not create a profile or log in when saving the user fails")
+        void register_DoesNotSaveProfile_WhenUserSaveFails() {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity mappedUser = prepareRegistration(request);
+            DataIntegrityViolationException failure = new DataIntegrityViolationException("User insert failed");
+            when(userRepository.save(mappedUser)).thenThrow(failure);
+
+            assertSame(failure, assertThrows(DataIntegrityViolationException.class,
+                    () -> authService.register(request)));
+
+            verifyNoInteractions(profileRepository);
+            verify(userRepository, never()).findByUsername(any());
+        }
+
+        @Test
+        @DisplayName("Propagates profile save failure and does not log in")
+        void register_DoesNotLogin_WhenProfileSaveFails() {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity mappedUser = prepareRegistration(request);
+            UserEntity savedUser = createUser("new_user", "encoded_pwd", UserStatus.ACTIVE);
+            when(userRepository.save(mappedUser)).thenReturn(savedUser);
+            DataIntegrityViolationException failure = new DataIntegrityViolationException("Profile insert failed");
+            when(profileRepository.save(any(ProfileEntity.class))).thenThrow(failure);
+
+            assertSame(failure, assertThrows(DataIntegrityViolationException.class,
+                    () -> authService.register(request)));
+
             verify(userRepository).save(mappedUser);
+            verify(profileRepository).save(any(ProfileEntity.class));
+            verify(userRepository, never()).findByUsername(any());
+        }
+
+        private RegisterRequest createRegistrationRequest() {
+            return RegisterRequest.builder()
+                    .username("new_user")
+                    .email("new@example.com")
+                    .password("password123")
+                    .confirmPassword("password123")
+                    .build();
+        }
+
+        private UserEntity prepareRegistration(RegisterRequest request) {
+            UserEntity mappedUser = new UserEntity();
+            mappedUser.setUsername(request.getUsername());
+            RoleEntity role = new RoleEntity();
+            role.setName("USER");
+            when(userMapper.toUserEntity(request)).thenReturn(mappedUser);
+            when(passwordEncoder.encode(request.getPassword())).thenReturn("encoded_pwd");
+            when(roleRepository.findByName("USER")).thenReturn(Optional.of(role));
+            return mappedUser;
         }
     }
 
@@ -329,38 +416,39 @@ class AuthServiceImplTest {
         @ParameterizedTest
         @NullAndEmptySource
         @ValueSource(strings = {"   "})
-        @DisplayName("No Redis interaction when both tokens are null or blank")
-        void logout_DoesNothing_WhenTokensNullOrBlank(String token) {
-            authService.logout(token, token);
+        @DisplayName("Rejects logout without accessing Redis when both tokens are null or blank")
+        void logout_ThrowsUnauthenticated_WhenTokensNullOrBlank(String token) {
+            AppException exception = assertThrows(AppException.class, () -> authService.logout(token, token));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
             verifyNoInteractions(redisTemplate, valueOperations);
         }
 
-        @Test
-        @DisplayName("Revokes only access token when refresh token is null")
-        void logout_RevokesAccessTokenOnly() throws Exception {
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {"   "})
+        @DisplayName("Rejects logout without accessing Redis when refresh token is missing")
+        void logout_ThrowsUnauthenticated_WhenRefreshTokenMissing(String refreshToken) throws Exception {
             String jti = UUID.randomUUID().toString();
             String accessToken = createSignedToken("ACCESS", "user-123", jti, Instant.now().plusSeconds(300));
 
-            when(valueOperations.setIfAbsent(eq("auth:revoked:access:" + jti), eq("1"), any(Duration.class)))
-                    .thenReturn(true);
-
-            authService.logout(accessToken, null);
-
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:access:" + jti), eq("1"), any(Duration.class));
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.logout(accessToken, refreshToken));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verifyNoInteractions(redisTemplate, valueOperations);
         }
 
-        @Test
-        @DisplayName("Revokes only refresh token when access token is null")
-        void logout_RevokesRefreshTokenOnly() throws Exception {
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {"   "})
+        @DisplayName("Rejects logout without accessing Redis when access token is missing")
+        void logout_ThrowsUnauthenticated_WhenAccessTokenMissing(String accessToken) throws Exception {
             String jti = UUID.randomUUID().toString();
             String refreshToken = createSignedToken("REFRESH", "user-123", jti, Instant.now().plusSeconds(3600));
 
-            when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + jti), eq("1"), any(Duration.class)))
-                    .thenReturn(true);
-
-            authService.logout(null, refreshToken);
-
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:refresh:" + jti), eq("1"), any(Duration.class));
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.logout(accessToken, refreshToken));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verifyNoInteractions(redisTemplate, valueOperations);
         }
 
         @Test
@@ -380,14 +468,21 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Ignores expired access token during logout without calling Redis")
+        @DisplayName("Ignores expired access token and still revokes the valid refresh token")
         void logout_IgnoresExpiredAccessToken() throws Exception {
-            String accessToken = createSignedToken("ACCESS", "user-123", UUID.randomUUID().toString(),
+            String accessJti = UUID.randomUUID().toString();
+            String refreshJti = UUID.randomUUID().toString();
+            String accessToken = createSignedToken("ACCESS", "user-123", accessJti,
                     Instant.now().minusSeconds(60));
+            String refreshToken = createSignedToken("REFRESH", "user-123", refreshJti,
+                    Instant.now().plusSeconds(3600));
+            when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class)))
+                    .thenReturn(true);
 
-            authService.logout(accessToken, null);
+            authService.logout(accessToken, refreshToken);
 
-            verifyNoInteractions(redisTemplate, valueOperations);
+            verify(valueOperations, never()).setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class));
+            verify(valueOperations).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
         }
 
         @Test
@@ -395,18 +490,27 @@ class AuthServiceImplTest {
         void logout_ThrowsUnauthenticated_WhenTokenAlreadyRevoked() throws Exception {
             String jti = UUID.randomUUID().toString();
             String accessToken = createSignedToken("ACCESS", "user-123", jti, Instant.now().plusSeconds(300));
+            String refreshJti = UUID.randomUUID().toString();
+            String refreshToken = createSignedToken("REFRESH", "user-123", refreshJti,
+                    Instant.now().plusSeconds(3600));
 
             when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(false);
 
-            AppException exception = assertThrows(AppException.class, () -> authService.logout(accessToken, null));
+            AppException exception = assertThrows(AppException.class, () -> authService.logout(accessToken, refreshToken));
             assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verify(valueOperations).setIfAbsent(eq("auth:revoked:access:" + jti), eq("1"), any(Duration.class));
+            verify(valueOperations, never()).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
         }
 
         @Test
         @DisplayName("Throws UNAUTHENTICATED when token format is malformed")
-        void logout_ThrowsUnauthenticated_WhenTokenMalformed() {
-            AppException exception = assertThrows(AppException.class, () -> authService.logout("invalid.jwt.token", null));
+        void logout_ThrowsUnauthenticated_WhenTokenMalformed() throws Exception {
+            String refreshToken = createSignedToken("REFRESH", "user-123", UUID.randomUUID().toString(),
+                    Instant.now().plusSeconds(3600));
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.logout("invalid.jwt.token", refreshToken));
             assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verifyNoInteractions(redisTemplate, valueOperations);
         }
     }
 
@@ -447,20 +551,28 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Bypasses Redis invalidation when token lifetime is non-positive (relies on gateway verification)")
-        void refresh_BypassesRedis_WhenTokenRemainingLifetimeNonPositive() throws Exception {
+        @DisplayName("Rejects a refresh token that expires before it can be consumed")
+        void refresh_RejectsExpiredTokenBeforeRedisOrDatabase() throws Exception {
             UUID userId = UUID.randomUUID();
             String token = createSignedToken("REFRESH", userId.toString(), UUID.randomUUID().toString(),
                     Instant.now().minusSeconds(10));
 
-            UserEntity user = createUser("valid_user", "hashed_pwd", UserStatus.ACTIVE);
-            user.setId(userId);
-            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            AppException exception = assertThrows(AppException.class, () -> authService.refresh(token));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verifyNoInteractions(redisTemplate, valueOperations, userRepository);
+        }
 
-            AuthResponse response = authService.refresh(token);
+        @Test
+        void refreshRejectsBannedAccount() throws Exception {
+            UserEntity user = createUser("banned_user", "hashed_pwd", UserStatus.BANNED);
+            String token = createSignedToken("REFRESH", user.getId().toString(), UUID.randomUUID().toString(),
+                    Instant.now().plusSeconds(3600));
+            when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(true);
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
 
-            assertNotNull(response);
-            verifyNoInteractions(redisTemplate, valueOperations);
+            AppException exception = assertThrows(AppException.class, () -> authService.refresh(token));
+
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
         }
 
         @Test
@@ -502,6 +614,61 @@ class AuthServiceImplTest {
             SignedJWT newAccess = SignedJWT.parse(response.getAccessToken());
             assertEquals(userId.toString(), newAccess.getJWTClaimsSet().getSubject());
             assertEquals("ACCESS", newAccess.getJWTClaimsSet().getStringClaim("type"));
+        }
+
+        @Test
+        @EnabledIfSystemProperty(named = "gateway.test.redis-port", matches = "[0-9]+")
+        void onlyOneConcurrentRefreshCanConsumeTokenInRedis() throws Exception {
+            String signingKey = "refresh-concurrency-key-".repeat(4);
+            String jti = UUID.randomUUID().toString();
+            UserEntity user = new UserEntity();
+            user.setId(UUID.randomUUID());
+            user.setStatus(UserStatus.ACTIVE);
+            user.setRoles(Set.of());
+            RedisStandaloneConfiguration configuration = new RedisStandaloneConfiguration("127.0.0.1",
+                    Integer.parseInt(System.getProperty("gateway.test.redis-port")));
+            configuration.setDatabase(4);
+            LettuceConnectionFactory connectionFactory = new LettuceConnectionFactory(configuration);
+            connectionFactory.afterPropertiesSet();
+            connectionFactory.start();
+            StringRedisTemplate redis = new StringRedisTemplate(connectionFactory);
+            try (var executor = Executors.newFixedThreadPool(2)) {
+                UserRepository users = mock(UserRepository.class);
+                when(users.findById(user.getId())).thenReturn(Optional.of(user));
+                AuthServiceImpl service = new AuthServiceImpl(users, mock(UserMapper.class),
+                        mock(PasswordEncoder.class), mock(RoleRepository.class), redis, mock(ProfileRepository.class));
+                ReflectionTestUtils.setField(service, "SIGNER_KEY", signingKey);
+                ReflectionTestUtils.setField(service, "TTL_ACCESS_TOKEN", 900L);
+                ReflectionTestUtils.setField(service, "TTL_REFRESH_TOKEN", 2592000L);
+                JWTClaimsSet claims = new JWTClaimsSet.Builder().subject(user.getId().toString()).jwtID(jti)
+                        .issuer("reallive.com").issueTime(Date.from(Instant.now().minusSeconds(1)))
+                        .expirationTime(Date.from(Instant.now().plusSeconds(300))).claim("type", "REFRESH").build();
+                SignedJWT token = new SignedJWT(new JWSHeader(JWSAlgorithm.HS512), claims);
+                token.sign(new MACSigner(signingKey.getBytes(StandardCharsets.UTF_8)));
+                CyclicBarrier start = new CyclicBarrier(2);
+                var first = executor.submit(() -> refresh(service, token.serialize(), start));
+                var second = executor.submit(() -> refresh(service, token.serialize(), start));
+
+                assertEquals(1, first.get(10, TimeUnit.SECONDS) + second.get(10, TimeUnit.SECONDS));
+                assertEquals("1", redis.opsForValue().get("auth:revoked:refresh:" + jti));
+            } finally {
+                try {
+                    redis.delete("auth:revoked:refresh:" + jti);
+                } finally {
+                    connectionFactory.destroy();
+                }
+            }
+        }
+
+        private int refresh(AuthServiceImpl service, String token, CyclicBarrier start) throws Exception {
+            start.await(5, TimeUnit.SECONDS);
+            try {
+                service.refresh(token);
+                return 1;
+            } catch (AppException exception) {
+                assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+                return 0;
+            }
         }
     }
 
