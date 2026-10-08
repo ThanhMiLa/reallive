@@ -80,6 +80,14 @@ Email verification belongs to `user`; streamer registration belongs to `streamer
 
 The service implementation classes are scaffolds: their methods explicitly throw `UnsupportedOperationException` until business logic is implemented. They are not registered as Spring beans, and no controllers expose these methods. This preserves the existing application's startup while the infrastructure adapters and streamer repository are built. No OTPs are generated, no email requests are published, and no privileges are assigned by this scaffolding.
 
+## Streamer persistence
+
+Flyway V4 adds `streamers` with a unique, required `user_id` referencing `users`, status validation (`PENDING`, `ACTIVE`, `SUSPENDED`, `BANNED`), verification and suspension timestamps, and a suspension reason. `StreamerEntity` and `StreamerRepository.findByUserId` expose the record independently of the user's roles, including bans that remain after role removal. Status must be supplied explicitly when saving a streamer.
+
+V5 seeds the `STREAMER` role if absent, preserving any existing role ID, permissions and memberships. It does not grant roles to users or introduce new permissions. Streamer registration will add this role alongside existing roles through `user_roles`; account registration now initializes a mutable role set.
+
+`UserRepository.findByIdForUpdate` acquires `PESSIMISTIC_WRITE` on the user row. The registration service must call it inside the transaction before reading eligibility, then read roles and the streamer record in that same transaction. The lock lasts until commit or rollback; requests for the same user wait and recheck committed database state. Different users remain independent. The unique constraint additionally prevents duplicate streamer records at the database level. The registration service and API business logic remain scheduled for a later step.
+
 ## Gateway trust and business authorization
 
 API Gateway verifies every supplied access/refresh cookie, including on public auth endpoints. It checks HS512 signatures, issuer, claims, expiration, token type, and Redis blacklist entries. It rejects client Authorization headers. See [the gateway contract](../api-gateway/README.md) for CORS/CSRF, cookie recovery, error codes, and client examples.
@@ -139,3 +147,13 @@ To include the real Redis concurrent-refresh test, use an isolated localhost Red
 ```
 
 That optional test uses database 4 and deletes its randomly generated key afterward. Do not point it at the application's Redis.
+
+`StreamerMigrationTest` and `StreamerRepositoryTest` run against H2 by default. They cover fresh and V3 upgrades, preserving preconfigured roles, entity validation, moderation fields, database constraints, role rollback and concurrent user locking. To run these tests against an isolated PostgreSQL database instead:
+
+```bash
+./mvnw -Dtest=StreamerMigrationTest,StreamerRepositoryTest \
+  -Dstreamer.test.database-url=jdbc:postgresql://localhost:55439/streamer_step3_test \
+  -Dstreamer.test.database-username=streamer_test test
+```
+
+An optional `streamer.test.database-password` property supplies the test password. These tests create and drop randomly named schemas they own. Use a dedicated test database and credentials with schema creation permission.

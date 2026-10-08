@@ -115,6 +115,10 @@ sequenceDiagram
 
    Hoàn tất khi Flyway chạy được trên PostgreSQL mới và DB nâng cấp, entity validate khớp schema, role có sẵn và uniqueness được DB thực thi.
 
+   Bước 3 đã triển khai: V4 tạo `streamers` với FK/UNIQUE/CHECK và index theo data model; V5 seed `STREAMER` nếu chưa có, giữ nguyên role/permissions/membership đã cấu hình. Đã bổ sung `StreamerEntity`, `StreamerRepository.findByUserId`, `UserRepository.findByIdForUpdate` và collection role có thể thay đổi khi tạo account. Scaffold đăng ký đã nhận thêm repository streamer; business logic/controller vẫn ở bước sau. `StreamerMigrationTest` và `StreamerRepositoryTest` gồm 14 test đã pass trên H2 và PostgreSQL 14 tạm: migration mới/nâng cấp từ V3, entity validate, enum/fields, FK/status/uniqueness, giữ role hiện có, truy vấn streamer BANNED khi không còn role, rollback role khi ghi trùng và khóa đồng thời cùng user. Database PostgreSQL dùng riêng cho test, không truy cập database ứng dụng.
+
+   Kiểm tra toàn bộ User Service bằng `./mvnw -o clean verify`: BUILD SUCCESS, 214 test pass, 1 test Redis tùy chọn được skip do chưa cấu hình Redis test.
+
 4. **Chuẩn bị Kafka và cấu hình môi trường.**
 
    Bổ sung Kafka cho môi trường local trong Compose, cấu hình listeners phù hợp cả ứng dụng chạy trên host và trong Docker, healthcheck và volume. Chọn/pin phiên bản tương thích với dependency do Spring Boot quản lý khi triển khai. Một broker local không đại diện cho cấu hình replication production.

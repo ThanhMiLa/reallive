@@ -36,10 +36,11 @@ import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -140,9 +141,8 @@ public class AuthServiceImpl implements AuthService {
 
         UserEntity userEntity = userMapper.toUserEntity(registerRequest);
         userEntity.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
-        userEntity.setRoles(Collections.singleton(roleRepository.findByName("USER")
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)))
-        );
+        userEntity.setRoles(new HashSet<>(Set.of(roleRepository.findByName("USER")
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)))));
         userEntity = userRepository.save(userEntity);
 
         ProfileEntity profile = buildProfileEntity(userEntity);

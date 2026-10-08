@@ -335,6 +335,9 @@ class AuthServiceImplTest {
 
             AuthResponse response = authService.register(request);
 
+            RoleEntity streamerRole = RoleEntity.builder().id(UUID.randomUUID()).name("STREAMER").build();
+            mappedUser.getRoles().add(streamerRole);
+            assertEquals(Set.of(roleUser, streamerRole), mappedUser.getRoles());
             assertNotNull(response);
             assertNotNull(response.getAccessToken());
             assertNotNull(response.getRefreshToken());
