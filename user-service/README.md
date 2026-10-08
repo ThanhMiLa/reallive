@@ -63,6 +63,23 @@ All three endpoints require authentication. User identity comes from the securit
 
 `expiresAt` is an `Instant` representing the OTP expiration time in UTC. The resend cooldown is enforced separately by the backend at 60 seconds; the OTP lifetime is configured separately. The send response acknowledges the request, not email delivery. The verify response uses a boolean `emailVerified`. Streamer identifiers are UUIDs, `status` uses `StreamerStatus` (successful registration returns `ACTIVE`), and `roles` contains role names such as `USER` and `STREAMER`, preserving existing roles. The DTOs do not assign roles or default streamer status before business validation.
 
+## Email verification and streamer service structure
+
+Email verification belongs to `user`; streamer registration belongs to `streamer`. Both service contracts receive a user UUID already extracted from the authenticated principal by the future controller.
+
+| Contract / class | Responsibility |
+|---|---|
+| `user.service.EmailVerificationService` | Request OTP and verify OTP using the existing request/response DTOs |
+| `user.service.impl.EmailVerificationServiceImpl` | Coordinate user persistence, OTP storage and email publishing |
+| `user.service.EmailVerificationOtpStore` | Reserve cooldown atomically, save/read challenges, consume OTP once and clean up only the owning challenge |
+| `user.service.EmailVerificationEmailPublisher` | Publish an email request and wait for broker acknowledgement, independently of email delivery |
+| `streamer.service.StreamerRegistrationService` | Become Streamer for the authenticated user |
+| `streamer.service.impl.StreamerRegistrationServiceImpl` | Coordinate database eligibility checks and atomic streamer/role persistence |
+
+`user.model` holds internal challenge, cooldown and verification results, and email publishing input. These are not JPA entities or client DTOs. The Kafka wire contract is defined separately in a later step. OTP hashes and raw OTPs are excluded from generated `toString()` methods. Future Redis and Kafka implementations belong to `user.adapter.redis` and `user.adapter.kafka`.
+
+The service implementation classes are scaffolds: their methods explicitly throw `UnsupportedOperationException` until business logic is implemented. They are not registered as Spring beans, and no controllers expose these methods. This preserves the existing application's startup while the infrastructure adapters and streamer repository are built. No OTPs are generated, no email requests are published, and no privileges are assigned by this scaffolding.
+
 ## Gateway trust and business authorization
 
 API Gateway verifies every supplied access/refresh cookie, including on public auth endpoints. It checks HS512 signatures, issuer, claims, expiration, token type, and Redis blacklist entries. It rejects client Authorization headers. See [the gateway contract](../api-gateway/README.md) for CORS/CSRF, cookie recovery, error codes, and client examples.

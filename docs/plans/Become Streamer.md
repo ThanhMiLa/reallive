@@ -99,9 +99,11 @@ sequenceDiagram
 
    Trong User Service, tách `EmailVerificationService` và `StreamerRegistrationService` khỏi `AuthServiceImpl`. Controller chỉ lấy principal, validate DTO, gọi service và dựng response. Xác thực email thuộc package `user`: request DTO trong `user.dto.request`, response DTO trong `user.dto.response`, test đặt cùng package tương ứng. Streamer thuộc package `streamer`; dùng interface cho OTP store và email-request publisher, Redis/Kafka là adapter. Tái sử dụng auth entity/repository hiện có thay vì tạo thêm mô hình user/role.
 
-   Trong Notification, tách Kafka listener, email delivery service, SendGrid adapter, webhook controller/service và repository lịch sử. Không truy cập database User Service, không validate OTP hoặc cấp role. Giữ code Java bốn spaces, import/naming/Javadoc theo skill code-style. Không refactor toàn bộ monorepo trong feature này.
+   Trong Notification, tách Kafka listener, email delivery service, SendGrid client và repository lịch sử. Webhook là endpoint trong package `email.controller`; service xử lý webhook nằm trong `email.service`/`email.service.impl`, không tạo package webhook chứa controller/service riêng. Tích hợp SendGrid nằm trong `email.client.sendgrid`. Không truy cập database User Service, không validate OTP hoặc cấp role. Giữ code Java bốn spaces, import/naming/Javadoc theo skill code-style. Không refactor toàn bộ monorepo trong feature này.
 
    Hoàn tất khi trách nhiệm từng class/interface và phụ thuộc đã rõ; service nghiệp vụ có thể unit test không cần Kafka/SendGrid thật.
+
+   Khung bước 2 đã được tạo: `user.service.EmailVerificationService`/`impl.EmailVerificationServiceImpl`, các interface `EmailVerificationOtpStore` và `EmailVerificationEmailPublisher`, model nội bộ trong `user.model`, adapter packages `user.adapter.redis`/`user.adapter.kafka`, cùng `streamer.service.StreamerRegistrationService`/`impl.StreamerRegistrationServiceImpl`. Cooldown được acquire trước khi sinh OTP; lưu challenge chỉ thành công khi request vẫn sở hữu cooldown. Các implementation chưa có business logic, chủ động throw `UnsupportedOperationException` và chưa được đăng ký Spring bean hoặc expose controller. Notification đã có package structure và README phân trách nhiệm; consumer/SendGrid/webhook/persistence được triển khai ở các bước tương ứng. Các port cho phép mock hạ tầng khi bổ sung unit test nghiệp vụ sau này.
 
 3. **Bổ sung dữ liệu streamer và role trong User Service.**
 
@@ -188,7 +190,7 @@ sequenceDiagram
 
     Consumer validate DTO/version, ghi nhận eventId trước khi gọi provider, bỏ qua yêu cầu đã xử lý xong, đánh dấu EXPIRED nếu quá expiresAt. Không sinh lại hoặc kiểm tra OTP với User Service. Không gửi message lỗi format đi retry vô hạn.
 
-    SendGrid adapter sử dụng API key của Notification, sender đã xác minh và nội dung OTP sáu số/thời hạn rõ ràng. Có thể dùng WebClient hiện có; webhook verification dùng thư viện phù hợp được kiểm tra khi triển khai. Thêm eventId/challengeId vào SendGrid custom_args để webhook liên kết về yêu cầu, không đặt OTP trong custom_args.
+    SendGrid client sử dụng API key của Notification, sender đã xác minh và nội dung OTP sáu số/thời hạn rõ ràng. Có thể dùng WebClient hiện có; webhook verification dùng thư viện phù hợp được kiểm tra khi triển khai. Thêm eventId/challengeId vào SendGrid custom_args để webhook liên kết về yêu cầu, không đặt OTP trong custom_args.
 
     Phân biệt SendGrid nhận yêu cầu (HTTP 202) với delivered. Retry hữu hạn cho lỗi tạm thời và tôn trọng thời hạn OTP; lỗi cấu hình/địa chỉ/payload cần phân loại thay vì retry giống nhau. Sau retry thất bại, ghi lịch sử và chuyển DLT theo contract; DLT không log OTP.
 
