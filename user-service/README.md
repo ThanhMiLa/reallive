@@ -49,6 +49,20 @@ Images use unique keys under `avatars/<userId>/<uuid>.<extension>`; the full pub
 
 Invalid updates return 400 and oversized uploads return 413. The development servlet limits individual files to 5 MiB and the total multipart request to 6 MiB.
 
+## Email verification and streamer DTO contracts
+
+The DTOs below define the planned API contracts. Controllers and business logic for these endpoints are not implemented yet. Paths include the existing `/user` context path used through API Gateway.
+
+| Method and external path | Request | Successful `ApiResponse.result` |
+|---|---|---|
+| `POST /user/api/users/me/email-verification/otp` | No request body | `EmailVerificationOtpResponse`: `expiresAt` |
+| `POST /user/api/users/me/email-verification/verify` | `VerifyEmailOtpRequest`: `{"otp":"012345"}` | `EmailVerificationResponse`: `emailVerified` |
+| `POST /user/api/users/me/become-streamer` | No request body | `BecomeStreamerResponse`: `streamerId`, `userId`, `status`, `roles` |
+
+All three endpoints require authentication. User identity comes from the security context, and the recipient email comes from the database. No request DTO accepts a target user ID or recipient email. OTP validation requires exactly six ASCII digits as a string, preserving leading zeroes; missing or malformed values map to `OTP_INVALID` (`400 / 1019`). OTP values are excluded from the request DTO's generated `toString()`.
+
+`expiresAt` is an `Instant` representing the OTP expiration time in UTC. The resend cooldown is enforced separately by the backend at 60 seconds; the OTP lifetime is configured separately. The send response acknowledges the request, not email delivery. The verify response uses a boolean `emailVerified`. Streamer identifiers are UUIDs, `status` uses `StreamerStatus` (successful registration returns `ACTIVE`), and `roles` contains role names such as `USER` and `STREAMER`, preserving existing roles. The DTOs do not assign roles or default streamer status before business validation.
+
 ## Gateway trust and business authorization
 
 API Gateway verifies every supplied access/refresh cookie, including on public auth endpoints. It checks HS512 signatures, issuer, claims, expiration, token type, and Redis blacklist entries. It rejects client Authorization headers. See [the gateway contract](../api-gateway/README.md) for CORS/CSRF, cookie recovery, error codes, and client examples.
