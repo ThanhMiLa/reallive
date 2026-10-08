@@ -21,6 +21,34 @@ The `result` object contains `userId`, `displayName`, `email`, `avatarUrl`, `dob
 
 The API returns 401 for unauthenticated requests, 404 when the profile is missing, and 403 when the account is inactive.
 
+`PATCH /user/api/users/me` updates the current user's profile with `multipart/form-data`:
+
+| Field | Rules |
+|---|---|
+| `displayName` | Optional; trimmed, nonblank, at most 100 characters |
+| `dob` | Optional; strict `yyyy-MM-dd`, not in the future |
+| `avatar` | Optional file; JPEG, PNG or WebP, at most 5 MiB and 16 million pixels |
+
+At least one field must be supplied. Omitted fields remain unchanged; blank values and empty uploaded files are rejected. This endpoint does not clear existing fields. User identity comes from the access cookie, and fields such as `email`, `userId`, `avatarUrl`, and `create_at` cannot be changed through this request. The response uses the same six profile fields as GET. The server detects the image format from its content, ignoring the supplied filename and MIME type.
+
+Standard input constraints are declared on `UpdateProfileRequest` and triggered by `@Valid` in the controller. Date of birth binds to `LocalDate` and uses `@PastOrPresent`; display names are trimmed during form binding before `@Size` and `@Pattern` validation. The DTO contains only the three request fields and uses Lombok for accessors and construction. The service rejects updates without any fields and uses `AvatarValidator` to check image content before uploading. It also handles account status, profile persistence and storage transaction cleanup.
+
+The development configuration reads `BUCKET_NAME`, `PUBLIC_BASE_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` from the environment through YAML placeholders and `@Value`. Use the account's S3-compatible R2 endpoint without the bucket suffix. `PUBLIC_BASE_URL` is the public bucket URL (`r2.dev` for development, a custom domain for production). Configure the R2 token with Object Read & Write access to the avatar bucket. Only the backend uploads to R2; no browser-to-R2 upload CORS configuration is needed.
+
+```bash
+curl -X PATCH http://localhost:8888/user/api/users/me \
+  -b cookies.txt \
+  -F 'displayName=New Viewer' \
+  -F 'dob=2000-01-01' \
+  -F 'avatar=@/path/to/avatar.png'
+```
+
+When gateway CSRF protection is enabled, initialize its CSRF cookie and include the corresponding `X-XSRF-TOKEN` header, as described in the gateway README.
+
+Images use unique keys under `avatars/<userId>/<uuid>.<extension>`; the full public URL is stored in `profiles.avatar_url`. Updates lock the profile row until the database transaction completes. Upload failures return 502 and roll back profile changes; transaction rollback attempts to delete the new upload. After commit, the previous avatar is deleted only if its URL belongs to the configured public base URL and the same user's generated avatar path. Cleanup failures are logged for manual retry and do not fail a committed update. Changing the public base URL requires updating existing stored URLs separately.
+
+Invalid updates return 400 and oversized uploads return 413. The development servlet limits individual files to 5 MiB and the total multipart request to 6 MiB.
+
 ## Gateway trust and business authorization
 
 API Gateway verifies every supplied access/refresh cookie, including on public auth endpoints. It checks HS512 signatures, issuer, claims, expiration, token type, and Redis blacklist entries. It rejects client Authorization headers. See [the gateway contract](../api-gateway/README.md) for CORS/CSRF, cookie recovery, error codes, and client examples.
@@ -68,6 +96,10 @@ Flyway manages the database schema. Registration expects the default `USER` role
 ```bash
 ./mvnw clean verify
 ```
+
+Profile tests are organized by production class: `ProfileControllerTest`, `ProfileServiceImplTest`, `UpdateProfileRequestTest`, `ProfileMapperTest`, `AvatarValidatorTest`, `R2StorageServiceImplTest`, and `R2ConfigTest`. They cover partial updates, ownership, DTO validation, JPEG/PNG/WebP uploads, first-avatar and repeated-avatar updates, storage errors, database rollback, cleanup after commit, and concurrent updates.
+
+Controller tests use H2 and mocked storage, with real localhost HTTP requests for multipart parsing and the file/request size limits. The test server permits swallowing up to 10 MiB after rejecting a request so the client can receive the 413 response. R2 configuration tests use a local HTTP stub and dummy credentials; the suite does not upload to Cloudflare or require real R2 credentials.
 
 To include the real Redis concurrent-refresh test, use an isolated localhost Redis without a password:
 

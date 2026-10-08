@@ -19,6 +19,12 @@ public enum ErrorCode {
     EMAIL_INVALID(1010, "Email must be valid", HttpStatus.BAD_REQUEST),
     PASSWORD_CONFIRM_INVALID(1011, "Confirm password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
     PROFILE_NOT_FOUND(1012, "Profile not found", HttpStatus.NOT_FOUND),
+    PROFILE_UPDATE_EMPTY(1013, "At least one profile field is required", HttpStatus.BAD_REQUEST),
+    DISPLAY_NAME_INVALID(1014, "Display name must contain 1 to 100 characters", HttpStatus.BAD_REQUEST),
+    DOB_INVALID(1015, "Date of birth must be a valid yyyy-MM-dd date and not in the future", HttpStatus.BAD_REQUEST),
+    AVATAR_INVALID(1016, "Avatar must be a valid JPEG, PNG or WebP image with at most 16 million pixels", HttpStatus.BAD_REQUEST),
+    AVATAR_TOO_LARGE(1017, "Avatar must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE),
+    AVATAR_UPLOAD_FAILED(1018, "Unable to upload avatar", HttpStatus.BAD_GATEWAY),
     ;
 
     private final int code;

@@ -67,14 +67,6 @@ Composite Constraint:
 Composite Constraint:
 - `PRIMARY KEY (role_id, permission_id)`
 
-#### 1.1.7 invalidated_tokens
-
-| Column | Type | Constraints | Index | Description |
-|---|---|---|---|---|
-| jti | UUID | PK, NOT NULL | Primary | JWT identifier |
-| expiry_time | TIMESTAMP | NOT NULL | INDEX | Token expiration time |
-| created_at | TIMESTAMP | NOT NULL | - | Created time |
-
 #### 1.1.8 profiles
 
 | Column | Type | Constraints | Index | Description |
