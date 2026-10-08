@@ -84,13 +84,13 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void logout(String accessToken, String refreshToken) {
-        if (accessToken != null && !accessToken.isBlank()) {
-            processTokenInvalidation(accessToken, "ACCESS");
+
+        if(accessToken == null || accessToken.isBlank() || refreshToken == null || refreshToken.isBlank()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
 
-        if (refreshToken != null && !refreshToken.isBlank()) {
-            processTokenInvalidation(refreshToken, "REFRESH");
-        }
+        processTokenInvalidation(accessToken, "ACCESS");
+        processTokenInvalidation(refreshToken, "REFRESH");
     }
 
     @Override
