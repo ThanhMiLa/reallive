@@ -18,6 +18,8 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.user.entity.ProfileEntity;
+import com.reallive.userservice.user.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
@@ -53,6 +55,7 @@ public class AuthServiceImpl implements AuthService {
     PasswordEncoder passwordEncoder;
     RoleRepository roleRepository;
     StringRedisTemplate redisTemplate;
+    ProfileRepository profileRepository;
 
 
     @NonFinal
@@ -143,6 +146,8 @@ public class AuthServiceImpl implements AuthService {
         );
         userEntity = userRepository.save(userEntity);
 
+        ProfileEntity profile = buildProfileEntity(userEntity);
+        profileRepository.save(profile);
 
         AuthRequest authenticationRequest = AuthRequest.builder()
                 .username(registerRequest.getUsername())
@@ -151,6 +156,13 @@ public class AuthServiceImpl implements AuthService {
 
         return login(authenticationRequest);
 
+    }
+
+    private ProfileEntity buildProfileEntity(UserEntity userEntity) {
+        return ProfileEntity.builder()
+                .user(userEntity)
+                .displayName(userEntity.getUsername())
+                .build();
     }
 
     private void processTokenInvalidation(String token, String type) {
