@@ -1,4 +1,4 @@
-package com.reallive.userservice.auth.entity;
+package com.reallive.userservice.common.entity;
 
 import java.time.LocalDateTime;
 

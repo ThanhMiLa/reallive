@@ -7,7 +7,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-class CookieTokenResolverTest {
+class SecurityConfigTest {
 
     private final SecurityConfig security = new SecurityConfig(null, null, null);
 

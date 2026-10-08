@@ -1,7 +1,7 @@
 package com.reallive.userservice.user.entity;
 
-import com.reallive.userservice.auth.entity.BaseEntity;
 import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.common.entity.BaseEntity;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -49,7 +49,7 @@ public class ProfileEntity extends BaseEntity {
     @ToString.Exclude
     UserEntity user;
 
-    @Column(name = "display_name", length = 100)
+    @Column(name = "display_name", nullable = false, length = 100)
     String displayName;
 
     @Column(name = "avatar_url", length = 500)
