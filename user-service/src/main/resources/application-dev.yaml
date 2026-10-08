@@ -4,6 +4,22 @@ server:
     context-path: /user
 
 spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    client-id: user-service
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 15000
+        max.block.ms: 5000
+        retry.backoff.ms: 500
+
   application:
     name: user-service
 
@@ -35,6 +51,14 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+email-verification:
+  topic: ${EMAIL_VERIFICATION_TOPIC:notification.email-verification.requested.v1}
+  otp:
+    cooldown-seconds: ${OTP_COOLDOWN_SECONDS:60}
+    ttl-seconds: ${OTP_TTL_SECONDS:300}
+    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+    hmac-key: ${OTP_HMAC_KEY:}
 
 storage:
   r2:

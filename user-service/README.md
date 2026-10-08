@@ -113,6 +113,8 @@ Refresh consumption uses `SET NX` with TTL so concurrent refresh requests cannot
 
 Activate `dev` and configure PostgreSQL, Redis, and a shared random `JWT_SIGNER_KEY` of at least 64 UTF-8 bytes. Gateway and user-service must share the key, Redis database, and cookie attributes. The key is used as text rather than Base64-decoded.
 
+Kafka and OTP settings are in `application-dev.yaml`; activate the `dev` profile when running locally. User Service does not add a separate startup validator for these settings. Use an independent `OTP_HMAC_KEY` for the future OTP implementation. Tests use independent `application-test.yaml` settings. See [email verification local setup](../docs/development/Email%20Verification%20Local%20Setup.md) for environment variables, host/Docker addresses and startup order. OTP lifetime and maximum attempts default to the proposed 300 seconds / 5 attempts; cooldown defaults to 60 seconds.
+
 | Setting | Default |
 |---|---|
 | `AUTH_ACCESS_TOKEN_TTL` | 900 seconds |
@@ -122,7 +124,7 @@ Activate `dev` and configure PostgreSQL, Redis, and a shared random `JWT_SIGNER_
 | `REFRESH_TOKEN_COOKIE_NAME` | `refresh_token` |
 | `REFRESH_TOKEN_PATH` | `/user/api/auth` |
 
-Cookie Max-Age derives directly from the corresponding JWT TTL; separate Max-Age overrides are not supported. Secure, HttpOnly, and SameSite attributes are configured through the corresponding access/refresh environment variables in `.env.example`. Use HTTPS and secure cookies when deployed.
+Cookie Max-Age derives directly from the corresponding JWT TTL; separate Max-Age overrides are not supported. Configure Secure, HttpOnly, and SameSite through the corresponding access/refresh environment variables in `user-service/.env`. The root `.env.example` contains Docker Compose infrastructure settings only. Use HTTPS and secure cookies when deployed.
 
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev

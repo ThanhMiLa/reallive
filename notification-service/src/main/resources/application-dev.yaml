@@ -1,0 +1,83 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /notification
+
+spring:
+  application:
+    name: notification-service
+
+  datasource:
+    url: ${NOTIFICATION_DB_URL:jdbc:postgresql://localhost:5437/reallive_notification}
+    username: ${NOTIFICATION_DB_USERNAME:notification_service}
+    password: ${NOTIFICATION_DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    client-id: notification-service
+    admin:
+      fail-fast: true
+      operation-timeout: 10s
+      properties:
+        request.timeout.ms: 5000
+        default.api.timeout.ms: 10000
+        retries: 3
+    consumer:
+      group-id: ${EMAIL_VERIFICATION_CONSUMER_GROUP:notification.email-verification.v1}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 1
+      properties:
+        allow.auto.create.topics: false
+        request.timeout.ms: 10000
+        default.api.timeout.ms: 15000
+        retry.backoff.ms: 500
+        max.poll.interval.ms: 300000
+    listener:
+      ack-mode: record
+      missing-topics-fatal: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 15000
+        max.block.ms: 5000
+        retry.backoff.ms: 500
+
+notification:
+  email:
+    topic: ${EMAIL_VERIFICATION_TOPIC:notification.email-verification.requested.v1}
+    dead-letter-topic: ${EMAIL_VERIFICATION_DLT_TOPIC:notification.email-verification.requested.v1.dlt}
+    partitions: ${EMAIL_VERIFICATION_TOPIC_PARTITIONS:3}
+    replicas: ${EMAIL_VERIFICATION_TOPIC_REPLICAS:1}
+    retention-ms: ${EMAIL_VERIFICATION_TOPIC_RETENTION_MS:600000}
+    max-retries: ${EMAIL_VERIFICATION_MAX_RETRIES:2}
+    retry-backoff-ms: ${EMAIL_VERIFICATION_RETRY_BACKOFF_MS:1000}
+    sendgrid:
+      api-key: ${SENDGRID_API_KEY:}
+      sender-email: ${SENDGRID_FROM_EMAIL:}
+      sender-name: ${SENDGRID_FROM_NAME:RealLive}
+      webhook-verification-public-key: ${SENDGRID_WEBHOOK_PUBLIC_KEY:}
+
+management:
+  health:
+    redis:
+      enabled: false
+
+

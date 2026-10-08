@@ -1,0 +1,51 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:notification_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  kafka:
+    bootstrap-servers: localhost:9092
+    admin:
+      auto-create: false
+    consumer:
+      group-id: notification.email-verification.v1
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 1
+    listener:
+      ack-mode: record
+      missing-topics-fatal: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 15000
+        max.block.ms: 5000
+        retry.backoff.ms: 500
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+management:
+  health:
+    redis:
+      enabled: false
+
+notification:
+  email:
+    topic: notification.email-verification.requested.v1
+    dead-letter-topic: notification.email-verification.requested.v1.dlt
+    sendgrid:
+      api-key: test-sendgrid-key
+      sender-email: sender@example.com
+      sender-name: RealLive
+      webhook-verification-public-key: test-webhook-public-key

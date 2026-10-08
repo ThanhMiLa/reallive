@@ -127,7 +127,11 @@ sequenceDiagram
 
    Notification cấu hình datasource riêng, JPA validate, Flyway và context path `/notification`. Bổ sung biến mẫu: `KAFKA_BOOTSTRAP_SERVERS`, tên topic, group ID, `OTP_COOLDOWN_SECONDS=60`, OTP TTL/max attempts đề xuất, `OTP_HMAC_KEY`, datasource Notification, `SENDGRID_API_KEY`, sender email/name và webhook verification public key. Không dùng chung HMAC secret OTP với JWT secret. Không đưa secret thật vào Git.
 
-   Hoàn tất khi hai service kết nối đúng Redis/PostgreSQL/Kafka local, cấu hình bắt buộc được validate và có hướng dẫn khởi động.
+   Hoàn tất khi hai service kết nối đúng Redis/PostgreSQL/Kafka local và có hướng dẫn khởi động; User Service dùng cấu hình YAML trực tiếp, Notification kiểm tra cấu hình hạ tầng/email.
+
+   Bước 4 đã triển khai: Compose thêm Kafka KRaft `apache/kafka:4.2.1` khớp client do Spring Boot quản lý, listener host/Docker riêng, healthcheck và volume. User có producer idempotent/acks=all cùng cấu hình OTP trong YAML; OTP HMAC key độc lập JWT key. Theo yêu cầu đơn giản hóa, đã bỏ class kiểm tra cấu hình OTP/Kafka lúc khởi động ở User Service cùng properties class và test chỉ phục vụ validation này. Notification có datasource riêng, Flyway/JPA validate, context path `/notification`, cấu hình SendGrid được validate và Kafka consumer không auto-commit. Đã chuẩn bị request/dead-letter topics, retry giới hạn và chỉ recovery khi broker xác nhận dead-letter publication; listener nghiệp vụ sẽ bổ sung sau. Toàn bộ cấu hình development của hai service đặt trong `application-dev.yaml`, chạy bằng profile `dev`; test dùng `application-test.yaml` riêng. `.env.example` gốc chỉ chứa biến Docker Compose; biến ứng dụng đặt trong `.env` riêng của từng service. Hướng dẫn `docs/development/Email Verification Local Setup.md` liệt kê biến ứng dụng và cách chạy.
+
+   Kiểm tra `./mvnw -o clean verify`: User có 214 test pass, 1 Redis test tùy chọn skip sau khi bỏ test validation cấu hình; Notification có 14 test pass, bao gồm embedded Kafka kiểm tra retry/dead-letter và không commit offset trước khi xử lý. Đã chạy hai service trên PostgreSQL/Redis/Kafka Docker riêng với credentials giả: health đều 200/UP, Notification tạo topic, listener Kafka nội bộ và host hoạt động, marker được giữ nguyên sau restart broker. Môi trường test đã được dọn. Không truy cập database ứng dụng hoặc gửi email thật.
 
 5. **Định nghĩa contract message gửi OTP.**
 
