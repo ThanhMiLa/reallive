@@ -7,6 +7,11 @@ spring:
   application:
     name: user-service
 
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -31,6 +36,14 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+storage:
+  r2:
+    bucket-name: ${BUCKET_NAME}
+    public-base-url: ${PUBLIC_BASE_URL}
+    endpoint: ${R2_ENDPOINT}
+    access-key-id: ${R2_ACCESS_KEY_ID}
+    secret-access-key: ${R2_SECRET_ACCESS_KEY}
+
 jwt:
   signer-key: ${JWT_SIGNER_KEY}
   ttl_accessToken: ${AUTH_ACCESS_TOKEN_TTL:900}
@@ -52,4 +65,3 @@ auth:
       http-only: ${REFRESH_TOKEN_HTTP_ONLY:true}
       same-site: ${REFRESH_TOKEN_SAME_SITE:Lax}
       path: ${REFRESH_TOKEN_PATH:/user/api/auth}
-

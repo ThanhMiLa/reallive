@@ -9,6 +9,14 @@ jwt:
   ttl_accessToken: 900
   ttl_refreshToken: 2592000
 
+storage:
+  r2:
+    bucket-name: test-avatars
+    public-base-url: https://images.example.com
+    endpoint: https://r2.example.invalid
+    access-key-id: test-access-key
+    secret-access-key: test-secret-key
+
 auth:
   cookie:
     access-token:
@@ -27,4 +35,3 @@ auth:
       path: /api/auth
   cors:
     allowed-origins: http://localhost:5173
-
