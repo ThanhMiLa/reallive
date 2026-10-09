@@ -26,6 +26,10 @@ public enum ErrorCode {
     AVATAR_TOO_LARGE(1017, "Avatar must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE),
     AVATAR_UPLOAD_FAILED(1018, "Unable to upload avatar", HttpStatus.BAD_GATEWAY),
     OTP_INVALID(1019, "OTP must contain exactly 6 digits", HttpStatus.BAD_REQUEST),
+    EMAIL_ALREADY_VERIFIED(1020, "Email is already verified", HttpStatus.CONFLICT),
+    OTP_COOLDOWN(1021, "Please wait before requesting another OTP", HttpStatus.TOO_MANY_REQUESTS),
+    OTP_REQUEST_UNAVAILABLE(1022, "Unable to request an OTP at this time", HttpStatus.SERVICE_UNAVAILABLE),
+    OTP_CONFIGURATION_INVALID(1023, "Email verification configuration is unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
     ;
 
     private final int code;

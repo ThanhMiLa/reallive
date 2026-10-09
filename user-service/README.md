@@ -65,18 +65,18 @@ All three endpoints require authentication. User identity comes from the securit
 
 ## Email verification and streamer service structure
 
-Email verification belongs to `user`; streamer registration belongs to `streamer`. Both service contracts receive a user UUID already extracted from the authenticated principal by the future controller.
+Email verification belongs to `user`; streamer registration belongs to `streamer`. Both service contracts receive a user UUID extracted from the authenticated principal. EmailVerificationController exposes OTP requests; verification and streamer controllers remain scheduled for later steps.
 
 | Contract / class | Responsibility |
 |---|---|
 | `user.service.EmailVerificationService` | Request OTP and verify OTP using the existing request/response DTOs |
 | `user.service.impl.EmailVerificationServiceImpl` | Coordinate user persistence, OTP storage and email publishing |
-| `user.service.EmailVerificationOtpStore` | Check cooldown, save a hash only if absent, consume OTP atomically and clean up only a matching hash |
-| `user.service.EmailVerificationEmailPublisher` | Publish an email request and wait for broker acknowledgement, independently of email delivery |
+| `user.adapter.redis.EmailVerificationOtpStore` | Check cooldown, save a hash only if absent, consume OTP atomically and clean up only a matching hash |
+| `user.adapter.kafka.EmailVerificationEmailPublisher` | Publish an email request and wait for broker acknowledgement, independently of email delivery |
 | `streamer.service.StreamerRegistrationService` | Become Streamer for the authenticated user |
 | `streamer.service.impl.StreamerRegistrationServiceImpl` | Coordinate database eligibility checks and atomic streamer/role persistence |
 
-`user.model` holds internal cooldown and verification results, and email publishing input. These are not JPA entities or client DTOs. The [Kafka wire contract](../docs/contracts/Email%20Verification%20Kafka.md) is defined separately. Raw OTPs are excluded from generated `toString()` methods. The Redis implementation is in `user.service.impl`; the future publisher belongs to `user.adapter.kafka`.
+`user.dto.response` holds cooldown and verification results. The publisher accepts `user.dto.message.EmailVerificationRequestedMessage` directly, following the [Kafka wire contract](../docs/contracts/Email%20Verification%20Kafka.md). Raw OTPs are excluded from generated `toString()` methods. The Redis implementation is in `user.adapter.redis`; `KafkaEmailVerificationEmailPublisher` is in `user.adapter.kafka`.
 
 ## Redis OTP storage
 
@@ -86,7 +86,7 @@ Email verification belongs to `user`; streamer registration belongs to `streamer
 
 `EmailVerificationOtpHasher` computes HMAC-SHA256 from the verification purpose, user ID, database email and six-digit OTP. It uses `OTP_HMAC_KEY` independently of the JWT key; the key is required when hashing is invoked, with no additional startup validation configuration. The hash and OTP are not logged. User and email binding prevents using a code for a different user or database email.
 
-The storage and hashing components are Spring beans. OTP generation, Kafka publishing, HTTP endpoints and transactional `emailVerified` updates remain in steps 7–8.
+The storage, hashing, email verification service and Kafka publisher are Spring beans. The OTP request endpoint is implemented; OTP verification and transactional `emailVerified` updates remain in step 8.
 
 To run the Redis integration tests against an isolated instance, start Redis from the repository root:
 
@@ -108,7 +108,47 @@ docker stop reallive-otp-redis-test
 
 The Redis tests use database 15, unique user IDs and delete only their own keys. They cover the 60-second TTL, automatic expiry (using a shorter test-only lifetime), resend rejection, unlimited wrong attempts without TTL extension, immediate consume, cleanup and concurrent saves/consumes. Without `user.test.redis-port`, Redis-dependent tests are skipped.
 
-The service implementation classes are scaffolds: their methods explicitly throw `UnsupportedOperationException` until business logic is implemented. They are not registered as Spring beans, and no controllers expose these methods. This preserves the existing application's startup while the infrastructure adapters and streamer repository are built. No OTPs are generated, no email requests are published, and no privileges are assigned by this scaffolding.
+## Request an email verification OTP
+
+`POST /user/api/users/me/email-verification/otp` requires the existing access-token cookie and no request body. The controller uses the authenticated subject for identity; the service queries the current database account status, email and verification flag. An ACTIVE account with an unverified email can request an OTP.
+
+The service checks `hasCooldown`, generates six digits with SecureRandom, computes the bound HMAC and saves it with SET NX and the shared 60-second TTL. Only the request that saves the hash publishes `EmailVerificationRequestedMessage` to Kafka, keyed by user ID. The publisher waits up to 20 seconds for acknowledgement, in addition to the configured producer send/metadata blocking limit. HTTP 202 means the broker accepted the request; it does not report email delivery.
+
+Successful response:
+
+```json
+{
+  "status": 202,
+  "code": 1000,
+  "message": "Email verification request accepted",
+  "result": { "expiresAt": "2026-10-09T08:01:00Z" },
+  "timestamp": "2026-10-09T08:00:00Z"
+}
+```
+
+| Condition | HTTP / code |
+|---|---|
+| Missing/invalid authentication or subject | 401 / 1001 |
+| User not found | 404 / 1004 |
+| Account not ACTIVE | 403 / 1003 |
+| Email already verified | 409 / 1020 |
+| Cooldown or lost concurrent save | 429 / 1021 |
+| Redis/Kafka request failure | 503 / 1022 |
+| Missing HMAC key | 500 / 1023 |
+
+Cooldown uses the existing error envelope without a countdown DTO or Retry-After header. The frontend starts its own 60-second countdown after acceptance. Rejected requests do not replace a hash or extend TTL. The endpoint never updates emailVerified, roles or streamer records.
+
+A failure before Kafka send, such as JSON serialization, withdraws only the matching Redis hash. A timeout or other uncertain send failure retains the key and returns 503. Cleanup failure never changes the result into success. Redis and Kafka are not a shared transaction; a crash between save and publication can require waiting for TTL expiry before retrying.
+
+The producer error listener omits message contents, and the dev profile keeps KafkaTemplate logging at INFO to prevent its debug/trace payload logs. Do not enable payload logging for OTP messages.
+
+Service, controller and publisher tests cover eligibility, database values over stale JWT claims, cooldown, leading zeros, acknowledgement, error cleanup and uncertain outcomes. `EmailVerificationOtpIntegrationTest` connects the HTTP endpoint to real Redis and an embedded Kafka broker, including simultaneous requests that produce one message. It is enabled by `-Duser.test.redis-port=...`; it never calls SendGrid. To run the complete suite including the existing refresh-token Redis test against the isolated instance:
+
+```bash
+./mvnw -o -Duser.test.redis-port=16380 -Dgateway.test.redis-port=16380 clean verify
+```
+
+`verifyEmailOtp` and StreamerRegistrationServiceImpl remain scaffolds. Their endpoints and business logic are implemented in later steps.
 
 ## Streamer persistence
 

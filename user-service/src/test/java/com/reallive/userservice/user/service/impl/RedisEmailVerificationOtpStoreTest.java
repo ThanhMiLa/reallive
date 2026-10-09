@@ -1,7 +1,8 @@
 package com.reallive.userservice.user.service.impl;
 
-import com.reallive.userservice.user.model.EmailVerificationCooldownResult;
-import com.reallive.userservice.user.model.EmailVerificationOtpCheckResult;
+import com.reallive.userservice.user.adapter.redis.RedisEmailVerificationOtpStore;
+import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;

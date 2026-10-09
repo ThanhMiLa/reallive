@@ -1,10 +1,8 @@
-package com.reallive.userservice.user.service.impl;
+package com.reallive.userservice.user.adapter.redis;
 
-import com.reallive.userservice.user.model.EmailVerificationCooldownResult;
-import com.reallive.userservice.user.model.EmailVerificationOtpCheckResult;
-import com.reallive.userservice.user.service.EmailVerificationOtpStore;
+import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;

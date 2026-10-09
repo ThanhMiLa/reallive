@@ -3,6 +3,11 @@ server:
   servlet:
     context-path: /user
 
+# KafkaTemplate debug/trace messages contain the serialized OTP payload.
+logging:
+  level:
+    org.springframework.kafka.core.KafkaTemplate: INFO
+
 spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

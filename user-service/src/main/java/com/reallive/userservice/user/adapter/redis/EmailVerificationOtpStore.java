@@ -1,7 +1,7 @@
-package com.reallive.userservice.user.service;
+package com.reallive.userservice.user.adapter.redis;
 
-import com.reallive.userservice.user.model.EmailVerificationCooldownResult;
-import com.reallive.userservice.user.model.EmailVerificationOtpCheckResult;
+import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 
 import java.util.UUID;
 

@@ -16,7 +16,7 @@ User Service publishes `user.dto.message.EmailVerificationRequestedMessage`. Not
 | `issuedAt` | ISO-8601 UTC string | OTP issuance time |
 | `expiresAt` | ISO-8601 UTC string | OTP expiry time, strictly after issuance |
 
-All fields are required. The future consumer must validate the schema version, fields and expiry before sending email. This step defines the DTOs and their JSON representation; it does not implement the Kafka publisher, consumer or business validation.
+All fields are required. The future consumer must validate the schema version, fields and expiry before sending email. This document defines the DTOs and their JSON representation. User Service implements OTP requests and Kafka publication; Notification consumer validation and delivery are implemented in subsequent steps.
 
 The message contains the original OTP because Notification needs it to send the email. Redis stores only the HMAC string at `otp:email-verification:cooldown:{userId}` with a 60-second TTL, shared by OTP validity and resend cooldown. The hash is not part of this message. `expiresAt` must use the same lifetime. Both message DTOs exclude OTP from `toString()`. Callers must not log raw JSON or OTP values, including on retries and dead-letter handling.
 

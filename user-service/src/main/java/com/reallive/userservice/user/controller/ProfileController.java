@@ -3,6 +3,7 @@ package com.reallive.userservice.user.controller;
 import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.common.util.AuthenticationUserId;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 import com.reallive.userservice.user.service.ProfileService;
@@ -51,7 +52,7 @@ public class ProfileController {
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserProfileResponse>> getMyProfile(@AuthenticationPrincipal Jwt jwt) {
-        UserProfileResponse profile = profileService.getMyProfile(getAuthenticatedUserId(jwt));
+        UserProfileResponse profile = profileService.getMyProfile(AuthenticationUserId.getAuthenticatedUserId(jwt));
         return ResponseEntity.ok(ApiResponse.<UserProfileResponse>builder()
                 .status(200)
                 .code(1000)
@@ -63,23 +64,12 @@ public class ProfileController {
     @PatchMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateMyProfile(
             @AuthenticationPrincipal Jwt jwt, @Valid @ModelAttribute UpdateProfileRequest request) {
-        UserProfileResponse profile = profileService.updateMyProfile(getAuthenticatedUserId(jwt), request);
+        UserProfileResponse profile = profileService.updateMyProfile(AuthenticationUserId.getAuthenticatedUserId(jwt), request);
         return ResponseEntity.ok(ApiResponse.<UserProfileResponse>builder()
                 .status(200)
                 .code(1000)
                 .message("User profile updated successfully")
                 .result(profile)
                 .build());
-    }
-
-    private UUID getAuthenticatedUserId(Jwt jwt) {
-        if (jwt == null || jwt.getSubject() == null) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
-        try {
-            return UUID.fromString(jwt.getSubject());
-        } catch (IllegalArgumentException exception) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
     }
 }

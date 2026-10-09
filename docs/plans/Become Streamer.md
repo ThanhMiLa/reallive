@@ -89,7 +89,7 @@ sequenceDiagram
 
    Đường dẫn qua Gateway là `/user/...` cho User và `/notification/...` cho webhook. Giữ response envelope `ApiResponse`. API gửi OTP trả 202 chỉ có nghĩa yêu cầu được tiếp nhận, không có nghĩa email đã được giao.
 
-   Bổ sung lỗi: email chưa verified (403), account không ACTIVE (403, tái sử dụng lỗi hiện có), streamer BANNED (403), đã là streamer (409), OTP không hợp lệ/hết hạn (400), vượt số lần thử hoặc cooldown (429), hạ tầng Redis/Kafka không sẵn sàng (503), role cấu hình thiếu (lỗi server). Các mã số mới phải không trùng `ErrorCode` hiện tại. Rate limit trả cả `Retry-After` và `retryAfterSeconds`.
+   Bổ sung lỗi: email chưa verified (403), account không ACTIVE (403, tái sử dụng lỗi hiện có), streamer BANNED (403), đã là streamer (409), OTP không hợp lệ/hết hạn (400), vượt số lần thử hoặc cooldown (429), hạ tầng Redis/Kafka không sẵn sàng (503), role cấu hình thiếu (lỗi server). Các mã số mới phải không trùng `ErrorCode` hiện tại. Cooldown trả lỗi 429 theo ApiResponse hiện có; frontend tự đếm ngược 60 giây, không cần thời gian chờ trong response.
 
    Chính sách đề xuất cho dữ liệu bất nhất: đã có streamer ACTIVE/PENDING nhưng thiếu role thì trả conflict để xử lý riêng, không tạo record thứ hai hoặc tự khôi phục quyền. Flow này không tạo PENDING. Không tự chuyển SUSPENDED/BANNED về ACTIVE.
 
@@ -103,7 +103,7 @@ sequenceDiagram
 
    Hoàn tất khi trách nhiệm từng class/interface và phụ thuộc đã rõ; service nghiệp vụ có thể unit test không cần Kafka/SendGrid thật.
 
-   Khung bước 2 đã được tạo: `user.service.EmailVerificationService`/`impl.EmailVerificationServiceImpl`, các interface `EmailVerificationOtpStore` và `EmailVerificationEmailPublisher`, model nội bộ trong `user.model`, Redis implementation trong `user.service.impl`, Kafka adapter package `user.adapter.kafka`, cùng `streamer.service.StreamerRegistrationService`/`impl.StreamerRegistrationServiceImpl`. Interface OTP store đã được cập nhật ở bước 6 cho thiết kế một key chứa hash, với `hasCooldown`, `save`, `consume`, `deleteIfCurrent`. Các implementation service nghiệp vụ còn chủ động throw `UnsupportedOperationException` và chưa được đăng ký Spring bean hoặc expose controller. Notification đã có package structure và README phân trách nhiệm; consumer/SendGrid/webhook/persistence được triển khai ở các bước tương ứng. Các port cho phép mock hạ tầng khi bổ sung unit test nghiệp vụ sau này.
+   Khung bước 2 đã được tạo: `user.service.EmailVerificationService`/`impl.EmailVerificationServiceImpl`, các interface `EmailVerificationOtpStore` và `EmailVerificationEmailPublisher`, kết quả nội bộ trong `user.dto`, publisher nhận trực tiếp `user.dto.message.EmailVerificationRequestedMessage`, Redis implementation trong `user.adapter.redis`, Kafka adapter package `user.adapter.kafka`, cùng `streamer.service.StreamerRegistrationService`/`impl.StreamerRegistrationServiceImpl`. Interface OTP store đã được cập nhật ở bước 6 cho thiết kế một key chứa hash, với `hasCooldown`, `save`, `consume`, `deleteIfCurrent`. Request OTP đã được triển khai ở bước 7 với Spring bean và controller; verifyEmailOtp và streamer registration còn throw `UnsupportedOperationException`, chưa expose endpoint. Notification đã có package structure và README phân trách nhiệm; consumer/SendGrid/webhook/persistence được triển khai ở các bước tương ứng. Các port cho phép mock hạ tầng khi bổ sung unit test nghiệp vụ sau này.
 
 3. **Bổ sung dữ liệu streamer và role trong User Service.**
 
@@ -161,21 +161,73 @@ sequenceDiagram
 
    `deleteIfCurrent` so sánh hash trước khi xóa, tránh cleanup xóa hash khác của request mới. Không dùng DEL vô điều kiện khi publish lỗi. Không tạo thêm key challenge hoặc attempts.
 
-   Đã triển khai `user.service.impl.RedisEmailVerificationOtpStore` và `user.util.EmailVerificationOtpHasher`. Kiểm thử Redis thật bao gồm TTL 60 giây, từ chối gửi lại, mã sai giữ nguyên TTL/value, hết hạn, consume một lần, cleanup và concurrent save/consume. Khi chạy test độc lập, cung cấp cổng Redis riêng bằng `-Duser.test.redis-port=...`. Controller, Kafka publisher và cập nhật `emailVerified` trong DB thuộc bước 7–8.
+   Đã triển khai `user.adapter.redis.RedisEmailVerificationOtpStore` và `user.util.EmailVerificationOtpHasher`. Kiểm thử Redis thật bao gồm TTL 60 giây, từ chối gửi lại, mã sai giữ nguyên TTL/value, hết hạn, consume một lần, cleanup và concurrent save/consume. Khi chạy test độc lập, cung cấp cổng Redis riêng bằng `-Duser.test.redis-port=...`. Controller, Kafka publisher và cập nhật `emailVerified` trong DB thuộc bước 7–8.
 
    Kiểm tra bước 6: `./mvnw -o -Duser.test.redis-port=... -Dgateway.test.redis-port=... clean verify` tại User Service pass 236 test, không skip; gồm 10 test HMAC và 8 test OTP Redis trên container riêng. 10 test DTO Notification pass sau khi JSON mẫu và test Kafka được cập nhật về thời hạn 60 giây. Không gửi email thật hoặc truy cập Redis ứng dụng.
 
 7. **Triển khai API yêu cầu gửi/gửi lại OTP tại User Service.**
 
-   Lấy userId từ principal; query user/email/status từ DB. Chỉ cho account ACTIVE và email chưa verified yêu cầu xác thực. Email đã verified không tạo challenge hoặc gửi mail mới; trả trạng thái rõ ràng theo contract.
+   **7.1. Chốt contract HTTP và mã lỗi.**
 
-   Kiểm tra cooldown sớm; sinh OTP sáu số bằng SecureRandom và hash từ user ID/email/OTP; gọi `otpStore.save` để SET NX với TTL 60 giây. Chỉ request lưu thành công mới dựng DTO và publish Kafka, đợi acknowledgement trong timeout hữu hạn. `expiresAt` dùng cùng thời hạn 60 giây. Việc đợi broker khác với đợi Notification/SendGrid. Chỉ trả 202 sau khi broker xác nhận. Không tạo streamer hoặc đổi emailVerified ở bước này.
+   Endpoint trong User Service là `POST /api/users/me/email-verification/otp`; qua Gateway là `/user/api/users/me/email-verification/otp`. Gửi lần đầu và gửi lại dùng cùng endpoint, không cần request DTO hoặc request body nghiệp vụ. Thành công trả HTTP 202 với `ApiResponse<EmailVerificationOtpResponse>`; `result` chỉ có `expiresAt`. HTTP 202 xác nhận Kafka đã tiếp nhận message, không xác nhận SendGrid đã gửi hoặc email đã đến hộp thư.
 
-   Redis lỗi thì trả 503 và không publish. Nếu lỗi publish được xác định chắc chắn là chưa gửi, gọi `deleteIfCurrent(userId, otpHash)`. Nếu timeout có kết quả không chắc chắn, giữ key; Kafka có thể đã nhận message. Không tự tạo event/OTP mới để retry cùng yêu cầu. Dùng eventId để Notification chống xử lý lại.
+   | Trường hợp | HTTP / hành vi |
+   |---|---|
+   | Không đăng nhập hoặc principal không có UUID hợp lệ | 401, tái sử dụng `UNAUTHENTICATED` |
+   | User không tồn tại trong DB | 404, tái sử dụng `USER_NOT_FOUND` |
+   | Account không ACTIVE | 403, tái sử dụng `USER_NOT_ACTIVE` |
+   | Email đã verified | Đề xuất 409 với `EMAIL_ALREADY_VERIFIED`; không sinh OTP hoặc publish |
+   | Cooldown còn hiệu lực | 429 với `OTP_COOLDOWN` theo ApiResponse hiện có |
+   | Redis hoặc Kafka không sẵn sàng | 503 với `OTP_REQUEST_UNAVAILABLE`; không trả 202 |
+   | Thiếu HMAC key hoặc thời hạn OTP không hợp lệ | Lỗi server; không publish hoặc trả thành công giả |
 
-   Ghi rõ Redis và Kafka không có một transaction chung: crash giữa lưu Redis và publish có thể để lại challenge chưa được gửi; user được gửi lại sau cooldown. Bản đầu không cần thêm outbox PostgreSQL cho OTP có thời hạn. Nếu sau này cần tự khôi phục mọi yêu cầu qua crash, thiết kế cơ chế dispatch bền vững riêng; không mô tả producer ack/idempotence là giải quyết mọi cửa sổ lỗi.
+   Bổ sung ErrorCode mới với số không trùng mã hiện có. Cooldown dùng AppException(ErrorCode.OTP_COOLDOWN) và GlobalExceptionHandler hiện có; không thêm exception hoặc DTO trả thời gian chờ. Frontend tự đếm ngược 60 giây sau khi yêu cầu gửi OTP thành công. Không thay shape response profile/auth đang có.
 
-   Hoàn tất khi API không gửi thêm message khi bị rate limit, không báo tiếp nhận thành công khi producer lỗi và không làm mất challenge mới bởi cleanup của request cũ.
+   **7.2. Bổ sung controller và lấy danh tính.**
+
+   Tạo `user.controller.EmailVerificationController`, theo conventions của ProfileController. Lấy `@AuthenticationPrincipal Jwt`, parse subject thành UUID rồi gọi `EmailVerificationService.requestEmailVerificationOtp(userId)`. JWT chỉ cung cấp danh tính; không đọc email, account status hoặc emailVerified từ claims. Không nhận target user ID hoặc recipient email từ client. Endpoint tiếp tục dùng security rule `anyRequest().authenticated()` hiện tại, không thêm vào danh sách public.
+
+   **7.3. Query DB và kiểm tra eligibility.**
+
+   Triển khai `requestEmailVerificationOtp` trong EmailVerificationServiceImpl và đăng ký Spring bean. Dùng UserRepository đọc user mới từ database cho mỗi request; kiểm tra ACTIVE, email chưa verified và lấy email hiện tại. Không thay đổi user, role hoặc streamer ở API gửi OTP. Không giữ khóa DB qua thời gian chờ Redis/Kafka; SET NX trong Redis quyết định request đồng thời nào được lưu OTP. Method verifyEmailOtp vẫn dành cho bước 8 và chưa expose endpoint trong bước này.
+
+   **7.4. Kiểm tra cooldown, sinh OTP và lưu hash.**
+
+   Dùng `otpStore.hasCooldown(userId)` hiện có trước khi sinh OTP. Nếu key còn tồn tại, trả 429 với OTP_COOLDOWN, không sinh OTP hoặc publish Kafka. Nếu key không tồn tại, tiếp tục xử lý. Không thêm getRemainingCooldown hoặc trả TTL cho frontend; Redis vẫn quyết định request có được phép gửi lại, kể cả khi frontend reload hoặc gọi API trực tiếp.
+
+   Sinh OTP bằng SecureRandom, biểu diễn thành String đúng sáu ASCII digits và giữ số 0 đầu. Hash bằng EmailVerificationOtpHasher với user ID và email vừa query từ DB. Gọi `otpStore.save(userId, otpHash)` để SET NX với TTL mặc định 60 giây. Nếu save bị từ chối do request khác vừa lưu, trả 429 với OTP_COOLDOWN; không publish và không đưa retryAfter vào HTTP response. Không thêm key hoặc giới hạn số lần nhập sai.
+
+   issuedAt lấy sát thời điểm lưu Redis; expiresAt dùng cùng `email-verification.otp.ttl-seconds` mà store sử dụng, không tính lại 60 giây từ lúc trả response. Dùng thời điểm trước thao tác lưu để expiry công bố không muộn hơn thời hạn thực tế trong Redis.
+
+   **7.5. Build DTO và triển khai Kafka publisher.**
+
+   Chỉ sau khi save thành công mới build `user.dto.message.EmailVerificationRequestedMessage` trực tiếp: schemaVersion=1, eventId và challengeId ngẫu nhiên, userId từ principal, emailType=EMAIL_VERIFICATION, recipientEmail từ DB, OTP gốc sáu số, issuedAt và expiresAt. Không tạo lại EmailVerificationEmail hoặc DTO trung gian. Redis chỉ lưu hash; message Kafka chứa OTP để Notification gửi email.
+
+   Tạo `user.adapter.kafka.KafkaEmailVerificationEmailPublisher` implements EmailVerificationEmailPublisher. Serialize message bằng ObjectMapper hiện có; dùng KafkaTemplate<String, String>, key=userId.toString(), topic từ `email-verification.topic`. Tái sử dụng String serializers, acks=all và idempotence đã cấu hình trong application-dev.yaml. Chờ broker acknowledgement với thời gian hữu hạn phù hợp request/delivery/max-block timeout hiện có; chỉ trả khỏi publish khi có acknowledgement hoặc lỗi. Không thêm startup validator/config class riêng, template ID hoặc SendGrid client vào User Service.
+
+   **7.6. Xử lý lỗi và cleanup.**
+
+   Redis lỗi ở bước đọc/lưu: trả 503 và không publish. Phân loại lỗi publisher để service biết request chắc chắn chưa được gửi hay kết quả chưa xác định. Lỗi serialize/validation trước khi send chắc chắn chưa publish nên gọi deleteIfCurrent(userId, otpHash). Timeout, interruption hoặc lỗi không chứng minh được broker chưa nhận thì giữ key và trả lỗi; không trả 202 hoặc tạo OTP/event mới để retry ở tầng nghiệp vụ. Producer tự retry theo cấu hình cùng message.
+
+   Cleanup chỉ xóa hash đang khớp; nếu cleanup cũng lỗi, vẫn giữ lỗi chính và không báo thành công. Không log OTP, hash, HMAC key hoặc raw message JSON. Không bao đồng loạt mọi lỗi Kafka thành lỗi chắc chắn chưa gửi.
+
+   Redis và Kafka không có transaction chung: crash sau lưu Redis nhưng trước publish có thể để lại key chưa được gửi; user được gửi lại khi TTL hết. Giữ thiết kế hiện tại, không thêm outbox PostgreSQL ở bước này.
+
+   **7.7. Kiểm thử.**
+
+   Unit test service: user không tồn tại, status không ACTIVE, email đã verified, cooldown không sinh OTP/publish, OTP giữ số 0 đầu, save thua request đồng thời, message đầy đủ với email từ DB, expiresAt đúng TTL, Redis lỗi, publisher thành công, lỗi chắc chắn cleanup và lỗi không xác định giữ key. Kiểm tra các nhánh lỗi không sửa user/role/streamer.
+
+   Controller/MockMvc test: 401 khi không có access cookie hoặc subject sai; 202 với response chỉ chứa expiresAt; 403/404/409/429/503 đúng contract; lỗi cooldown dùng ApiResponse hiện có, không cần field thời gian chờ. Dùng DB test kiểm tra status/emailVerified hiện tại được ưu tiên hơn thông tin cũ trong JWT.
+
+   Publisher test với Kafka test infrastructure sẵn có: topic/key/value đúng contract, không có Java type headers, broker ack trước response thành công và failure không bị coi là thành công. Kết hợp service với Redis thật kiểm tra TTL, không gia hạn cooldown và hai request đồng thời chỉ có một message publish. Không gọi SendGrid thật. Bổ sung English Javadoc cho mọi method trong service interface bị sửa, cập nhật README và chạy các test phù hợp tại User Service.
+
+   **7.8. Điều kiện hoàn tất.**
+
+   User ACTIVE chưa verified gọi API được lưu hash 60 giây, publish đúng một message và nhận 202 sau broker ack. Request bị cooldown không sinh/publish OTP và trả 429; frontend tự đếm ngược 60 giây. Mọi lỗi eligibility không tạo key/message; lỗi hạ tầng không báo tiếp nhận thành công; cleanup không xóa hash khác của request mới. User data không bị sửa. Xác thực OTP/cập nhật emailVerified, Notification consumer và SendGrid thuộc các bước tiếp theo.
+
+   **Trạng thái: đã hoàn thành bước 7.** EmailVerificationController dùng AuthenticationUserId lấy danh tính; EmailVerificationServiceImpl query DB, kiểm tra hasCooldown, sinh OTP SecureRandom, lưu hash và build trực tiếp EmailVerificationRequestedMessage. KafkaEmailVerificationEmailPublisher gửi JSON String theo user ID và chờ ack hữu hạn. Đã thêm mã lỗi 1020–1023; cooldown trả 429 theo ApiResponse hiện có, không thêm method đọc TTL hoặc DTO thời gian chờ. Producer error listener không log payload; KafkaTemplate dev logging giữ INFO.
+
+   Kiểm tra `./mvnw -o -Duser.test.redis-port=... -Dgateway.test.redis-port=... clean verify`: 275 test pass, không skip, gồm 39 test mới của bước 7 (15 service, 13 controller/security/DB, 9 publisher và 2 HTTP/Redis/Kafka integration). Sau cập nhật controller dùng helper chung, 39 test bước 7 được chạy lại và đều pass. Redis chạy trên container riêng, Kafka dùng embedded test broker, database HTTP test dùng H2; không gọi SendGrid hoặc truy cập dữ liệu ứng dụng. README đã cập nhật API, response, lỗi và hướng dẫn test.
 
 8. **Triển khai xác thực OTP tại User Service.**
 
@@ -239,7 +291,7 @@ sequenceDiagram
 
     JWT hiện chứa role/permission snapshot trong scope; token cũ không tự đổi khi database thay đổi. Tái sử dụng `/api/auth/refresh` sau khi đăng ký thành công để nhận cookie mới có USER và STREAMER, thay vì phát một cơ chế token khác. Kiểm tra load role/permission nằm trong transaction refresh và refresh account banned vẫn bị chặn.
 
-    Cung cấp trạng thái cần cho client qua response đăng ký hoặc endpoint me/status chuyên dụng; nếu mở rộng `/me`, cập nhật rõ contract và test hiện tại đang kiểm tra các field. Không tự thay shape profile một cách ngầm định. Response gửi OTP chỉ chứa `expiresAt`; frontend có thể dùng cooldown 60 giây đã thống nhất và điều chỉnh theo `Retry-After` khi bị chặn. Reload không vượt Redis cooldown. Hiển thị đã tiếp nhận yêu cầu email thay vì khẳng định delivered.
+    Cung cấp trạng thái cần cho client qua response đăng ký hoặc endpoint me/status chuyên dụng; nếu mở rộng `/me`, cập nhật rõ contract và test hiện tại đang kiểm tra các field. Không tự thay shape profile một cách ngầm định. Response gửi OTP chỉ chứa `expiresAt`; frontend tự hiển thị cooldown đếm ngược 60 giây sau khi API gửi OTP thành công; response lỗi cooldown không cần thời gian chờ. Reload không vượt Redis cooldown. Hiển thị đã tiếp nhận yêu cầu email thay vì khẳng định delivered.
 
     Web/mobile UI đầy đủ là phần tích hợp theo phạm vi sản phẩm, không phải điều kiện để API backend hoàn thành. Không cho UI tự suy luận quyền mới chỉ từ JWT cũ.
 
@@ -250,7 +302,7 @@ sequenceDiagram
     | Nhóm | Các case bắt buộc |
     |---|---|
     | Authentication/ownership | Không cookie -> 401 với request qua đúng security flow; subject sai; không nhận target userId/email; mọi dữ liệu quyết định lấy từ DB |
-    | Cooldown | Lần đầu được phép; trước 60s trả 429 + TTL; bị chặn không gia hạn; sau hết hạn được gửi; nhiều request/instance chỉ một lượt được phép; Redis lỗi không gửi |
+    | Cooldown | Lần đầu được phép; trước 60s trả 429; bị chặn không gia hạn; sau hết hạn được gửi; nhiều request/instance chỉ một lượt được phép; Redis lỗi không gửi |
     | OTP | Leading zero; sai format/sai mã/hết hạn 60 giây; mã sai không gia hạn TTL; resend sau hết hạn; khác user/email; consume đồng thời; resend đua verify; DB rollback sau consume; đã verified không gửi thêm |
     | Producer | DTO đúng; broker ack trước 202; lỗi chắc chắn và timeout không chắc chắn; cleanup không xóa challenge mới; không log OTP |
     | Notification | Consume/gửi; duplicate event; retry/DLT; expired event; provider accept khác delivered; timeout UNKNOWN; DB lỗi và consumer redelivery |
