@@ -17,7 +17,17 @@ These packages are scaffolding for later implementation steps. No Kafka listener
 
 `email.configuration` now prepares validated email/provider settings, request/dead-letter topics and bounded Kafka error handling. The future listener uses record acknowledgements, retries twice by default, and acknowledges a failed message only after its dead-letter copy is accepted by Kafka. These are infrastructure beans; the delivery listener and email business logic remain for later steps.
 
-Notification does not check OTPs, query the User database, update `emailVerified`, or grant roles. Email delivery results remain in this service; User Service does not wait for webhook events. The Kafka wire DTO, SendGrid integration and webhook authentication will be defined in their respective implementation steps.
+Notification does not check OTPs, query the User database, update `emailVerified`, or grant roles. Email delivery results remain in this service; User Service does not wait for webhook events. The Kafka wire DTO is defined in [the Kafka contract](../docs/contracts/Email%20Verification%20Kafka.md). SendGrid integration and webhook authentication will be implemented in their respective steps.
+
+## SendGrid DTOs
+
+- `email.client.sendgrid.dto.request.SendGridMailRequest`: Dynamic Template payload with sender, `template_id`, recipients, OTP template data and `custom_args`. Its nested classes model email addresses, personalizations and OTP data; OTP is excluded from `toString()`.
+- `email.client.sendgrid.dto.response.SendGridErrorResponse`: provider `errors` array, retaining the message and optional field while ignoring unused metadata.
+- `email.dto.request.SendGridWebhookEventRequest`: one event in the incoming webhook array, with root-level `eventId` correlation, provider IDs, Unix timestamp in seconds and optional delivery details. Unknown provider fields are ignored.
+
+Template selection belongs to Notification configuration. These DTOs prepare the Dynamic Template flow without fetching the template list. A successful Mail Send response has HTTP 202 and no JSON body, so no success-body DTO is defined. The future client will read `X-Message-ID` from response headers. The future webhook handler must verify the signature against the original raw body before deserializing events.
+
+DTO tests cover SendGrid field names, OTP leading zeros and exclusion from `toString()`, optional sender names, error metadata, and webhook arrays with missing/extra fields. They do not call SendGrid.
 
 ## Configuration and local run
 

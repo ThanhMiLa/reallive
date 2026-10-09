@@ -74,6 +74,7 @@ notification:
       sender-email: ${SENDGRID_FROM_EMAIL:}
       sender-name: ${SENDGRID_FROM_NAME:RealLive}
       webhook-verification-public-key: ${SENDGRID_WEBHOOK_PUBLIC_KEY:}
+      email-verification-template-id: ${SENDGRID_EMAIL_VERIFICATION_TEMPLATE_ID}
 
 management:
   health:

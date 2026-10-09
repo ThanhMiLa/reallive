@@ -1,4 +1,4 @@
-package com.reallive.userservice.user.model;
+package com.reallive.notificationservice.email.dto.message;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -11,18 +11,22 @@ import lombok.experimental.FieldDefaults;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Kafka JSON contract; independent of User Service's Java package. */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class EmailVerificationChallenge {
+public class EmailVerificationRequestedMessage {
+    int schemaVersion;
+    UUID eventId;
     UUID challengeId;
     UUID userId;
-    String email;
+    EmailType emailType;
+    String recipientEmail;
 
     @ToString.Exclude
-    String otpHash;
+    String otp;
 
     Instant issuedAt;
     Instant expiresAt;

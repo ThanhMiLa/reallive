@@ -55,9 +55,7 @@ spring:
 email-verification:
   topic: ${EMAIL_VERIFICATION_TOPIC:notification.email-verification.requested.v1}
   otp:
-    cooldown-seconds: ${OTP_COOLDOWN_SECONDS:60}
-    ttl-seconds: ${OTP_TTL_SECONDS:300}
-    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+    ttl-seconds: ${OTP_COOLDOWN_SECONDS:60}
     hmac-key: ${OTP_HMAC_KEY:}
 
 storage:
