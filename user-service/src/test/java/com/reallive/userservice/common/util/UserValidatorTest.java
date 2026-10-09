@@ -32,4 +32,32 @@ class UserValidatorTest {
 
         assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
     }
+
+    @Test
+    void validateEmailNotVerifiedAcceptsUnverifiedEmail() {
+        UserEntity user = UserEntity.builder().emailVerified(false).build();
+        assertDoesNotThrow(() -> UserValidator.validateEmailNotVerified(user));
+    }
+
+    @Test
+    void validateEmailNotVerifiedRejectsVerifiedEmail() {
+        UserEntity user = UserEntity.builder().emailVerified(true).build();
+        AppException exception = assertThrows(AppException.class,
+                () -> UserValidator.validateEmailNotVerified(user));
+        assertEquals(ErrorCode.EMAIL_ALREADY_VERIFIED, exception.getErrorCode());
+    }
+
+    @Test
+    void validateEmailVerifiedAcceptsVerifiedEmail() {
+        UserEntity user = UserEntity.builder().emailVerified(true).build();
+        assertDoesNotThrow(() -> UserValidator.validateEmailVerified(user));
+    }
+
+    @Test
+    void validateEmailVerifiedRejectsUnverifiedEmail() {
+        UserEntity user = UserEntity.builder().emailVerified(false).build();
+        AppException exception = assertThrows(AppException.class,
+                () -> UserValidator.validateEmailVerified(user));
+        assertEquals(ErrorCode.EMAIL_NOT_VERIFIED, exception.getErrorCode());
+    }
 }

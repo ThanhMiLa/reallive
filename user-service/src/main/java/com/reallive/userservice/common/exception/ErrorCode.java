@@ -33,7 +33,7 @@ public enum ErrorCode {
     OTP_MISMATCH(1024, "OTP is incorrect", HttpStatus.BAD_REQUEST),
     OTP_NOT_FOUND(1025, "OTP has expired or is no longer available", HttpStatus.BAD_REQUEST),
     OTP_VERIFICATION_UNAVAILABLE(1026, "Unable to verify an OTP at this time", HttpStatus.SERVICE_UNAVAILABLE),
-    ;
+    EMAIL_NOT_VERIFIED(1027, "Email is not verified", HttpStatus.FORBIDDEN);
 
     private final int code;
     private final String message;

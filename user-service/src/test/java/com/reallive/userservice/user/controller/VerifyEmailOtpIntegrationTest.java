@@ -1,6 +1,7 @@
 package com.reallive.userservice.user.controller;
 
 import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
 import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
@@ -27,6 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.util.List;
@@ -74,6 +76,8 @@ class VerifyEmailOtpIntegrationTest {
     private StringRedisTemplate redis;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private ObjectMapper mapper;
     @MockitoBean
     private CustomJwtDecoder decoder;
     @MockitoBean
@@ -113,7 +117,7 @@ class VerifyEmailOtpIntegrationTest {
 
         assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
         assertNull(redis.opsForValue().get(key()));
-        verifyOtp(captor.getValue().getOtp(), "verify-token", 400, 1025);
+        verifyOtp(captor.getValue().getOtp(), "verify-token", 409, 1020);
         assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
     }
 
@@ -145,6 +149,28 @@ class VerifyEmailOtpIntegrationTest {
     @Test
     void missingOtpCannotVerifyEmail() throws Exception {
         verifyOtp(OTP, "verify-token", 400, 1025);
+        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+    }
+
+    @Test
+    void alreadyVerifiedEmailIsRejectedWithoutConsumingTheStoredOtp() throws Exception {
+        saveOtp();
+        String originalHash = redis.opsForValue().get(key());
+        user.setEmailVerified(true);
+        repository.saveAndFlush(user);
+        verifyOtp(OTP, "verify-token", 409, 1020);
+        assertEquals(originalHash, redis.opsForValue().get(key()));
+        assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+    }
+
+    @Test
+    void bannedUserIsRejectedWithoutConsumingTheStoredOtp() throws Exception {
+        saveOtp();
+        String originalHash = redis.opsForValue().get(key());
+        user.setStatus(UserStatus.BANNED);
+        repository.saveAndFlush(user);
+        verifyOtp(OTP, "verify-token", 403, 1003);
+        assertEquals(originalHash, redis.opsForValue().get(key()));
         assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
     }
 
@@ -189,7 +215,8 @@ class VerifyEmailOtpIntegrationTest {
             assertTrue(ready.await(5, TimeUnit.SECONDS));
             start.countDown();
             List<Integer> statuses = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
-            assertTrue(statuses.contains(200) && statuses.contains(400));
+            assertEquals(1L, statuses.stream().filter(status -> status == 200).count());
+            assertTrue(statuses.contains(400) || statuses.contains(409));
         }
         assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
         assertNull(redis.opsForValue().get(key()));
@@ -226,6 +253,13 @@ class VerifyEmailOtpIntegrationTest {
         var response = mvc.perform(post(ENDPOINT).cookie(cookie()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"otp\":\"012345\"}"))
                 .andReturn().getResponse();
+        int code = mapper.readTree(response.getContentAsString()).get("code").asInt();
+        switch (response.getStatus()) {
+            case 200 -> assertEquals(1000, code);
+            case 400 -> assertEquals(1025, code);
+            case 409 -> assertEquals(1020, code);
+            default -> throw new AssertionError("Unexpected verification status: " + response.getStatus());
+        }
         return response.getStatus();
     }
 

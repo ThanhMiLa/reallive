@@ -1,6 +1,7 @@
 package com.reallive.userservice.user.service.impl;
 
 import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
@@ -45,7 +46,7 @@ class VerifyEmailOtpServiceTest {
         service = new EmailVerificationServiceImpl(repository, store, publisher, hasher);
         user = UserEntity.builder().id(UUID.randomUUID()).email("current@example.com")
                 .username("verify-user").passwordHash("test-hash").build();
-        when(repository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
         when(store.consume(user.getId(), hash())).thenReturn(EmailVerificationOtpCheckResult.VALID);
     }
 
@@ -53,7 +54,7 @@ class VerifyEmailOtpServiceTest {
     void consumesBoundOtpBeforePersistingVerificationWithoutPublishing() {
         var response = service.verifyEmailOtp(user.getId(), request);
         var order = inOrder(repository, store);
-        order.verify(repository).findByIdForUpdate(user.getId());
+        order.verify(repository).findById(user.getId());
         order.verify(store).consume(user.getId(), hash());
         order.verify(repository).save(user);
         assertTrue(response.isEmailVerified());
@@ -77,12 +78,19 @@ class VerifyEmailOtpServiceTest {
     }
 
     @Test
-    void alreadyVerifiedEmailStillRequiresAnAvailableMatchingOtp() {
+    void alreadyVerifiedEmailIsRejectedBeforeConsumingOtp() {
         user.setEmailVerified(true);
-        when(store.consume(user.getId(), hash())).thenReturn(EmailVerificationOtpCheckResult.NOT_FOUND);
-        assertError(ErrorCode.OTP_NOT_FOUND);
-        verify(store).consume(user.getId(), hash());
+        assertError(ErrorCode.EMAIL_ALREADY_VERIFIED);
+        verifyNoInteractions(store);
         assertTrue(user.isEmailVerified());
+    }
+
+    @Test
+    void bannedUserIsRejectedBeforeConsumingOtp() {
+        user.setStatus(UserStatus.BANNED);
+        assertError(ErrorCode.USER_NOT_ACTIVE);
+        verifyNoInteractions(store);
+        assertFalse(user.isEmailVerified());
     }
 
     @Test
@@ -95,7 +103,7 @@ class VerifyEmailOtpServiceTest {
 
     @Test
     void missingUserDoesNotTouchRedis() {
-        when(repository.findByIdForUpdate(user.getId())).thenReturn(Optional.empty());
+        when(repository.findById(user.getId())).thenReturn(Optional.empty());
         assertError(ErrorCode.USER_NOT_FOUND);
         verifyNoInteractions(store);
     }

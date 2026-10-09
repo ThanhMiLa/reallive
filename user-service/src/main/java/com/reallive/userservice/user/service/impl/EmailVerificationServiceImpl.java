@@ -4,6 +4,7 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.common.util.UserValidator;
 import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.dto.message.EmailType;
@@ -78,9 +79,13 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     @Override
     @Transactional
     public EmailVerificationResponse verifyEmailOtp(UUID userId, VerifyEmailOtpRequest request) {
-        UserEntity user = userRepository.findByIdForUpdate(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        // Verify user eligibility
+        UserEntity user = getEligibleUser(userId);
+
+        // Generate the new hash otp
         String otpHash = hashOtp(user, request.getOtp());
+
+        // Consume the OTP and update the user email verification status
         consumeOtp(userId, otpHash);
         user.setEmailVerified(true);
         userRepository.save(user);
@@ -104,12 +109,8 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     private UserEntity getEligibleUser(UUID userId) {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        if (!user.isActive()) {
-            throw new AppException(ErrorCode.USER_NOT_ACTIVE);
-        }
-        if (user.isEmailVerified()) {
-            throw new AppException(ErrorCode.EMAIL_ALREADY_VERIFIED);
-        }
+        UserValidator.validateActive(user);
+        UserValidator.validateEmailNotVerified(user);
         return user;
     }
 

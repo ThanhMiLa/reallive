@@ -270,13 +270,23 @@ class EmailVerificationControllerTest {
     }
 
     @Test
-    void unavailableVerifyOtpReturns400EvenIfEmailAlreadyVerified() throws Exception {
+    void alreadyVerifiedEmailReturns409BeforeConsumingOtp() throws Exception {
         user.setEmailVerified(true);
         repository.saveAndFlush(user);
-        when(store.consume(any(), anyString())).thenReturn(EmailVerificationOtpCheckResult.NOT_FOUND);
         mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1025));
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1020));
         assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+        verifyNoInteractions(store, publisher);
+    }
+
+    @Test
+    void bannedUserCannotVerifyDespiteActiveJwtClaim() throws Exception {
+        user.setStatus(UserStatus.BANNED);
+        repository.saveAndFlush(user);
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1003));
+        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+        verifyNoInteractions(store, publisher);
     }
 
     @Test
