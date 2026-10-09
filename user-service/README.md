@@ -65,7 +65,7 @@ All three endpoints require authentication. User identity comes from the securit
 
 ## Email verification and streamer service structure
 
-Email verification belongs to `user`; streamer registration belongs to `streamer`. Both service contracts receive a user UUID extracted from the authenticated principal. EmailVerificationController exposes OTP requests; verification and streamer controllers remain scheduled for later steps.
+Email verification belongs to `user`; streamer registration belongs to `streamer`. Both service contracts receive a user UUID extracted from the authenticated principal. EmailVerificationController exposes OTP request and verification endpoints; the streamer controller remains scheduled for a later step.
 
 | Contract / class | Responsibility |
 |---|---|
@@ -86,7 +86,7 @@ Email verification belongs to `user`; streamer registration belongs to `streamer
 
 `EmailVerificationOtpHasher` computes HMAC-SHA256 from the verification purpose, user ID, database email and six-digit OTP. It uses `OTP_HMAC_KEY` independently of the JWT key; the key is required when hashing is invoked, with no additional startup validation configuration. The hash and OTP are not logged. User and email binding prevents using a code for a different user or database email.
 
-The storage, hashing, email verification service and Kafka publisher are Spring beans. The OTP request endpoint is implemented; OTP verification and transactional `emailVerified` updates remain in step 8.
+The storage, hashing, email verification service and Kafka publisher are Spring beans. Both OTP request and verification endpoints are implemented, including transactional `emailVerified` updates.
 
 To run the Redis integration tests against an isolated instance, start Redis from the repository root:
 
@@ -148,7 +148,35 @@ Service, controller and publisher tests cover eligibility, database values over 
 ./mvnw -o -Duser.test.redis-port=16380 -Dgateway.test.redis-port=16380 clean verify
 ```
 
-`verifyEmailOtp` and StreamerRegistrationServiceImpl remain scaffolds. Their endpoints and business logic are implemented in later steps.
+## Verify an email OTP
+
+`POST /user/api/users/me/email-verification/verify` requires the access-token cookie and a JSON body:
+
+```json
+{"otp":"012345"}
+```
+
+The controller validates six ASCII digits and extracts the user ID from the authenticated subject. The service reads and locks the user row within a database transaction, then hashes the submitted OTP with that user's current database email. It calls `consume` once: a matching hash deletes the Redis key, a wrong hash preserves the key and TTL, and an absent key means the OTP is unavailable. Only a valid OTP allows persisting `emailVerified=true`.
+
+The verify service does not check account status or bypass OTP consumption when the email is already verified. Account-status enforcement is reserved for the future shared security component. Replaying a successfully consumed OTP returns an unavailable-OTP error.
+
+Success returns HTTP 200 with the existing envelope and `result: {"emailVerified":true}`. Roles and streamer records are unchanged; verification does not publish an email message or depend on Notification delivery status.
+
+| Verification outcome | HTTP / application code |
+|---|---|
+| Missing or invalid authentication | 401 / 1001 |
+| Database user not found | 404 / 1004 |
+| Missing or malformed OTP | 400 / 1019 |
+| HMAC configuration unavailable | 500 / 1023 |
+| Incorrect OTP | 400 / 1024 |
+| Expired, consumed or never requested OTP | 400 / 1025 |
+| Redis verification failure | 503 / 1026 |
+
+Redis consumption and the database transaction are separate. If the database save/commit fails after consumption, verification is not reported as successful, the database rolls back, and the consumed OTP is not restored. The user must request a new OTP.
+
+`VerifyEmailOtpServiceTest` and `EmailVerificationControllerTest` cover the service contract, validation, authentication, persistence and failure responses. `VerifyEmailOtpIntegrationTest` uses real Redis and an H2 database for request/verify/replay, wrong-code TTL preservation, expiry, user/email binding, concurrent verification and database commit rollback. Its email publisher is mocked and it is enabled by `-Duser.test.redis-port=...`; run it against the isolated Redis instance described above.
+
+StreamerRegistrationServiceImpl remains a scaffold for a later step.
 
 ## Streamer persistence
 

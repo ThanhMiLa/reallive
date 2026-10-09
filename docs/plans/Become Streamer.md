@@ -231,13 +231,17 @@ sequenceDiagram
 
 8. **Triển khai xác thực OTP tại User Service.**
 
-   Request DTO chỉ có OTP, validate đúng sáu ký tự `[0-9]`. Query và khóa user; kiểm tra ACTIVE và lấy email hiện tại từ database để tính lại HMAC. Không phụ thuộc trạng thái delivery trong Notification.
+   Request DTO chỉ có OTP, validate đúng sáu ký tự `[0-9]`. Lấy user ID từ security context, query và khóa user trong transaction, lấy email hiện tại từ database để tính lại HMAC. Service verify không kiểm tra ACTIVE; việc kiểm tra trạng thái tài khoản được dành cho security component chung ở bước sau. Không phụ thuộc trạng thái delivery trong Notification.
 
    Tính HMAC từ user ID/email/OTP rồi gọi `otpStore.consume`. Redis kiểm tra hash và consume nguyên tử, TTL đảm bảo mã hết hạn sau 60 giây. Mã sai không thay đổi key, không có max attempts trong phiên bản này. Mã đúng consume một lần rồi cập nhật `emailVerified=true` trong PostgreSQL. Chỉ trả thành công sau commit. Không cấp STREAMER ở API verify.
 
-   Quy định response idempotent nếu user đã verified để client có thể phục hồi khi mất response. Redis và PostgreSQL không commit nguyên tử cùng nhau: nếu đã consume OTP nhưng DB rollback, không báo verified; user có thể xin mã mới vì key đã bị consume. Không hồi sinh OTP cũ. User eligibility/role không bị sửa khi xác thực thất bại.
+   Không thêm nhánh bỏ qua OTP khi email đã verified. Request dùng lại mã đã consume nhận lỗi OTP không còn hiệu lực. Redis và PostgreSQL không commit nguyên tử cùng nhau: nếu đã consume OTP nhưng DB rollback, không báo verified; user có thể xin mã mới vì key đã bị consume. Không hồi sinh OTP cũ. User eligibility/role không bị sửa khi xác thực thất bại.
 
    Hoàn tất khi mã đúng xác thực được email, mã sai/hết hạn/dùng lại/mã cho email khác không xác thực được và DB failure không dẫn tới thành công giả.
+
+   **Trạng thái: đã hoàn thành bước 8.** Endpoint `/api/users/me/email-verification/verify` nhận `VerifyEmailOtpRequest`, dùng user ID từ principal và email hiện tại trong DB, gọi HMAC/consume rồi persist `emailVerified=true` trong transaction. Thành công trả 200 với `EmailVerificationResponse`; lỗi sai mã, mã không còn hiệu lực và Redis lần lượt dùng 1024, 1025, 1026. Không thêm kiểm tra ACTIVE hoặc nhánh đã verified trong service verify.
+
+   Kiểm tra `./mvnw -o -Duser.test.redis-port=... -Dgateway.test.redis-port=... clean verify`: BUILD SUCCESS, 310 test pass, không skip. Bổ sung 35 test: 9 unit service, 18 controller/security/DB và 8 integration với Redis thật/H2, gồm request→verify→replay, TTL khi mã sai, hết hạn, user/email binding, hai request đồng thời và rollback khi commit DB thất bại. Kafka publisher được mock trong integration verify; các integration bước 7 vẫn chạy với embedded Kafka. Redis dùng container riêng; không gửi email thật hoặc truy cập dữ liệu ứng dụng.
 
 9. **Tạo database lịch sử email trong Notification Service.**
 

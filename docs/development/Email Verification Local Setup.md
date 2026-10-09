@@ -32,6 +32,8 @@ Keep the existing JWT and R2 settings required by User Service. Generate indepen
 
 Docker Compose reads the root `.env` for interpolation. User loads its own `.env` through dotenv when launched with `user-service/` as its working directory. Notification requires its own variables to be exported or configured in the IDE; it does not automatically read `.env`. The startup example below exports `notification-service/.env` with shell-compatible values.
 
+Restart User Service after editing its `.env`; an already running process keeps the previous configuration. In particular, set `REDIS_PASSWORD` in `user-service/.env` to the password used by the running Redis container.
+
 ## Start infrastructure and services
 
 From the repository root:
@@ -50,6 +52,13 @@ set -a
 . ./.env
 set +a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+If testing User Service before starting Notification, create the topics manually from the repository root. Kafka automatic topic creation is disabled. These commands use the default local topic names and settings; adjust them if your service configuration overrides the defaults.
+
+```bash
+docker compose exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic notification.email-verification.requested.v1 --partitions 3 --replication-factor 1 --config retention.ms=600000
+docker compose exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic notification.email-verification.requested.v1.dlt --partitions 3 --replication-factor 1 --config retention.ms=600000
 ```
 
 In another terminal, start User from the repository root, using `user-service/.env`:

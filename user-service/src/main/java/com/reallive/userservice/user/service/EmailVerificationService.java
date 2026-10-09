@@ -24,10 +24,16 @@ public interface EmailVerificationService {
     /**
      * Verifies an OTP for the authenticated user's database email.
      *
+     * <p>Consumes the matching OTP once and persists email verification in a database transaction.
+     * A wrong or unavailable OTP does not modify the user. This method does not check account
+     * status or bypass OTP consumption for an already verified email. If persistence fails after
+     * consumption, the database rolls back and the user must request a new OTP.</p>
+     *
      * @param userId the user ID extracted from the authenticated principal
      * @param request the six-digit OTP submitted by the user
-     * @return the resulting email verification status once implemented
-     * @throws UnsupportedOperationException while verification remains scheduled for step 8
+     * @return an email verification status of {@code true} after successful verification
+     * @throws AppException if the user is missing, the OTP is wrong or unavailable,
+     *         or configuration/infrastructure prevents verification
      */
     EmailVerificationResponse verifyEmailOtp(UUID userId, VerifyEmailOtpRequest request);
 }

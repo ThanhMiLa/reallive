@@ -4,14 +4,15 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
+import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.dto.message.EmailType;
 import com.reallive.userservice.user.dto.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.dto.request.VerifyEmailOtpRequest;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpResponse;
 import com.reallive.userservice.user.dto.response.EmailVerificationResponse;
 import com.reallive.userservice.user.exception.EmailVerificationPublishException;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
-import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.service.EmailVerificationService;
 import com.reallive.userservice.user.util.EmailVerificationOtpHasher;
 import lombok.AccessLevel;
@@ -22,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -74,8 +76,29 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     }
 
     @Override
+    @Transactional
     public EmailVerificationResponse verifyEmailOtp(UUID userId, VerifyEmailOtpRequest request) {
-        throw new UnsupportedOperationException("Email verification is not implemented yet");
+        UserEntity user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        String otpHash = hashOtp(user, request.getOtp());
+        consumeOtp(userId, otpHash);
+        user.setEmailVerified(true);
+        userRepository.save(user);
+        return EmailVerificationResponse.builder().emailVerified(true).build();
+    }
+
+    private void consumeOtp(UUID userId, String otpHash) {
+        EmailVerificationOtpCheckResult checkResult;
+        try {
+            checkResult = otpStore.consume(userId, otpHash);
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw new AppException(ErrorCode.OTP_VERIFICATION_UNAVAILABLE);
+        }
+        switch (checkResult) {
+            case VALID -> { }
+            case INVALID -> throw new AppException(ErrorCode.OTP_MISMATCH);
+            case NOT_FOUND -> throw new AppException(ErrorCode.OTP_NOT_FOUND);
+        }
     }
 
     private UserEntity getEligibleUser(UUID userId) {

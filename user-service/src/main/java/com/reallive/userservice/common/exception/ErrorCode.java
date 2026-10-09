@@ -30,6 +30,9 @@ public enum ErrorCode {
     OTP_COOLDOWN(1021, "Please wait before requesting another OTP", HttpStatus.TOO_MANY_REQUESTS),
     OTP_REQUEST_UNAVAILABLE(1022, "Unable to request an OTP at this time", HttpStatus.SERVICE_UNAVAILABLE),
     OTP_CONFIGURATION_INVALID(1023, "Email verification configuration is unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
+    OTP_MISMATCH(1024, "OTP is incorrect", HttpStatus.BAD_REQUEST),
+    OTP_NOT_FOUND(1025, "OTP has expired or is no longer available", HttpStatus.BAD_REQUEST),
+    OTP_VERIFICATION_UNAVAILABLE(1026, "Unable to verify an OTP at this time", HttpStatus.SERVICE_UNAVAILABLE),
     ;
 
     private final int code;

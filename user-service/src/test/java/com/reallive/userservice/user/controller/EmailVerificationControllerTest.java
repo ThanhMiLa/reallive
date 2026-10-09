@@ -6,6 +6,7 @@ import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
 import com.reallive.userservice.user.dto.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
@@ -26,6 +27,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -36,6 +38,7 @@ import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -59,6 +62,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class EmailVerificationControllerTest {
 
     private static final String ENDPOINT = "/api/users/me/email-verification/otp";
+    private static final String VERIFY_ENDPOINT = "/api/users/me/email-verification/verify";
 
     @Autowired
     private WebApplicationContext context;
@@ -193,6 +197,107 @@ class EmailVerificationControllerTest {
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(1022));
         verify(store, never()).deleteIfCurrent(any(), anyString());
         assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+    }
+
+    @Test
+    void anonymousVerifyReturns401WithoutConsumingOtp() throws Exception {
+        mvc.perform(post(VERIFY_ENDPOINT).contentType(MediaType.APPLICATION_JSON).content("{\"otp\":\"012345\"}"))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
+        verifyNoInteractions(store, publisher);
+    }
+
+    @Test
+    void invalidVerifyTokenReturns401WithoutConsumingOtp() throws Exception {
+        when(decoder.decode("otp-access-token")).thenThrow(new BadJwtException("expired"));
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(store, publisher);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"not-a-uuid"})
+    void invalidVerifyIdentityReturns401(String subject) throws Exception {
+        authenticate(subject);
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
+        verifyNoInteractions(store, publisher);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "\"\"", "\"12345\"", "\"1234567\"", "\"abcdef\"", "\" 012345\"", "\"１２３４５６\""})
+    void malformedVerifyOtpReturns400WithoutConsuming(String otpJson) throws Exception {
+        mvc.perform(verifyRequest("{\"otp\":" + otpJson + "}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1019));
+        verifyNoInteractions(store, publisher);
+        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+    }
+
+    @Test
+    void missingVerifyOtpReturns400WithoutConsuming() throws Exception {
+        mvc.perform(verifyRequest("{}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1019));
+        verifyNoInteractions(store, publisher);
+    }
+
+    @Test
+    void validVerifyReturns200AndPersistsOnlyEmailVerification() throws Exception {
+        long roleRows = jdbc.queryForObject("select count(*) from user_roles where user_id = ?", Long.class, user.getId());
+        long streamerRows = jdbc.queryForObject("select count(*) from streamers where user_id = ?", Long.class, user.getId());
+        when(store.consume(any(), anyString())).thenReturn(EmailVerificationOtpCheckResult.VALID);
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.result", aMapWithSize(1)))
+                .andExpect(jsonPath("$.result.emailVerified").value(true));
+        UserEntity persisted = repository.findById(user.getId()).orElseThrow();
+        assertTrue(persisted.isEmailVerified());
+        assertEquals(user.getStatus(), persisted.getStatus());
+        assertEquals(user.getEmail(), persisted.getEmail());
+        assertEquals(roleRows, jdbc.queryForObject("select count(*) from user_roles where user_id = ?", Long.class, user.getId()));
+        assertEquals(streamerRows, jdbc.queryForObject("select count(*) from streamers where user_id = ?", Long.class, user.getId()));
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void wrongVerifyOtpReturns400WithoutModifyingUser() throws Exception {
+        when(store.consume(any(), anyString())).thenReturn(EmailVerificationOtpCheckResult.INVALID);
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1024));
+        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void unavailableVerifyOtpReturns400EvenIfEmailAlreadyVerified() throws Exception {
+        user.setEmailVerified(true);
+        repository.saveAndFlush(user);
+        when(store.consume(any(), anyString())).thenReturn(EmailVerificationOtpCheckResult.NOT_FOUND);
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1025));
+        assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+    }
+
+    @Test
+    void redisFailureDuringVerifyReturns503WithoutModifyingUser() throws Exception {
+        when(store.consume(any(), anyString())).thenThrow(new RedisConnectionFailureException("test failure"));
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(1026));
+        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void deletedUserCannotVerify() throws Exception {
+        repository.deleteById(user.getId());
+        mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(1004));
+        verifyNoInteractions(store, publisher);
+    }
+
+    private MockHttpServletRequestBuilder verifyRequest(String json) {
+        return post(VERIFY_ENDPOINT).cookie(cookie()).contentType(MediaType.APPLICATION_JSON).content(json);
     }
 
     private void authenticate(String subject) {
