@@ -37,6 +37,8 @@ Run commands inside the relevant module; there is no root build orchestrator.
 
 Match existing files: four-space indentation for Java/Kotlin and two spaces for TypeScript. Use PascalCase for classes and React components, camelCase for methods and variables, and NestJS filenames such as `app.service.ts`. Chat uses single quotes and trailing commas through Prettier. Preserve the web app's existing semicolon style. Follow `.agents/skills/code-style/SKILL.md` for Java organization, imports, and comments.
 
+Every method declared in a Java service interface must have English Javadoc. Follow `.agents/skills/service-javadoc/SKILL.md` when creating, editing, or reviewing service interfaces.
+
 ## Testing Guidelines
 
 Java uses JUnit Jupiter/Spring Boot tests named `*Test.java` or `*Tests.java`. Chat uses Jest: `npm test`, `npm run test:e2e`, and `npm run test:cov`; name tests `*.spec.ts` and `*.e2e-spec.ts`. Android uses JUnit 4 and AndroidX instrumentation. No coverage threshold or web test runner is currently configured. Add relevant regression tests for behavior changes.

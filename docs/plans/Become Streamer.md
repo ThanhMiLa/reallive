@@ -103,7 +103,7 @@ sequenceDiagram
 
    Hoàn tất khi trách nhiệm từng class/interface và phụ thuộc đã rõ; service nghiệp vụ có thể unit test không cần Kafka/SendGrid thật.
 
-   Khung bước 2 đã được tạo: `user.service.EmailVerificationService`/`impl.EmailVerificationServiceImpl`, các interface `EmailVerificationOtpStore` và `EmailVerificationEmailPublisher`, model nội bộ trong `user.model`, adapter packages `user.adapter.redis`/`user.adapter.kafka`, cùng `streamer.service.StreamerRegistrationService`/`impl.StreamerRegistrationServiceImpl`. Interface OTP store đã được cập nhật ở bước 6 cho thiết kế một key chứa hash, với `hasCooldown`, `save`, `consume`, `deleteIfCurrent`. Các implementation service nghiệp vụ còn chủ động throw `UnsupportedOperationException` và chưa được đăng ký Spring bean hoặc expose controller. Notification đã có package structure và README phân trách nhiệm; consumer/SendGrid/webhook/persistence được triển khai ở các bước tương ứng. Các port cho phép mock hạ tầng khi bổ sung unit test nghiệp vụ sau này.
+   Khung bước 2 đã được tạo: `user.service.EmailVerificationService`/`impl.EmailVerificationServiceImpl`, các interface `EmailVerificationOtpStore` và `EmailVerificationEmailPublisher`, model nội bộ trong `user.model`, Redis implementation trong `user.service.impl`, Kafka adapter package `user.adapter.kafka`, cùng `streamer.service.StreamerRegistrationService`/`impl.StreamerRegistrationServiceImpl`. Interface OTP store đã được cập nhật ở bước 6 cho thiết kế một key chứa hash, với `hasCooldown`, `save`, `consume`, `deleteIfCurrent`. Các implementation service nghiệp vụ còn chủ động throw `UnsupportedOperationException` và chưa được đăng ký Spring bean hoặc expose controller. Notification đã có package structure và README phân trách nhiệm; consumer/SendGrid/webhook/persistence được triển khai ở các bước tương ứng. Các port cho phép mock hạ tầng khi bổ sung unit test nghiệp vụ sau này.
 
 3. **Bổ sung dữ liệu streamer và role trong User Service.**
 
@@ -161,7 +161,9 @@ sequenceDiagram
 
    `deleteIfCurrent` so sánh hash trước khi xóa, tránh cleanup xóa hash khác của request mới. Không dùng DEL vô điều kiện khi publish lỗi. Không tạo thêm key challenge hoặc attempts.
 
-   Đã triển khai `user.adapter.redis.RedisEmailVerificationOtpStore` và `user.util.EmailVerificationOtpHasher`. Kiểm thử Redis thật bao gồm TTL 60 giây, từ chối gửi lại, mã sai giữ nguyên TTL/value, hết hạn, consume một lần, cleanup và concurrent save/consume. Khi chạy test độc lập, cung cấp cổng Redis riêng bằng `-Duser.test.redis-port=...`. Controller, Kafka publisher và cập nhật `emailVerified` trong DB thuộc bước 7–8.
+   Đã triển khai `user.service.impl.RedisEmailVerificationOtpStore` và `user.util.EmailVerificationOtpHasher`. Kiểm thử Redis thật bao gồm TTL 60 giây, từ chối gửi lại, mã sai giữ nguyên TTL/value, hết hạn, consume một lần, cleanup và concurrent save/consume. Khi chạy test độc lập, cung cấp cổng Redis riêng bằng `-Duser.test.redis-port=...`. Controller, Kafka publisher và cập nhật `emailVerified` trong DB thuộc bước 7–8.
+
+   Kiểm tra bước 6: `./mvnw -o -Duser.test.redis-port=... -Dgateway.test.redis-port=... clean verify` tại User Service pass 236 test, không skip; gồm 10 test HMAC và 8 test OTP Redis trên container riêng. 10 test DTO Notification pass sau khi JSON mẫu và test Kafka được cập nhật về thời hạn 60 giây. Không gửi email thật hoặc truy cập Redis ứng dụng.
 
 7. **Triển khai API yêu cầu gửi/gửi lại OTP tại User Service.**
 
@@ -249,7 +251,7 @@ sequenceDiagram
     |---|---|
     | Authentication/ownership | Không cookie -> 401 với request qua đúng security flow; subject sai; không nhận target userId/email; mọi dữ liệu quyết định lấy từ DB |
     | Cooldown | Lần đầu được phép; trước 60s trả 429 + TTL; bị chặn không gia hạn; sau hết hạn được gửi; nhiều request/instance chỉ một lượt được phép; Redis lỗi không gửi |
-    | OTP | Leading zero; sai format/sai mã/hết hạn; vượt attempts; resend vô hiệu mã cũ; khác user/email; consume đồng thời; resend đua verify; DB rollback sau consume; đã verified không gửi thêm |
+    | OTP | Leading zero; sai format/sai mã/hết hạn 60 giây; mã sai không gia hạn TTL; resend sau hết hạn; khác user/email; consume đồng thời; resend đua verify; DB rollback sau consume; đã verified không gửi thêm |
     | Producer | DTO đúng; broker ack trước 202; lỗi chắc chắn và timeout không chắc chắn; cleanup không xóa challenge mới; không log OTP |
     | Notification | Consume/gửi; duplicate event; retry/DLT; expired event; provider accept khác delivered; timeout UNKNOWN; DB lỗi và consumer redelivery |
     | Webhook | Chữ ký hợp lệ/sai/thiếu; raw body thay đổi; array nhiều event; duplicate và out-of-order; webhook đến trước Mail Send response; DB lỗi non-2xx |

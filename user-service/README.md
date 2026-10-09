@@ -61,7 +61,7 @@ The DTOs below define the planned API contracts. Controllers and business logic 
 
 All three endpoints require authentication. User identity comes from the security context, and the recipient email comes from the database. No request DTO accepts a target user ID or recipient email. OTP validation requires exactly six ASCII digits as a string, preserving leading zeroes; missing or malformed values map to `OTP_INVALID` (`400 / 1019`). OTP values are excluded from the request DTO's generated `toString()`.
 
-`expiresAt` is an `Instant` representing the OTP expiration time in UTC. The resend cooldown is enforced separately by the backend at 60 seconds; the OTP lifetime is configured separately. The send response acknowledges the request, not email delivery. The verify response uses a boolean `emailVerified`. Streamer identifiers are UUIDs, `status` uses `StreamerStatus` (successful registration returns `ACTIVE`), and `roles` contains role names such as `USER` and `STREAMER`, preserving existing roles. The DTOs do not assign roles or default streamer status before business validation.
+`expiresAt` is an `Instant` representing the OTP expiration time in UTC. OTP validity and resend cooldown share one 60-second TTL. The send response acknowledges the request, not email delivery. The verify response uses a boolean `emailVerified`. Streamer identifiers are UUIDs, `status` uses `StreamerStatus` (successful registration returns `ACTIVE`), and `roles` contains role names such as `USER` and `STREAMER`, preserving existing roles. The DTOs do not assign roles or default streamer status before business validation.
 
 ## Email verification and streamer service structure
 
@@ -71,12 +71,42 @@ Email verification belongs to `user`; streamer registration belongs to `streamer
 |---|---|
 | `user.service.EmailVerificationService` | Request OTP and verify OTP using the existing request/response DTOs |
 | `user.service.impl.EmailVerificationServiceImpl` | Coordinate user persistence, OTP storage and email publishing |
-| `user.service.EmailVerificationOtpStore` | Reserve cooldown atomically, save/read challenges, consume OTP once and clean up only the owning challenge |
+| `user.service.EmailVerificationOtpStore` | Check cooldown, save a hash only if absent, consume OTP atomically and clean up only a matching hash |
 | `user.service.EmailVerificationEmailPublisher` | Publish an email request and wait for broker acknowledgement, independently of email delivery |
 | `streamer.service.StreamerRegistrationService` | Become Streamer for the authenticated user |
 | `streamer.service.impl.StreamerRegistrationServiceImpl` | Coordinate database eligibility checks and atomic streamer/role persistence |
 
-`user.model` holds internal challenge, cooldown and verification results, and email publishing input. These are not JPA entities or client DTOs. The Kafka wire contract is defined separately in a later step. OTP hashes and raw OTPs are excluded from generated `toString()` methods. Future Redis and Kafka implementations belong to `user.adapter.redis` and `user.adapter.kafka`.
+`user.model` holds internal cooldown and verification results, and email publishing input. These are not JPA entities or client DTOs. The [Kafka wire contract](../docs/contracts/Email%20Verification%20Kafka.md) is defined separately. Raw OTPs are excluded from generated `toString()` methods. The Redis implementation is in `user.service.impl`; the future publisher belongs to `user.adapter.kafka`.
+
+## Redis OTP storage
+
+`RedisEmailVerificationOtpStore` stores one String key, `otp:email-verification:cooldown:{userId}`, whose value is the OTP HMAC. `email-verification.otp.ttl-seconds` defaults to 60 seconds and reads `OTP_COOLDOWN_SECONDS` in the dev profile. This is the only lifetime setting: the old separate OTP TTL and attempt-limit settings are no longer used.
+
+`hasCooldown` allows an early rejection before OTP generation. `save` uses a Lua script with SET NX EX and reports the remaining TTL on rejection, without replacing the hash or extending expiry. `consume` atomically compares and deletes the matching hash; a mismatch preserves the key, and a missing key returns NOT_FOUND. `deleteIfCurrent` uses the same comparison for cleanup. Wrong-OTP attempts are not limited in this version.
+
+`EmailVerificationOtpHasher` computes HMAC-SHA256 from the verification purpose, user ID, database email and six-digit OTP. It uses `OTP_HMAC_KEY` independently of the JWT key; the key is required when hashing is invoked, with no additional startup validation configuration. The hash and OTP are not logged. User and email binding prevents using a code for a different user or database email.
+
+The storage and hashing components are Spring beans. OTP generation, Kafka publishing, HTTP endpoints and transactional `emailVerified` updates remain in steps 7–8.
+
+To run the Redis integration tests against an isolated instance, start Redis from the repository root:
+
+```bash
+docker run --rm -d --name reallive-otp-redis-test -p 127.0.0.1:16380:6379 redis:7.4-alpine
+```
+
+Then run from `user-service/`:
+
+```bash
+./mvnw -o -Dtest=RedisEmailVerificationOtpStoreTest,EmailVerificationOtpHasherTest -Duser.test.redis-port=16380 test
+```
+
+Finally stop the test container:
+
+```bash
+docker stop reallive-otp-redis-test
+```
+
+The Redis tests use database 15, unique user IDs and delete only their own keys. They cover the 60-second TTL, automatic expiry (using a shorter test-only lifetime), resend rejection, unlimited wrong attempts without TTL extension, immediate consume, cleanup and concurrent saves/consumes. Without `user.test.redis-port`, Redis-dependent tests are skipped.
 
 The service implementation classes are scaffolds: their methods explicitly throw `UnsupportedOperationException` until business logic is implemented. They are not registered as Spring beans, and no controllers expose these methods. This preserves the existing application's startup while the infrastructure adapters and streamer repository are built. No OTPs are generated, no email requests are published, and no privileges are assigned by this scaffolding.
 
@@ -113,7 +143,7 @@ Refresh consumption uses `SET NX` with TTL so concurrent refresh requests cannot
 
 Activate `dev` and configure PostgreSQL, Redis, and a shared random `JWT_SIGNER_KEY` of at least 64 UTF-8 bytes. Gateway and user-service must share the key, Redis database, and cookie attributes. The key is used as text rather than Base64-decoded.
 
-Kafka and OTP settings are in `application-dev.yaml`; activate the `dev` profile when running locally. User Service does not add a separate startup validator for these settings. Use an independent `OTP_HMAC_KEY` for the future OTP implementation. Tests use independent `application-test.yaml` settings. See [email verification local setup](../docs/development/Email%20Verification%20Local%20Setup.md) for environment variables, host/Docker addresses and startup order. OTP lifetime and maximum attempts default to the proposed 300 seconds / 5 attempts; cooldown defaults to 60 seconds.
+Kafka and OTP settings are in `application-dev.yaml`; activate the `dev` profile when running locally. User Service does not add a separate startup validator for these settings. Use an independent `OTP_HMAC_KEY` for OTP hashing. Tests use independent `application-test.yaml` settings. See [email verification local setup](../docs/development/Email%20Verification%20Local%20Setup.md) for environment variables, host/Docker addresses and startup order. OTP lifetime and cooldown share a 60-second TTL; wrong-attempt limits are deferred.
 
 | Setting | Default |
 |---|---|

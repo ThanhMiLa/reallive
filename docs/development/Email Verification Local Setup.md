@@ -22,9 +22,8 @@ Configure the following application settings in the relevant service's `.env`:
 | `EMAIL_VERIFICATION_TOPIC_PARTITIONS`, `EMAIL_VERIFICATION_TOPIC_REPLICAS` | Positive integers; defaults 3 / 1 for a single local broker |
 | `EMAIL_VERIFICATION_TOPIC_RETENTION_MS` | Positive retention duration; default 600000 ms for both topics |
 | `EMAIL_VERIFICATION_MAX_RETRIES`, `EMAIL_VERIFICATION_RETRY_BACKOFF_MS` | Nonnegative retries / positive delay; defaults 2 retries at 1000 ms |
-| `OTP_COOLDOWN_SECONDS` | User only; agreed default 60 seconds |
-| `OTP_TTL_SECONDS`, `OTP_MAX_ATTEMPTS` | User only; proposed defaults 300 seconds / 5 attempts, independently configurable |
-| `OTP_HMAC_KEY` | User only; independent random secret for the future OTP implementation; keep it separate from `JWT_SIGNER_KEY` |
+| `OTP_COOLDOWN_SECONDS` | User only; default 60 seconds, the shared TTL for OTP validity and resend cooldown |
+| `OTP_HMAC_KEY` | User only; independent random secret required when hashing an OTP; keep it separate from `JWT_SIGNER_KEY` |
 | `SENDGRID_API_KEY` | Notification only; required nonblank secret |
 | `SENDGRID_FROM_EMAIL`, `SENDGRID_FROM_NAME` | Notification only; valid, nonblank email and nonblank name; email must be configured with SendGrid before delivery is implemented |
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Notification only; required nonblank key; cryptographic format/signature verification comes with the webhook implementation |

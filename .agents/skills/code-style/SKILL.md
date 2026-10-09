@@ -41,6 +41,7 @@ private void validateRequest(CreateOrderRequest request) {
 
 ## Comments and Documentation
 
+- Every method declared in a Java service interface must have English Javadoc. Follow [service-javadoc](../service-javadoc/SKILL.md) for the required contract documentation.
 - Do not add comments that merely restate obvious code or narrate every line inside a method body.
 - Prefer clear method names and small methods over explanatory inline comments.
 - When a public API, complex method, or non-obvious business rule needs explanation, add a concise Javadoc-style comment directly above the relevant declaration. Document intent, important constraints, and non-obvious side effects rather than implementation trivia.
