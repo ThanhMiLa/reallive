@@ -152,7 +152,9 @@ Service, controller and publisher tests cover eligibility, database values over 
 
 ## Streamer persistence
 
-Flyway V4 adds `streamers` with a unique, required `user_id` referencing `users`, status validation (`PENDING`, `ACTIVE`, `SUSPENDED`, `BANNED`), verification and suspension timestamps, and a suspension reason. `StreamerEntity` and `StreamerRepository.findByUserId` expose the record independently of the user's roles, including bans that remain after role removal. Status must be supplied explicitly when saving a streamer.
+V4 preserves the historical profiles migration with checksum `-843705742`. Databases that previously applied `V4__create_profiles_table.sql` must resolve that same migration; the streamer table uses V6 so the applied V4 version is not reused.
+
+Flyway V6 adds `streamers` with a unique, required `user_id` referencing `users`, status validation (`PENDING`, `ACTIVE`, `SUSPENDED`, `BANNED`), verification and suspension timestamps, and a suspension reason. `StreamerEntity` and `StreamerRepository.findByUserId` expose the record independently of the user's roles, including bans that remain after role removal. Status must be supplied explicitly when saving a streamer.
 
 V5 seeds the `STREAMER` role if absent, preserving any existing role ID, permissions and memberships. It does not grant roles to users or introduce new permissions. Streamer registration will add this role alongside existing roles through `user_roles`; account registration now initializes a mutable role set.
 

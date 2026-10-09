@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class StreamerMigrationTest {
 
@@ -31,7 +32,7 @@ class StreamerMigrationTest {
     @Test
     void migratesFreshDatabaseAndSeedsStreamerRoleWithoutGrantingPrivileges() {
         Flyway flyway = migrations().load();
-        assertEquals(5, flyway.migrate().migrationsExecuted);
+        assertEquals(6, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
@@ -56,7 +57,7 @@ class StreamerMigrationTest {
         jdbc.update("INSERT INTO " + table("user_roles") + " (user_id, role_id) VALUES (?, ?)", userId, roleId);
 
         Flyway flyway = migrations().load();
-        assertEquals(2, flyway.migrate().migrationsExecuted);
+        assertEquals(3, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
@@ -66,6 +67,36 @@ class StreamerMigrationTest {
         assertEquals(1, count("users", ""));
         jdbc.update("INSERT INTO " + table("streamers") + " (user_id, status) VALUES (?, 'ACTIVE')", userId);
         assertNotNull(jdbc.queryForObject("SELECT id FROM " + table("streamers"), UUID.class));
+    }
+
+    @Test
+    void upgradesHistoricalProfilesV4WithoutReusingItsVersionOrLosingData() {
+        migrations().target("4").load().migrate();
+        assertEquals(-843705742, jdbc.queryForObject("SELECT \"checksum\" FROM "
+                + table("\"flyway_schema_history\"") + " WHERE \"version\" = '4'", Integer.class));
+        assertEquals("V4__create_profiles_table.sql", jdbc.queryForObject("SELECT \"script\" FROM "
+                + table("\"flyway_schema_history\"") + " WHERE \"version\" = '4'", String.class));
+        UUID userId = UUID.randomUUID();
+        UUID profileId = UUID.randomUUID();
+        jdbc.update("INSERT INTO " + table("users") + " (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+                userId, "legacy-profile-user", "legacy@example.com", "test-hash");
+        jdbc.update("INSERT INTO " + table("profiles") + " (id, user_id, display_name) VALUES (?, ?, NULL)",
+                profileId, userId);
+
+        Flyway flyway = migrations().load();
+        assertEquals(2, flyway.migrate().migrationsExecuted);
+        flyway.validate();
+
+        assertEquals(1, count("users", ""));
+        assertEquals(1, count("profiles", ""));
+        assertNull(jdbc.queryForObject("SELECT display_name FROM " + table("profiles") + " WHERE id = ?",
+                String.class, profileId));
+        assertEquals(0, count("streamers", ""));
+        assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
+        assertEquals(-843705742, jdbc.queryForObject("SELECT \"checksum\" FROM "
+                + table("\"flyway_schema_history\"") + " WHERE \"version\" = '4'", Integer.class));
+        assertEquals("V6__create_streamers_table.sql", jdbc.queryForObject("SELECT \"script\" FROM "
+                + table("\"flyway_schema_history\"") + " WHERE \"version\" = '6'", String.class));
     }
 
     private FluentConfiguration migrations() {
