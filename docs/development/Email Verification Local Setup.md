@@ -68,7 +68,7 @@ cd user-service
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-User listens on `8080/user`; Notification listens on `8085/notification`. Notification uses `ddl-auto=validate`, `open-in-view=false`, and Flyway against its own database. It currently has no history entities or migration scripts, so Flyway can report “No migrations found” until the persistence step. Do not point Notification at User's database. Notification does not use Redis yet; its Redis health contributor is disabled despite the existing Redis dependency.
+User listens on `8080/user`; Notification listens on `8085/notification`. Notification uses `ddl-auto=validate`, `open-in-view=false`, and Flyway against its own database. Migration V1 creates `email_notifications` and `email_delivery_events` for submission and webhook history. Do not point Notification at User's database. Notification does not use Redis yet; its Redis health contributor is disabled despite the existing Redis dependency.
 
 ## Host and Docker addresses
 

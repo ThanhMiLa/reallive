@@ -491,8 +491,57 @@ Constraints:
 
 ### 7.1 Tables
 
-*TBD - Will be defined during Notification Service implementation after email delivery requirements are finalized.*
+#### 7.1.1 email_notifications
+
+One row represents an email request received from Kafka. All email types share this table.
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Internal notification identifier |
+| event_id | UUID | UNIQUE, NOT NULL | UNIQUE | Kafka event identifier used for deduplication and webhook correlation |
+| user_id | UUID | NOT NULL | Composite | Recipient user identifier; no cross-service foreign key |
+| email_type | VARCHAR(50) | NOT NULL | - | Email purpose; currently `EMAIL_VERIFICATION`, extended as other email flows are implemented |
+| recipient_email | VARCHAR(255) | NOT NULL | - | Recipient email address |
+| template_id | VARCHAR(255) | - | - | SendGrid template selected for sending |
+| status | VARCHAR(30) | NOT NULL, DEFAULT `PENDING` | - | `PENDING, PROCESSING, ACCEPTED, FAILED, EXPIRED, UNKNOWN` |
+| attempt_count | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | - | Number of provider submission attempts |
+| last_http_status | SMALLINT | - | - | HTTP status of the latest provider submission |
+| last_error | TEXT | - | - | Latest sanitized error; exclude OTPs, credentials and full request bodies |
+| provider_message_id | TEXT | - | - | Message identifier returned by the provider |
+| issued_at | TIMESTAMPTZ | NOT NULL | - | Time the originating service issued the request |
+| expires_at | TIMESTAMPTZ | - | - | Request expiration; nullable for emails without a deadline |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Composite | Notification creation time |
+| updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Last update time; maintained by the application on updates |
+
+Composite index:
+- `INDEX (user_id, created_at)`
+
+`ACCEPTED` describes provider submission, not email delivery. Delivery history is stored separately below. Do not store OTPs, OTP hashes, password-reset links or full Kafka/SendGrid payloads. There is no `challenge_id` or `metadata` column in this version. Type-specific template data remains in transport DTOs.
+
+#### 7.1.2 email_delivery_events
+
+One row represents one SendGrid webhook event. Store separate rows for each event, including events received out of order.
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Internal delivery event identifier |
+| notification_id | UUID | FK, NOT NULL | Composite | References `email_notifications.id` |
+| sg_event_id | TEXT | UNIQUE when non-null | UNIQUE | SendGrid event identifier used to deduplicate webhook redelivery |
+| sg_message_id | TEXT | - | - | SendGrid message identifier from the webhook |
+| event_type | VARCHAR(50) | NOT NULL | - | Provider event type, such as `processed, delivered, deferred, bounce, dropped`; stored as text for additional event types |
+| provider_timestamp | TIMESTAMPTZ | NOT NULL | Composite | Provider event time, converted from Unix seconds |
+| received_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Time Notification received the event |
+| response | TEXT | - | - | Sanitized mail-server response |
+| reason | TEXT | - | - | Sanitized provider failure reason |
+| smtp_status | VARCHAR(50) | - | - | Webhook `status`, distinct from HTTP submission status |
+
+Composite index:
+- `INDEX (notification_id, provider_timestamp)`
+
+Resolve the webhook's `eventId` against `email_notifications.event_id`, then persist the related `notification_id`. No recipient email or user ID is duplicated in this table. Multiple events without `sg_event_id` are allowed; uniqueness applies when the provider supplies an ID.
 
 ### 7.2 Relationships
 
-*TBD*
+- `email_notifications` 1 — N `email_delivery_events` through `notification_id`.
+- `user_id` identifies a user owned by User Service; Notification does not query that database or enforce a cross-service foreign key.
+- Email history does not modify email verification, account status or streamer privileges.

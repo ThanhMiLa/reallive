@@ -247,11 +247,15 @@ sequenceDiagram
 
    Đây là dữ liệu do Notification sở hữu, phù hợp quyết định lưu webhook để debug. Đề xuất hai bảng tối thiểu: `email_notifications` cho yêu cầu/lần gửi và `email_delivery_events` cho lịch sử webhook. Không thêm bảng OTP hoặc registration vào Notification.
 
-   Bảng yêu cầu có UNIQUE(eventId), challengeId, recipient, loại email, issuedAt/expiresAt, trạng thái submit, attempt count, last error, provider message ID và timestamps. Có trạng thái riêng cho accepted, expired, failed và kết quả không chắc chắn. Không lưu body email hoặc OTP.
+   Bảng yêu cầu có UNIQUE(eventId), userId, recipient, loại email, templateId, issuedAt/expiresAt, trạng thái submit, attempt count, last HTTP status/error, provider message ID và timestamps. expiresAt nullable cho email không có thời hạn. Không lưu challengeId, body email, OTP hoặc OTP hash.
 
-   Bảng webhook lưu sg_event_id có uniqueness khi có ID, eventId liên kết từ custom_args, sg_message_id khi có, loại event, provider timestamp, receivedAt và thông tin lỗi được lọc. Giữ các sự kiện lịch sử để webhook đến trễ không ghi đè sai trạng thái mới hơn. Webhook đến trước response của Mail Send vẫn liên kết được bằng eventId. Quy định lưu trữ và dọn lịch sử.
+   Bảng webhook lưu sg_event_id có uniqueness khi có ID, notification_id liên kết bảng yêu cầu, sg_message_id khi có, loại event, provider timestamp, receivedAt và thông tin lỗi được lọc. Handler tìm yêu cầu qua eventId từ custom_args để lấy notification_id. Giữ các sự kiện lịch sử để webhook đến trễ không ghi đè sai trạng thái mới hơn. Webhook đến trước response của Mail Send vẫn liên kết được bằng eventId. Chính sách dọn lịch sử được triển khai khi có yêu cầu lưu trữ cụ thể.
 
-   Hoàn tất khi migration Notification chạy được và tra cứu được từ eventId/challengeId đến quá trình gửi và các sự kiện delivery mà không cần OTP.
+   Hoàn tất khi migration Notification chạy được và tra cứu được từ eventId/userId đến yêu cầu gửi và các sự kiện delivery mà không cần OTP.
+
+   **Trạng thái: đã hoàn thành phần persistence bước 9.** Data Model đã mô tả hai bảng dùng chung cho các loại email. Flyway V1 tạo `email_notifications` và `email_delivery_events` với unique event IDs, FK, index lịch sử user/delivery, trạng thái submit hợp lệ và attempt count không âm. Thêm `EmailNotificationEntity`, `EmailDeliveryEventEntity`, `EmailNotificationStatus` và hai interface repository; dùng `Instant`/TIMESTAMPTZ, quan hệ many-to-one lazy, hỗ trợ tìm event và phân trang lịch sử.
+
+   Kiểm tra `./mvnw -o clean verify` tại Notification: 42 test pass, không skip. Cùng 18 test persistence cũng pass trên PostgreSQL 17 chạy ở container riêng; Flyway/JPA schema validation, timezone timestamps, duplicate Kafka/webhook IDs, dữ liệu nullable, lịch sử ngoài thứ tự và FK đều được kiểm tra. Không gọi SendGrid hoặc truy cập database ứng dụng. Kafka consumer, client gửi mail và webhook handler thuộc bước 10–11.
 
 10. **Triển khai Kafka consumer và gửi mail qua SendGrid.**
 
