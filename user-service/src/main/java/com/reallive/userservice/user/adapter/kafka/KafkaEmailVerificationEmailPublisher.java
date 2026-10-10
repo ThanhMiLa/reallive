@@ -1,6 +1,6 @@
 package com.reallive.userservice.user.adapter.kafka;
 
-import com.reallive.userservice.user.dto.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 import jakarta.annotation.PostConstruct;
 import lombok.AccessLevel;

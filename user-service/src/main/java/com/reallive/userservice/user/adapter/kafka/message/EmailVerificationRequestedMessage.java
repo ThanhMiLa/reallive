@@ -1,4 +1,4 @@
-package com.reallive.userservice.user.dto.message;
+package com.reallive.userservice.user.adapter.kafka.message;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;

@@ -1,4 +1,4 @@
-package com.reallive.userservice.user.dto.message;
+package com.reallive.userservice.user.adapter.kafka.message;
 
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;

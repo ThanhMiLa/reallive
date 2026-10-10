@@ -4,7 +4,7 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
-import com.reallive.userservice.user.dto.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.exception.EmailVerificationPublishException;
