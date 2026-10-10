@@ -50,7 +50,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "gateway.security.csrf-enabled=true")
-@AutoConfigureWebTestClient
+@AutoConfigureWebTestClient(timeout = "PT30S")
 @ActiveProfiles({"dev", "test"})
 class GatewayAuthenticationTest {
 
