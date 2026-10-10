@@ -37,7 +37,7 @@ class EmailVerificationRequestedMessageTest {
 
     private String contractJson() throws Exception {
         Path contract = Path.of(System.getProperty("basedir", "."),
-                "../docs/contracts/email-verification-requested.v1.json");
+                "../test-fixtures/kafka/email-verification-requested.v1.json");
         return Files.readString(contract);
     }
 

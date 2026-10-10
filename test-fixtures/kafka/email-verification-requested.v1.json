@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "eventId": "d17d3b74-4ec5-4e81-bfe3-a7adbf292311",
+  "challengeId": "58c7d687-7219-4adc-8821-e3e82e796b02",
+  "userId": "7e94d13e-ddd9-4ec6-bbba-abbb30d55c0a",
+  "emailType": "EMAIL_VERIFICATION",
+  "recipientEmail": "user@example.com",
+  "otp": "012345",
+  "issuedAt": "2026-10-09T03:00:00Z",
+  "expiresAt": "2026-10-09T03:01:00Z"
+}

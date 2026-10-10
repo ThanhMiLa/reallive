@@ -1,0 +1,75 @@
+name: User Service tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test user-service
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: reallive_test
+          POSTGRES_USER: ci_test
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_test -d reallive_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: user-service
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: user-service/pom.xml
+      - name: Build and run all tests
+        run: >-
+          ./mvnw --batch-mode --no-transfer-progress
+          -Pbecome-streamer-coverage
+          -Duser.test.redis-port=6379
+          -Dgateway.test.redis-port=6379
+          -Dstreamer.test.database-url=jdbc:postgresql://127.0.0.1:5432/reallive_test
+          -Dstreamer.test.database-username=ci_test
+          -Dstreamer.test.database-password=ci_test_password
+          clean verify
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: test-reports-user-service
+          path: |
+            user-service/target/surefire-reports/
+            user-service/target/failsafe-reports/
+            user-service/target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 7

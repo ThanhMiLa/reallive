@@ -1,0 +1,57 @@
+name: API Gateway tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test api-gateway
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: api-gateway
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: api-gateway/pom.xml
+      - name: Build and run all tests
+        run: >-
+          ./mvnw --batch-mode --no-transfer-progress
+          -Dgateway.test.redis-port=6379
+          clean verify
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: test-reports-api-gateway
+          path: |
+            api-gateway/target/surefire-reports/
+            api-gateway/target/failsafe-reports/
+            api-gateway/target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 7
