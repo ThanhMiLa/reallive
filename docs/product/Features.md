@@ -1,88 +1,92 @@
 # FEATURES
 
 ## I - Account
-1. Login
-2. Logout
-3. Register
-4. Forgot Password
-5. Change Password
+- Login ✅
+- Logout ✅
+- Register ✅
+- Forgot Password
+- Change Password
+- Become Streamer ✅
+- Update Profile ✅
+- View Profile ✅
+- Verify Email ✅
 
 ## II - Channel
-6. Create channel
-7. Update Channel
-8. Follow / Unfollow Channel
-9. View Follower
-10. Assign Channel Moderator
-11. Remove Channel Moderator
+- Create channel
+- Update Channel
+- Follow / Unfollow Channel
+- View Follower
+- Assign Channel Moderator
+- Remove Channel Moderator
 
 ## III - Stream Setup
-12. Create Stream Session
-13. Set Title
-14. Choose Category
-15. Generate / Rotate Stream Key
-16. Configure Stream Visibility
+- Create Stream Session
+- Set Title
+- Choose Category
+- Generate / Rotate Stream Key
+- Configure Stream Visibility
 
 ## IV - Go Live / Live Stream
-17. Start Stream
-18. Validate Stream Key
-19. Change Status to LIVE
-20. Watch Stream
-21. Viewer Count
-22. End Stream
-23. Handle Unexpected Disconnect
-24. Notify Email Followers When Stream Starts
+- Start Stream
+- Validate Stream Key
+- Change Status to LIVE
+- Watch Stream
+- Viewer Count
+- End Stream
+- Handle Unexpected Disconnect
+- Notify Email Followers When Stream Starts
 
 ## V - Chat Realtime
-25. Send Message
-26. Mute User
-27. Ban User From Channel Chat
-28. Unban User
+- Send Message
+- Mute User
+- Ban User From Channel Chat
+- Unban User
 
 ## VI - Donate / Coin / Payment
-29. Ranking Donate
-30. Buy Coin
-31. View Coin Balance
-32. Buy Virtual Gift
-33. Donate Gift
-34. Donation History
-35. Transaction Payment History
-36. Refund Gift
-37. Streamer Revenue
-38. Withdraw Request
-39. Withdrawal History
+- Ranking Donate
+- Buy Coin
+- View Coin Balance
+- Buy Virtual Gift
+- Donate Gift
+- Donation History
+- Transaction Payment History
+- Refund Gift
+- Streamer Revenue
+- Withdraw Request
+- Withdrawal History
 
 ## VII - Moderation / Report
-40. Report User
-41. Report Stream
-42. Review Report
-43. Suspend Streaming Permission
-44. Ban Account
+- Report User
+- Report Stream
+- Review Report
+- Suspend Streaming Permission
+- Ban Account
 
 ## VIII - VOD / Recorded Stream
-45. Save Recording
-46. Publish VOD
-47. View VOD
-48. Delete VOD
-49. Change VOD Visibility
-50. Generate Thumbnail
+- Save Recording
+- Publish VOD
+- View VOD
+- Delete VOD
+- Change VOD Visibility
+- Generate Thumbnail
 
 ## IX - Discovery / Search
-51. Live Stream List
-52. Following Feed
-53. Recommended Streams
+- Live Stream List
+- Following Feed
+- Recommended Streams
 
 ## X - Analytics
-54. Total time stream
-55. Statistical Number View Stream
-56. Statistical Time of stream
-57. Donation Revenue
-58. Stream History
+- Total time stream
+- Statistical Number View Stream
+- Statistical Time of stream
+- Donation Revenue
+- Stream History
 
 ## XI - Admin / Platform Management
-59. Manage Users
-60. Manage Categories
-61. Manage Platform Moderators
-62. Manage Reports
-63. Manage Banned Accounts
-64. Manage System Settings
-65. View Platform Analytics
+- Manage Users
+- Manage Categories
+- Manage Platform Moderators
+- Manage Reports
+- Manage Banned Accounts
+- Manage System Settings
+- View Platform Analytics
