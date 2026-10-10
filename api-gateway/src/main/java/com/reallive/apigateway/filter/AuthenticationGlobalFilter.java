@@ -24,6 +24,9 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
             "/user/api/auth/register",
             "/user/api/auth/refresh",
             "/user/api/auth/logout",
+            "/user/api/auth/forgot-password",
+            "/user/api/auth/verify-reset-otp",
+            "/user/api/auth/reset-password",
             "/notification/api/webhooks/sendgrid"
     );
     private static final Map<HttpMethod, Set<String>> PUBLIC_ENDPOINTS = Map.of(

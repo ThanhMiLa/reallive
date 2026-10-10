@@ -105,7 +105,7 @@ class GatewayAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"login", "register", "refresh", "logout"})
+    @ValueSource(strings = {"login", "register", "refresh", "logout", "forgot-password", "verify-reset-otp", "reset-password"})
     void publicPostWithoutTokensReachesBackend(String action) {
         request(HttpMethod.POST, AUTH_PATH + "/" + action).exchange().expectStatus().isOk();
         assertEquals(1, BACKEND_CALLS.get());
@@ -168,7 +168,7 @@ class GatewayAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"login", "register", "refresh", "logout"})
+    @ValueSource(strings = {"login", "register", "refresh", "logout", "forgot-password", "verify-reset-otp", "reset-password"})
     void invalidCookieIsRejectedEvenOnPublicEndpoints(String action) {
         request(HttpMethod.POST, AUTH_PATH + "/" + action).cookie("access_token", "malformed")
                 .exchange().expectStatus().isUnauthorized()
@@ -314,7 +314,7 @@ class GatewayAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"login", "register", "refresh", "logout"})
+    @ValueSource(strings = {"login", "register", "refresh", "logout", "forgot-password", "verify-reset-otp", "reset-password"})
     void publicPathWithWrongHttpMethodIsProtected(String action) {
         request(HttpMethod.GET, AUTH_PATH + "/" + action).exchange().expectStatus().isUnauthorized();
         request(HttpMethod.GET, "/channel/api/private").exchange().expectStatus().isUnauthorized();
