@@ -1,5 +1,7 @@
 package com.reallive.notificationservice.email.configuration;
 
+import com.reallive.notificationservice.email.consumer.EmailKafkaRecovery;
+
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -11,6 +13,7 @@ import org.springframework.kafka.core.KafkaAdmin.NewTopics;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.support.LoggingProducerListener;
 import org.springframework.util.backoff.FixedBackOff;
 
 @Configuration(proxyBeanMethods = false)
@@ -46,12 +49,22 @@ public class EmailKafkaConfig {
     /** A failed record is acknowledged only after the broker accepts its dead-letter copy. */
     @Bean
     public DefaultErrorHandler emailKafkaErrorHandler(KafkaTemplate<String, String> template,
-            EmailDeliveryProperties properties) {
+            EmailDeliveryProperties properties, EmailKafkaRecovery recovery) {
+        LoggingProducerListener<String, String> listener = new LoggingProducerListener<>();
+        listener.setIncludeContents(false);
+        template.setProducerListener(listener);
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(template,
                 (record, exception) -> new TopicPartition(properties.getDeadLetterTopic(), record.partition()));
         recoverer.setFailIfSendResultIsError(true);
         recoverer.setLogRecoveryRecord(false);
-        return new DefaultErrorHandler(recoverer,
+        DefaultErrorHandler handler = new DefaultErrorHandler((record, exception) -> {
+            if (recovery.beforeDeadLetter(record)) {
+                recoverer.accept(record, exception);
+            }
+        },
                 new FixedBackOff(properties.getRetryBackoffMs(), properties.getMaxRetries()));
+        handler.setBackOffFunction(recovery::backOff);
+        handler.setResetStateOnExceptionChange(false);
+        return handler;
     }
 }

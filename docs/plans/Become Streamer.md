@@ -259,15 +259,21 @@ sequenceDiagram
 
 10. **Triển khai Kafka consumer và gửi mail qua SendGrid.**
 
+    Kế hoạch triển khai chi tiết cập nhật theo source ngày 2026-10-10: [Step 10 — Email Delivery](<Step 10 - Email Delivery.md>). Tài liệu này chốt class, transaction, retry/DLT, xử lý UNKNOWN và bộ test cần thực hiện.
+
     Consumer validate DTO/version, ghi nhận eventId trước khi gọi provider, bỏ qua yêu cầu đã xử lý xong, đánh dấu EXPIRED nếu quá expiresAt. Không sinh lại hoặc kiểm tra OTP với User Service. Không gửi message lỗi format đi retry vô hạn.
 
-    SendGrid client sử dụng API key của Notification, sender đã xác minh và nội dung OTP sáu số/thời hạn rõ ràng. Có thể dùng WebClient hiện có; webhook verification dùng thư viện phù hợp được kiểm tra khi triển khai. Thêm eventId/challengeId vào SendGrid custom_args để webhook liên kết về yêu cầu, không đặt OTP trong custom_args.
+    SendGrid client sử dụng API key của Notification, sender đã xác minh và Dynamic Template đã cấu hình. Dùng WebClient hiện có. Thêm eventId vào SendGrid custom_args để webhook liên kết về yêu cầu; challengeId vẫn giữ trong Kafka contract, không lưu vào history hoặc cần cho webhook correlation. Không đặt OTP trong custom_args.
 
     Phân biệt SendGrid nhận yêu cầu (HTTP 202) với delivered. Retry hữu hạn cho lỗi tạm thời và tôn trọng thời hạn OTP; lỗi cấu hình/địa chỉ/payload cần phân loại thay vì retry giống nhau. Sau retry thất bại, ghi lịch sử và chuyển DLT theo contract; DLT không log OTP.
 
-    Dùng ràng buộc DB và claim/lease để consumer redelivery hoặc rebalance không gọi provider đồng thời cho cùng event. Không giữ transaction DB dài trong lúc gọi HTTP. Kafka producer idempotence không đảm bảo exactly-once cho tác dụng phụ SendGrid: nếu HTTP timeout/crash sau provider nhận mà trước DB ghi nhận, kết quả có thể không chắc chắn. Lưu UNKNOWN, liên kết webhook bằng eventId và có chính sách phục hồi hữu hạn; không hứa tuyệt đối không trùng email hoặc retry mù.
+    Dùng ràng buộc DB và atomic claim dựa trên status/attempt_count để consumer redelivery hoặc rebalance không gọi provider đồng thời cho cùng event. Kế hoạch chi tiết bổ sung next_attempt_at để lịch retry tồn tại qua restart. Không giữ transaction DB dài trong lúc gọi HTTP. Kafka producer idempotence không đảm bảo exactly-once cho tác dụng phụ SendGrid: nếu HTTP timeout/crash sau provider nhận mà trước DB ghi nhận, kết quả có thể không chắc chắn. Lưu UNKNOWN, liên kết webhook bằng eventId và không tự resend các call chưa xác định kết quả; không hứa tuyệt đối không trùng email hoặc retry mù.
 
-    Hoàn tất khi gửi được email qua adapter, duplicate Kafka event đã hoàn tất không gửi lại, retry không gửi OTP đã hết hạn và mọi failure có thể tra cứu trong Notification DB.
+    Hoàn tất khi gửi được email qua SendGrid client, duplicate Kafka event đã hoàn tất không gửi lại, retry không gửi OTP đã hết hạn và failure có thể tra cứu qua Notification DB hoặc DLT khi message không đủ metadata hợp lệ để tạo history.
+
+    **Trạng thái: đã triển khai step 10 và kiểm thử tự động.** Có Kafka consumer, validation, delivery service build payload Dynamic Template và xử lý kết quả, SendGrid client chỉ gọi HTTP, history transaction bean, row lock và attempt guard. Migration V3 lưu `next_attempt_at`; retry/DLT dùng error code, retry lịch database và không resend outcome UNKNOWN. Nội dung log/history không chứa OTP hoặc API key.
+
+    Kiểm tra PostgreSQL 17 cô lập: 35 test migration/persistence/row-lock/rollback pass, không skip. `./mvnw clean verify` tại Notification: 203 test pass, không lỗi hoặc skip. Kiểm thử provider dùng local HTTP stub; smoke test email thật vẫn là bước thủ công.
 
 11. **Triển khai SendGrid Event Webhook và đường đi qua Gateway.**
 

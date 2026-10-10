@@ -15,6 +15,7 @@ spring:
       auto-offset-reset: earliest
       max-poll-records: 1
     listener:
+      auto-startup: false
       ack-mode: record
       missing-topics-fatal: true
     producer:
@@ -47,6 +48,7 @@ management:
 
 notification:
   email:
+    consumer-enabled: false
     topic: notification.email-verification.requested.v1
     dead-letter-topic: notification.email-verification.requested.v1.dlt
     sendgrid:
@@ -54,3 +56,4 @@ notification:
       sender-email: sender@example.com
       sender-name: RealLive
       webhook-verification-public-key: test-webhook-public-key
+      email-verification-template-id: d-test-template

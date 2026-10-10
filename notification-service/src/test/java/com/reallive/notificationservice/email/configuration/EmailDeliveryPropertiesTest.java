@@ -26,7 +26,8 @@ class EmailDeliveryPropertiesTest {
                     "notification.email.sendgrid.api-key=test-sendgrid-key",
                     "notification.email.sendgrid.sender-email=sender@example.com",
                     "notification.email.sendgrid.sender-name=RealLive",
-                    "notification.email.sendgrid.webhook-verification-public-key=test-public-key");
+                    "notification.email.sendgrid.webhook-verification-public-key=test-public-key",
+                    "notification.email.sendgrid.email-verification-template-id=d-test-template");
 
     @Test
     void bindsLocalTopicAndRetryDefaults() {
@@ -45,7 +46,10 @@ class EmailDeliveryPropertiesTest {
             "notification.email.partitions=0", "notification.email.replicas=0", "notification.email.retention-ms=0",
             "notification.email.max-retries=-1", "notification.email.retry-backoff-ms=0",
             "notification.email.sendgrid.api-key=", "notification.email.sendgrid.sender-email=invalid",
-            "notification.email.sendgrid.webhook-verification-public-key="})
+            "notification.email.sendgrid.webhook-verification-public-key=",
+            "notification.email.sendgrid.email-verification-template-id=",
+            "notification.email.sendgrid.email-verification-template-id=wrong-template",
+            "notification.email.sendgrid.request-timeout=0s"})
     void rejectsInvalidConfiguration(String property) {
         contextRunner.withPropertyValues(property).run(context -> assertThat(context).hasFailed());
     }

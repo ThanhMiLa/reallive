@@ -2,7 +2,7 @@
 
 Topic: `notification.email-verification.requested.v1` (configurable). The Kafka key is the UUID `userId` as a string. The value is JSON, with no Java class name or package-specific type headers.
 
-User Service publishes `user.dto.message.EmailVerificationRequestedMessage`. Notification Service deserializes it into its own `email.dto.message.EmailVerificationRequestedMessage`. Each service builds independently; the shared [example JSON](email-verification-requested.v1.json) is the compatibility fixture used by both modules' contract tests.
+User Service publishes `user.adapter.kafka.message.EmailVerificationRequestedMessage`. Notification Service deserializes it into its own `email.dto.message.EmailVerificationRequestedMessage`. Each service builds independently; the shared [example JSON](email-verification-requested.v1.json) is the compatibility fixture used by both modules' contract tests.
 
 | Field | JSON type | Meaning |
 |---|---|---|
@@ -16,7 +16,7 @@ User Service publishes `user.dto.message.EmailVerificationRequestedMessage`. Not
 | `issuedAt` | ISO-8601 UTC string | OTP issuance time |
 | `expiresAt` | ISO-8601 UTC string | OTP expiry time, strictly after issuance |
 
-All fields are required. The future consumer must validate the schema version, fields and expiry before sending email. This document defines the DTOs and their JSON representation. User Service implements OTP requests and Kafka publication; Notification consumer validation and delivery are implemented in subsequent steps.
+All fields are required. Notification validates the schema version, field types, recipient, OTP format, Kafka key and timestamp range before delivery; expiry is checked under the history lock and again immediately before the provider call. User Service implements OTP requests/publication and Notification implements Kafka consumption/SendGrid submission.
 
 The message contains the original OTP because Notification needs it to send the email. Redis stores only the HMAC string at `otp:email-verification:cooldown:{userId}` with a 60-second TTL, shared by OTP validity and resend cooldown. The hash is not part of this message. `expiresAt` must use the same lifetime. Both message DTOs exclude OTP from `toString()`. Callers must not log raw JSON or OTP values, including on retries and dead-letter handling.
 

@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
-        "spring.kafka.admin.auto-create=true", "notification.email.max-retries=1",
+        "spring.kafka.admin.auto-create=true", "spring.kafka.listener.auto-startup=true", "notification.email.max-retries=1",
         "notification.email.retry-backoff-ms=10"
 })
 @ActiveProfiles("test")

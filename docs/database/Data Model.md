@@ -504,7 +504,8 @@ One row represents an email request received from Kafka. All email types share t
 | recipient_email | VARCHAR(255) | NOT NULL | - | Recipient email address |
 | template_id | VARCHAR(255) | - | - | SendGrid template selected for sending |
 | status | VARCHAR(30) | NOT NULL, DEFAULT `PENDING` | - | `PENDING, PROCESSING, ACCEPTED, FAILED, EXPIRED, UNKNOWN` |
-| attempt_count | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | - | Number of provider submission attempts |
+| attempt_count | INTEGER | NOT NULL, DEFAULT 0, CHECK >= 0 | - | Number of claimed provider attempts; an attempt claimed before a crash also counts |
+| next_attempt_at | TIMESTAMPTZ | Nullable | - | Earliest allowed provider retry; cleared on claim or terminal status |
 | last_http_status | SMALLINT | - | - | HTTP status of the latest provider submission |
 | last_error | TEXT | - | - | Latest sanitized error; exclude OTPs, credentials and full request bodies |
 | provider_message_id | TEXT | - | - | Message identifier returned by the provider |
@@ -516,7 +517,7 @@ One row represents an email request received from Kafka. All email types share t
 Composite index:
 - `INDEX (user_id, created_at)`
 
-`ACCEPTED` describes provider submission, not email delivery. Delivery history is stored separately below. Do not store OTPs, OTP hashes, password-reset links or full Kafka/SendGrid payloads. There is no `challenge_id` or `metadata` column in this version. Type-specific template data remains in transport DTOs.
+`ACCEPTED` describes provider submission, not email delivery. Delivery history is stored separately below. Do not store OTPs, OTP hashes, password-reset links or full Kafka/SendGrid payloads. There is no `challenge_id` or `metadata` column in this version. Type-specific template data remains in transport DTOs. Migration V3 adds nullable `next_attempt_at` without changing existing history. Submission workers use a short row-lock transaction to claim an attempt and check its number before persisting a result.
 
 #### 7.1.2 email_delivery_events
 

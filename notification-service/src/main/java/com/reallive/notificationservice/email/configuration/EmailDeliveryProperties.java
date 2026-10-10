@@ -6,10 +6,13 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
+
+import java.time.Duration;
 
 @Getter
 @Setter
@@ -60,6 +63,22 @@ public class EmailDeliveryProperties {
         private String senderName;
 
         private String webhookVerificationPublicKey;
+
+        @NotBlank
+        @Pattern(regexp = "d-[A-Za-z0-9-]+")
+        private String emailVerificationTemplateId;
+
+        @NotBlank
+        private String baseUrl = "https://api.sendgrid.com";
+
+        private Duration connectTimeout = Duration.ofSeconds(2);
+        private Duration requestTimeout = Duration.ofSeconds(10);
+
+        @AssertTrue(message = "SendGrid timeouts must be positive")
+        public boolean isTimeoutConfigurationValid() {
+            return connectTimeout != null && !connectTimeout.isNegative() && !connectTimeout.isZero()
+                    && requestTimeout != null && !requestTimeout.isNegative() && !requestTimeout.isZero();
+        }
 
         @AssertTrue(message = "SENDGRID_API_KEY must be configured")
         public boolean isApiKeyConfigured() {

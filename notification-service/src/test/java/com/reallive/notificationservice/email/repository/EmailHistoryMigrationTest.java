@@ -12,6 +12,7 @@ import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class EmailHistoryMigrationTest {
 
@@ -39,9 +40,13 @@ class EmailHistoryMigrationTest {
                             + " (id, notification_id, sg_event_id, event_type, provider_timestamp, received_at) VALUES (?, ?, ?, 'delivered', ?, ?)",
                     deliveryId, notificationId, "old-event", receivedAt.minusSeconds(1), receivedAt);
             Flyway flyway = migrations(dataSource, schema).load();
-            assertEquals(1, flyway.migrate().migrationsExecuted);
+            assertEquals(2, flyway.migrate().migrationsExecuted);
             flyway.validate();
             assertEquals(0, flyway.migrate().migrationsExecuted);
+            assertNull(jdbc.queryForObject("SELECT next_attempt_at FROM " + notificationTable + " WHERE id = ?", OffsetDateTime.class, notificationId));
+            jdbc.update("UPDATE " + notificationTable + " SET next_attempt_at = ? WHERE id = ?", receivedAt.plusSeconds(20), notificationId);
+            assertEquals(receivedAt.plusSeconds(20).toInstant(), jdbc.queryForObject(
+                    "SELECT next_attempt_at FROM " + notificationTable + " WHERE id = ?", OffsetDateTime.class, notificationId).toInstant());
             assertEquals(notificationId, jdbc.queryForObject("SELECT notification_id FROM " + deliveryTable + " WHERE id = ?", UUID.class, deliveryId));
             assertEquals("delivered", jdbc.queryForObject("SELECT event_type FROM " + deliveryTable + " WHERE id = ?", String.class, deliveryId));
             for (String column : new String[]{"received_at", "created_at", "updated_at"}) {

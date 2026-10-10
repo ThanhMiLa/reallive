@@ -77,6 +77,9 @@ public class EmailNotificationEntity extends BaseEntity {
     @Column(name = "expires_at")
     Instant expiresAt;
 
+    @Column(name = "next_attempt_at")
+    Instant nextAttemptAt;
+
     @Override
     public final boolean equals(Object other) {
         if (this == other) {

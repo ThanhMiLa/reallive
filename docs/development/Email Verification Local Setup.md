@@ -1,6 +1,6 @@
 # Email verification infrastructure — local setup
 
-Step 4 prepares the infrastructure and configuration for User → Kafka → Notification → SendGrid. OTP generation, the Kafka JSON DTO, email delivery, webhook endpoints and history migrations are implemented in later steps.
+The infrastructure supports User → Kafka → Notification → SendGrid. OTP request/verification, Kafka delivery and notification history are implemented through step 10. Webhook processing remains for step 11.
 
 ## Requirements and environment
 
@@ -25,7 +25,8 @@ Configure the following application settings in the relevant service's `.env`:
 | `OTP_COOLDOWN_SECONDS` | User only; default 60 seconds, the shared TTL for OTP validity and resend cooldown |
 | `OTP_HMAC_KEY` | User only; independent random secret required when hashing an OTP; keep it separate from `JWT_SIGNER_KEY` |
 | `SENDGRID_API_KEY` | Notification only; required nonblank secret |
-| `SENDGRID_FROM_EMAIL`, `SENDGRID_FROM_NAME` | Notification only; valid, nonblank email and nonblank name; email must be configured with SendGrid before delivery is implemented |
+| `SENDGRID_FROM_EMAIL`, `SENDGRID_FROM_NAME` | Notification only; valid, nonblank email and nonblank name; email must be a verified sender in SendGrid |
+| `SENDGRID_EMAIL_VERIFICATION_TEMPLATE_ID` | Notification only; required Dynamic Template ID with an active version using `otp` and `expiresInMinutes` |
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Notification only; required nonblank key; cryptographic format/signature verification comes with the webhook implementation |
 
 Keep the existing JWT and R2 settings required by User Service. Generate independent secrets, for example by running `openssl rand -hex 32` separately for OTP and JWT. Do not commit `.env` or real credentials.
@@ -100,3 +101,18 @@ docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafk
 Both Java services must finish startup without connection or binding errors. User Service keeps Kafka/OTP settings in YAML without a separate startup validation class. Notification validates its broker/group and email/provider settings; its KafkaAdmin fails startup when it cannot provision topics within its configured timeout. No real email is sent by step 4.
 
 Run `./mvnw clean verify` inside each service. Notification tests use H2, fake provider credentials and an embedded Kafka broker; they verify validation, retries, dead-letter delivery and that offsets are not committed before processing finishes. The actual delivery listener exists only in the test configuration at this step.
+
+## Step 10 delivery check
+
+Activate `dev` for Notification and export its service environment. Flyway applies V3 to add `next_attempt_at`. The consumer starts on the configured request topic; the SendGrid client uses the configured Dynamic Template and reads the Mail Send status/header. HTTP 202 creates an `ACCEPTED` submission, not a delivery confirmation.
+
+After requesting an OTP through User Service, use its Kafka `eventId` to inspect history without logging the payload:
+
+```sql
+SELECT event_id, status, attempt_count, last_http_status, last_error,
+       provider_message_id, expires_at, next_attempt_at
+FROM email_notifications
+WHERE event_id = '<event-uuid>';
+```
+
+`FAILED` and `UNKNOWN` requests are recovered to the DLT; an UNKNOWN request is not automatically resent. A new OTP request after cooldown receives a new event ID. Existing accepted events are not sent again. The test suite uses fake credentials, a local HTTP stub and isolated Kafka/database resources; a real mailbox smoke test is a separate manual check.
