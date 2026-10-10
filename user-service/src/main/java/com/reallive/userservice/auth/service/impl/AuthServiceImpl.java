@@ -8,6 +8,7 @@ import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
 import com.reallive.userservice.auth.mapper.UserMapper;
 import com.reallive.userservice.auth.repository.RoleRepository;
@@ -125,6 +126,43 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    public AuthResponse changePassword(UUID userId, String accessToken, String refreshToken, ChangePasswordRequest request) {
+        UserEntity userEntity = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        UserValidator.validateActive(userEntity);
+
+
+        if (userEntity.getPasswordHash() == null || userEntity.getPasswordHash().isBlank()) {
+            throw new AppException(ErrorCode.PASSWORD_NOT_SET);
+        }
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        if (!Objects.equals(request.getNewPassword(), request.getConfirmPassword())) {
+            throw new AppException(ErrorCode.PASSWORD_NOT_MATCH);
+        }
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), userEntity.getPasswordHash())) {
+            throw new AppException(ErrorCode.CURRENT_PASSWORD_INCORRECT);
+        }
+
+        if (passwordEncoder.matches(request.getNewPassword(), userEntity.getPasswordHash())) {
+            throw new AppException(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT);
+        }
+
+        userEntity.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(userEntity);
+
+        processTokenInvalidation(accessToken, "ACCESS");
+        processTokenInvalidation(refreshToken, "REFRESH");
+
+        return generateAuthResponse(userEntity);
+    }
+
+    @Override
+    @Transactional
     public AuthResponse register(RegisterRequest registerRequest) {
         if (userRepository.existsByUsername(registerRequest.getUsername())) {
             throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
@@ -181,11 +219,6 @@ public class AuthServiceImpl implements AuthService {
             if (!Boolean.TRUE.equals(consumed)) {
                 throw new AppException(ErrorCode.UNAUTHENTICATED);
             }
-
-            String storedValue = redisTemplate.opsForValue().get(blacklistKey);
-            Long ttlSeconds = redisTemplate.getExpire(blacklistKey, TimeUnit.SECONDS);
-            log.info("Redis blacklist readback: key={}, value={}, ttlSeconds={}",
-                    blacklistKey, storedValue, ttlSeconds);
         } catch (ParseException exception) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }

@@ -7,6 +7,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
+import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
 import com.reallive.userservice.auth.entity.PermissionEntity;
@@ -672,6 +673,263 @@ class AuthServiceImplTest {
                 assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
                 return 0;
             }
+        }
+    }
+
+    // =========================================================================
+    // 5. CHANGE PASSWORD TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("Change Password Branch Coverage")
+    class ChangePasswordTests {
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {"   "})
+        @DisplayName("Throws UNAUTHENTICATED when refresh token is null or blank")
+        void changePassword_ThrowsUnauthenticated_WhenRefreshTokenMissing(String refreshToken) {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "some-access-token", refreshToken, request));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            verify(passwordEncoder, never()).encode(any());
+            verifyNoInteractions(redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws USER_NOT_FOUND when user ID does not exist")
+        void changePassword_ThrowsUserNotFound_WhenUserDoesNotExist() {
+            UUID userId = UUID.randomUUID();
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(userId, "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.USER_NOT_FOUND, exception.getErrorCode());
+            verifyNoInteractions(passwordEncoder, redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws USER_NOT_ACTIVE when user status is BANNED")
+        void changePassword_ThrowsUserNotActive_WhenUserBanned() {
+            UserEntity user = createUser("banned_user", "hashed_pwd", UserStatus.BANNED);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
+            verifyNoInteractions(passwordEncoder, redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws PASSWORD_NOT_SET when user password hash is null")
+        void changePassword_ThrowsPasswordNotSet_WhenPasswordHashNull() {
+            UserEntity user = createUser("oauth_user", null, UserStatus.ACTIVE);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.PASSWORD_NOT_SET, exception.getErrorCode());
+            verifyNoInteractions(passwordEncoder, redisTemplate, valueOperations);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"", "   "})
+        @DisplayName("Throws PASSWORD_NOT_SET when user password hash is blank")
+        void changePassword_ThrowsPasswordNotSet_WhenPasswordHashBlank(String blankHash) {
+            UserEntity user = createUser("oauth_user", blankHash, UserStatus.ACTIVE);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.PASSWORD_NOT_SET, exception.getErrorCode());
+            verifyNoInteractions(passwordEncoder, redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws PASSWORD_NOT_MATCH when new password and confirm password differ")
+        void changePassword_ThrowsPasswordNotMatch_WhenNewAndConfirmPasswordDiffer() {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("differentSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.PASSWORD_NOT_MATCH, exception.getErrorCode());
+            verifyNoInteractions(passwordEncoder, redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws CURRENT_PASSWORD_INCORRECT when current password does not match DB hash")
+        void changePassword_ThrowsCurrentPasswordIncorrect_WhenCurrentPasswordWrong() {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("wrongOldSecret")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("wrongOldSecret", "hashed_pwd")).thenReturn(false);
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.CURRENT_PASSWORD_INCORRECT, exception.getErrorCode());
+            verify(passwordEncoder, never()).encode(any());
+            verifyNoInteractions(redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws NEW_PASSWORD_SAME_AS_CURRENT when new password equals current password")
+        void changePassword_ThrowsNewPasswordSameAsCurrent_WhenNewPasswordMatchesCurrent() {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("oldSecret123")
+                    .confirmPassword("oldSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
+            assertEquals(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT, exception.getErrorCode());
+            verify(passwordEncoder, never()).encode(any());
+            verifyNoInteractions(redisTemplate, valueOperations);
+        }
+
+        @Test
+        @DisplayName("Throws UNAUTHENTICATED when access token revocation fails in Redis")
+        void changePassword_ThrowsUnauthenticated_WhenAccessTokenRevocationFails() throws Exception {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            String accessJti = UUID.randomUUID().toString();
+            String refreshJti = UUID.randomUUID().toString();
+            String accessToken = createSignedToken("ACCESS", user.getId().toString(), accessJti,
+                    Instant.now().plusSeconds(300));
+            String refreshToken = createSignedToken("REFRESH", user.getId().toString(), refreshJti,
+                    Instant.now().plusSeconds(3600));
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
+            when(passwordEncoder.matches("newSecret123", "hashed_pwd")).thenReturn(false);
+            when(passwordEncoder.encode("newSecret123")).thenReturn("new_hashed_pwd");
+            when(valueOperations.setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class)))
+                    .thenReturn(false);
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), accessToken, refreshToken, request));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Successfully changes password, revokes both tokens, and returns new tokens")
+        void changePassword_Success_RevokesBothTokens_AndIssuesNewTokens() throws Exception {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            String accessJti = UUID.randomUUID().toString();
+            String refreshJti = UUID.randomUUID().toString();
+            String accessToken = createSignedToken("ACCESS", user.getId().toString(), accessJti,
+                    Instant.now().plusSeconds(300));
+            String refreshToken = createSignedToken("REFRESH", user.getId().toString(), refreshJti,
+                    Instant.now().plusSeconds(3600));
+
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
+            when(passwordEncoder.matches("newSecret123", "hashed_pwd")).thenReturn(false);
+            when(passwordEncoder.encode("newSecret123")).thenReturn("new_hashed_pwd");
+            when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(true);
+
+            AuthResponse response = authService.changePassword(user.getId(), accessToken, refreshToken, request);
+
+            assertNotNull(response);
+            assertNotNull(response.getAccessToken());
+            assertNotNull(response.getRefreshToken());
+            assertEquals("new_hashed_pwd", user.getPasswordHash());
+            verify(userRepository).save(user);
+
+            verify(valueOperations).setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class));
+            verify(valueOperations).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
+
+            SignedJWT newAccess = SignedJWT.parse(response.getAccessToken());
+            assertEquals(user.getId().toString(), newAccess.getJWTClaimsSet().getSubject());
+            assertEquals("ACCESS", newAccess.getJWTClaimsSet().getStringClaim("type"));
+        }
+
+        @Test
+        @DisplayName("Throws UNAUTHENTICATED when refresh token revocation fails in Redis")
+        void changePassword_ThrowsUnauthenticated_WhenRefreshTokenRevocationFails() throws Exception {
+            UserEntity user = createUser("active_user", "hashed_pwd", UserStatus.ACTIVE);
+            String accessJti = UUID.randomUUID().toString();
+            String refreshJti = UUID.randomUUID().toString();
+            String accessToken = createSignedToken("ACCESS", user.getId().toString(), accessJti,
+                    Instant.now().plusSeconds(300));
+            String refreshToken = createSignedToken("REFRESH", user.getId().toString(), refreshJti,
+                    Instant.now().plusSeconds(3600));
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
+            when(passwordEncoder.matches("newSecret123", "hashed_pwd")).thenReturn(false);
+            when(passwordEncoder.encode("newSecret123")).thenReturn("new_hashed_pwd");
+            when(valueOperations.setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class)))
+                    .thenReturn(true);
+            when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class)))
+                    .thenReturn(false);
+
+            AppException exception = assertThrows(AppException.class,
+                    () -> authService.changePassword(user.getId(), accessToken, refreshToken, request));
+            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
         }
     }
 

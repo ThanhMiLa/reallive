@@ -39,7 +39,11 @@ public enum ErrorCode {
     /** Publication failed after submission began; Kafka may have received the message. */
     EMAIL_VERIFICATION_PUBLISH_UNCERTAIN(1029, "Email verification publication outcome is unknown", HttpStatus.SERVICE_UNAVAILABLE),
     ALREADY_STREAMER(1030, "User is already registered as a streamer", HttpStatus.CONFLICT),
-    STREAMER_ROLE_NOT_FOUND(1031, "Streamer role is unavailable", HttpStatus.INTERNAL_SERVER_ERROR);
+    STREAMER_ROLE_NOT_FOUND(1031, "Streamer role is unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
+    CURRENT_PASSWORD_INVALID(1032, "Current password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
+    CURRENT_PASSWORD_INCORRECT(1033, "Current password is incorrect", HttpStatus.BAD_REQUEST),
+    NEW_PASSWORD_SAME_AS_CURRENT(1034, "New password cannot be the same as current password", HttpStatus.BAD_REQUEST),
+    PASSWORD_NOT_SET(1035, "User account does not have a local password set", HttpStatus.BAD_REQUEST);
 
     private final int code;
     private final String message;

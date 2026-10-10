@@ -1,12 +1,18 @@
 package com.reallive.userservice.auth.controller;
 
 import com.reallive.userservice.auth.dto.request.AuthRequest;
+import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.dto.ApiResponse;
+import com.reallive.userservice.common.util.AuthenticationUserId;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -134,6 +140,25 @@ public class AuthController {
                 .status(200)
                 .code(1000)
                 .message("Refresh token successful")
+                .result(result)
+                .build());
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<AuthResponse>> changePassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @CookieValue(name = "${auth.cookie.refresh-token.name}", required = false) String refreshToken,
+            @Valid @RequestBody ChangePasswordRequest request,
+            HttpServletResponse response) {
+
+        UUID userId = AuthenticationUserId.getAuthenticatedUserId(jwt);
+        AuthResponse result = authService.changePassword(userId, jwt.getTokenValue(), refreshToken, request);
+        addAuthCookies(response, result);
+
+        return ResponseEntity.ok(ApiResponse.<AuthResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Password changed successfully")
                 .result(result)
                 .build());
     }

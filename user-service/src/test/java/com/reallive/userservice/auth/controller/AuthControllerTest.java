@@ -2,6 +2,7 @@ package com.reallive.userservice.auth.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
+import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
 import com.reallive.userservice.auth.service.AuthService;
@@ -18,18 +19,28 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockServletContext;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -83,6 +94,7 @@ class AuthControllerTest {
 
     @AfterEach
     void tearDown() {
+        SecurityContextHolder.clearContext();
         contexts.forEach(AnnotationConfigWebApplicationContext::close);
     }
 
@@ -450,8 +462,214 @@ class AuthControllerTest {
         }
     }
 
+    // =========================================================================
+    // 5. CHANGE PASSWORD CONTROLLER TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("POST /api/auth/change-password")
+    class ChangePasswordEndpointTests {
+
+        private Authentication createAuthentication(UUID userId) {
+            Jwt jwt = Jwt.withTokenValue("jwt-access-token")
+                    .header("alg", "HS512")
+                    .subject(userId.toString())
+                    .claim("scope", "ROLE_USER")
+                    .build();
+            return new JwtAuthenticationToken(jwt);
+        }
+
+        private void authenticate(UUID userId) {
+            SecurityContextHolder.getContext().setAuthentication(createAuthentication(userId));
+        }
+
+        @Test
+        @DisplayName("Returns 401 Unauthorized when user is not authenticated")
+        void changePassword_ReturnsUnauthorized_WhenNoAuthentication() throws Exception {
+            SecurityContextHolder.clearContext();
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHENTICATED.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when currentPassword is invalid (< 5 chars)")
+        void changePassword_ReturnsBadRequest_WhenCurrentPasswordInvalid() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("12")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.CURRENT_PASSWORD_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when newPassword is invalid (< 5 chars)")
+        void changePassword_ReturnsBadRequest_WhenNewPasswordInvalid() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("12")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.PASSWORD_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when confirmPassword is invalid (< 5 chars)")
+        void changePassword_ReturnsBadRequest_WhenConfirmPasswordInvalid() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("12")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.PASSWORD_CONFIRM_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when service throws CURRENT_PASSWORD_INCORRECT")
+        void changePassword_ReturnsBadRequest_WhenCurrentPasswordIncorrect() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("wrongOldSecret")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(authService.changePassword(eq(userId), any(), any(), any(ChangePasswordRequest.class)))
+                    .thenThrow(new AppException(ErrorCode.CURRENT_PASSWORD_INCORRECT));
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .cookie(new Cookie("access_token", "jwt-access-token"))
+                            .cookie(new Cookie("refresh_token", "jwt-refresh-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.CURRENT_PASSWORD_INCORRECT.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when service throws NEW_PASSWORD_SAME_AS_CURRENT")
+        void changePassword_ReturnsBadRequest_WhenNewPasswordSameAsCurrent() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("oldSecret123")
+                    .confirmPassword("oldSecret123")
+                    .build();
+
+            when(authService.changePassword(eq(userId), any(), any(), any(ChangePasswordRequest.class)))
+                    .thenThrow(new AppException(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT));
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .cookie(new Cookie("access_token", "jwt-access-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 401 Unauthorized when service throws UNAUTHENTICATED due to missing refresh token")
+        void changePassword_ReturnsUnauthorized_WhenRefreshTokenMissing() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            when(authService.changePassword(eq(userId), eq("jwt-access-token"), isNull(), any(ChangePasswordRequest.class)))
+                    .thenThrow(new AppException(ErrorCode.UNAUTHENTICATED));
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .cookie(new Cookie("access_token", "jwt-access-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHENTICATED.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 200 OK, sets fresh auth cookies, and clears tokens from JSON body on success")
+        void changePassword_ReturnsOk_AndSetsCookies_OnSuccess() throws Exception {
+            UUID userId = UUID.randomUUID();
+            authenticate(userId);
+            ChangePasswordRequest request = ChangePasswordRequest.builder()
+                    .currentPassword("oldSecret123")
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            AuthResponse serviceResponse = AuthResponse.builder()
+                    .accessToken("fresh-access-token")
+                    .refreshToken("fresh-refresh-token")
+                    .build();
+
+            when(authService.changePassword(eq(userId), eq("jwt-access-token"), eq("jwt-refresh-token"), any(ChangePasswordRequest.class)))
+                    .thenReturn(serviceResponse);
+
+            mockMvc.perform(post("/api/auth/change-password")
+                            .principal(createAuthentication(userId))
+                            .cookie(new Cookie("access_token", "jwt-access-token"))
+                            .cookie(new Cookie("refresh_token", "jwt-refresh-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.code").value(1000))
+                    .andExpect(jsonPath("$.message").value("Password changed successfully"))
+                    .andExpect(jsonPath("$.result.accessToken").value(nullValue()))
+                    .andExpect(jsonPath("$.result.refreshToken").value(nullValue()))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("access_token=fresh-access-token"))))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("refresh_token=fresh-refresh-token"))));
+        }
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
-    static class MvcConfiguration {
+    static class MvcConfiguration implements WebMvcConfigurer {
+        @Override
+        public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
+            resolvers.add(new AuthenticationPrincipalArgumentResolver());
+        }
     }
 }
