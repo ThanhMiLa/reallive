@@ -3,13 +3,14 @@ package com.reallive.userservice.user.controller;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.common.exception.AppException;
+import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
+import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
-import com.reallive.userservice.user.exception.EmailVerificationPublishException;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
-import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -191,11 +193,20 @@ class EmailVerificationControllerTest {
 
     @Test
     void kafkaUnknownOutcomeReturns503AndKeepsOtp() throws Exception {
-        doThrow(new EmailVerificationPublishException(true, new IllegalStateException("timeout")))
+        doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN))
                 .when(publisher).publish(any());
         mvc.perform(post(ENDPOINT).cookie(cookie()))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(1022));
         verify(store, never()).deleteIfCurrent(any(), anyString());
+        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+    }
+
+    @Test
+    void kafkaKnownFailureReturns503AndWithdrawsOtp() throws Exception {
+        doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED)).when(publisher).publish(any());
+        mvc.perform(post(ENDPOINT).cookie(cookie()))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(1022));
+        verify(store).deleteIfCurrent(eq(user.getId()), anyString());
         assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
     }
 

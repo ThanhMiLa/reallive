@@ -1,7 +1,8 @@
 package com.reallive.userservice.user.adapter.kafka;
 
+import com.reallive.userservice.common.exception.AppException;
+import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
-import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,16 +88,17 @@ class KafkaEmailVerificationEmailPublisherTest {
         when(failingMapper.writeValueAsString(any())).thenThrow(new IllegalArgumentException("test serialization"));
         publisher = new KafkaEmailVerificationEmailPublisher(template, failingMapper);
         ReflectionTestUtils.setField(publisher, "topic", "test.email.requests");
-        assertFalse(assertThrows(EmailVerificationPublishException.class,
-                () -> publisher.publish(message)).isPublicationUncertain());
+        AppException exception = assertThrows(AppException.class, () -> publisher.publish(message));
+        assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED, exception.getErrorCode());
+        assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED.getMessage(), exception.getMessage());
         verifyNoInteractions(template);
     }
 
     @Test
     void missingTopicFailsBeforeSending() {
         ReflectionTestUtils.setField(publisher, "topic", "");
-        assertFalse(assertThrows(EmailVerificationPublishException.class,
-                () -> publisher.publish(message)).isPublicationUncertain());
+        assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED, assertThrows(AppException.class,
+                () -> publisher.publish(message)).getErrorCode());
         verifyNoInteractions(template);
     }
 
@@ -104,8 +106,8 @@ class KafkaEmailVerificationEmailPublisherTest {
     void failedAcknowledgementIsConservativelyUncertain() {
         when(template.send(anyString(), anyString(), anyString())).thenReturn(
                 CompletableFuture.failedFuture(new IllegalStateException("test broker failure")));
-        assertTrue(assertThrows(EmailVerificationPublishException.class,
-                () -> publisher.publish(message)).isPublicationUncertain());
+        assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN, assertThrows(AppException.class,
+                () -> publisher.publish(message)).getErrorCode());
     }
 
     @Test
@@ -113,15 +115,15 @@ class KafkaEmailVerificationEmailPublisherTest {
         CompletableFuture<SendResult<String, String>> future = mock(CompletableFuture.class);
         when(future.get(20, TimeUnit.SECONDS)).thenThrow(new TimeoutException("test timeout"));
         when(template.send(anyString(), anyString(), anyString())).thenReturn(future);
-        assertTrue(assertThrows(EmailVerificationPublishException.class,
-                () -> publisher.publish(message)).isPublicationUncertain());
+        AppException exception = assertThrows(AppException.class, () -> publisher.publish(message));
+        assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN, exception.getErrorCode());
     }
 
     @Test
     void synchronousSendFailureDoesNotClaimBrokerAbsence() {
         when(template.send(anyString(), anyString(), anyString())).thenThrow(new IllegalStateException("send"));
-        assertTrue(assertThrows(EmailVerificationPublishException.class,
-                () -> publisher.publish(message)).isPublicationUncertain());
+        assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN, assertThrows(AppException.class,
+                () -> publisher.publish(message)).getErrorCode());
     }
 
     @Test
@@ -130,8 +132,8 @@ class KafkaEmailVerificationEmailPublisherTest {
         when(future.get(20, TimeUnit.SECONDS)).thenThrow(new InterruptedException("test interruption"));
         when(template.send(anyString(), anyString(), anyString())).thenReturn(future);
         try {
-            assertTrue(assertThrows(EmailVerificationPublishException.class,
-                    () -> publisher.publish(message)).isPublicationUncertain());
+            assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN, assertThrows(AppException.class,
+                    () -> publisher.publish(message)).getErrorCode());
             assertTrue(Thread.currentThread().isInterrupted());
         } finally {
             Thread.interrupted();

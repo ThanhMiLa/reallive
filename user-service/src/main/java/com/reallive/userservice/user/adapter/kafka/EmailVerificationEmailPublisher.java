@@ -1,7 +1,8 @@
 package com.reallive.userservice.user.adapter.kafka;
 
+import com.reallive.userservice.common.exception.AppException;
+import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
-import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 
 public interface EmailVerificationEmailPublisher {
 
@@ -11,8 +12,10 @@ public interface EmailVerificationEmailPublisher {
      * <p>Email delivery is handled asynchronously by Notification Service.</p>
      *
      * @param message the Kafka message containing the OTP and recipient information
-     * @throws EmailVerificationPublishException if publication fails; its uncertainty flag
-     *         indicates whether the message may already have reached Kafka
+     * @throws AppException with {@link ErrorCode#EMAIL_VERIFICATION_PUBLISH_FAILED} if
+     *         publication fails before submission, or
+     *         {@link ErrorCode#EMAIL_VERIFICATION_PUBLISH_UNCERTAIN} if the message may
+     *         already have reached Kafka
      */
     void publish(EmailVerificationRequestedMessage message);
 }

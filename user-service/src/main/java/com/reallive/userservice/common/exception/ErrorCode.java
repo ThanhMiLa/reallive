@@ -33,7 +33,11 @@ public enum ErrorCode {
     OTP_MISMATCH(1024, "OTP is incorrect", HttpStatus.BAD_REQUEST),
     OTP_NOT_FOUND(1025, "OTP has expired or is no longer available", HttpStatus.BAD_REQUEST),
     OTP_VERIFICATION_UNAVAILABLE(1026, "Unable to verify an OTP at this time", HttpStatus.SERVICE_UNAVAILABLE),
-    EMAIL_NOT_VERIFIED(1027, "Email is not verified", HttpStatus.FORBIDDEN);
+    EMAIL_NOT_VERIFIED(1027, "Email is not verified", HttpStatus.FORBIDDEN),
+    /** Publication failed before the message was submitted to Kafka. */
+    EMAIL_VERIFICATION_PUBLISH_FAILED(1028, "Unable to publish email verification request", HttpStatus.SERVICE_UNAVAILABLE),
+    /** Publication failed after submission began; Kafka may have received the message. */
+    EMAIL_VERIFICATION_PUBLISH_UNCERTAIN(1029, "Email verification publication outcome is unknown", HttpStatus.SERVICE_UNAVAILABLE);
 
     private final int code;
     private final String message;

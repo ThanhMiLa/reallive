@@ -8,7 +8,6 @@ import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
-import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.util.EmailVerificationOtpHasher;
@@ -145,15 +144,14 @@ class EmailVerificationServiceImplTest {
 
     @Test
     void knownPublicationFailureWithdrawsOnlyTheCurrentHash() {
-        doThrow(new EmailVerificationPublishException(false, new IllegalArgumentException("serialization")))
-                .when(publisher).publish(any());
+        doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED)).when(publisher).publish(any());
         assertError(ErrorCode.OTP_REQUEST_UNAVAILABLE);
         verify(store).deleteIfCurrent(user.getId(), hasher.hash(user.getId(), user.getEmail(), "012345"));
     }
 
     @Test
     void uncertainPublicationFailureKeepsTheKey() {
-        doThrow(new EmailVerificationPublishException(true, new IllegalStateException("timeout")))
+        doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN))
                 .when(publisher).publish(any());
         assertError(ErrorCode.OTP_REQUEST_UNAVAILABLE);
         verify(store, never()).deleteIfCurrent(any(), anyString());
@@ -167,8 +165,15 @@ class EmailVerificationServiceImplTest {
     }
 
     @Test
+    void unrelatedAppExceptionDoesNotWithdrawOtp() {
+        doThrow(new AppException(ErrorCode.OTP_REQUEST_UNAVAILABLE)).when(publisher).publish(any());
+        assertError(ErrorCode.OTP_REQUEST_UNAVAILABLE);
+        verify(store, never()).deleteIfCurrent(any(), anyString());
+    }
+
+    @Test
     void cleanupFailureDoesNotTurnTheRequestIntoSuccess() {
-        doThrow(new EmailVerificationPublishException(false, new IllegalArgumentException("serialization")))
+        doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED))
                 .when(publisher).publish(any());
         doThrow(new RedisConnectionFailureException("cleanup failure"))
                 .when(store).deleteIfCurrent(any(), anyString());
@@ -196,8 +201,9 @@ class EmailVerificationServiceImplTest {
     }
 
     private void assertError(ErrorCode expected) {
-        assertEquals(expected, assertThrows(AppException.class,
-                () -> service.requestEmailVerificationOtp(user.getId())).getErrorCode());
+        AppException exception = assertThrows(AppException.class,
+                () -> service.requestEmailVerificationOtp(user.getId()));
+        assertEquals(expected, exception.getErrorCode());
         verify(repository, never()).save(any());
     }
 }

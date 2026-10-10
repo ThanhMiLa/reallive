@@ -13,7 +13,6 @@ import com.reallive.userservice.user.dto.request.VerifyEmailOtpRequest;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpResponse;
 import com.reallive.userservice.user.dto.response.EmailVerificationResponse;
-import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 import com.reallive.userservice.user.service.EmailVerificationService;
 import com.reallive.userservice.user.util.EmailVerificationOtpHasher;
 import lombok.AccessLevel;
@@ -149,8 +148,8 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     private void publishEmail(EmailVerificationRequestedMessage message, String otpHash) {
         try {
             emailPublisher.publish(message);
-        } catch (EmailVerificationPublishException exception) {
-            if (!exception.isPublicationUncertain()) {
+        } catch (AppException exception) {
+            if (exception.getErrorCode() == ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED) {
                 cancelOtp(message.getUserId(), otpHash);
             }
             throw new AppException(ErrorCode.OTP_REQUEST_UNAVAILABLE);

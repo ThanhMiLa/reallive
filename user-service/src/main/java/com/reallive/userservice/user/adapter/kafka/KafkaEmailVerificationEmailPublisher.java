@@ -1,7 +1,8 @@
 package com.reallive.userservice.user.adapter.kafka;
 
+import com.reallive.userservice.common.exception.AppException;
+import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
-import com.reallive.userservice.user.exception.EmailVerificationPublishException;
 import jakarta.annotation.PostConstruct;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -44,9 +45,9 @@ public class KafkaEmailVerificationEmailPublisher implements EmailVerificationEm
             kafkaTemplate.send(topic, message.getUserId().toString(), payload).get(20, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new EmailVerificationPublishException(true, exception);
+            throw new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN);
         } catch (ExecutionException | TimeoutException | RuntimeException exception) {
-            throw new EmailVerificationPublishException(true, exception);
+            throw new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN);
         }
     }
 
@@ -57,7 +58,7 @@ public class KafkaEmailVerificationEmailPublisher implements EmailVerificationEm
             }
             return objectMapper.writeValueAsString(message);
         } catch (RuntimeException exception) {
-            throw new EmailVerificationPublishException(false, exception);
+            throw new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED);
         }
     }
 }
