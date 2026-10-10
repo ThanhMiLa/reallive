@@ -23,6 +23,7 @@ Read the relevant design documents before implementing or changing a feature. Al
 
 ## Architecture Guidelines
 
+Organize Java services by business module, with a service-local `common` package for shared code. Follow [.agents/skills/code-architecture/SKILL.md](.agents/skills/code-architecture/SKILL.md) when placing new code, adding integrations, refactoring packages, or reviewing code architecture. Use `adapter` for infrastructure and external-provider integrations, and `client` for API calls to other application microservices.
 
 ## Build, Test, and Development Commands
 
@@ -38,6 +39,8 @@ Run commands inside the relevant module; there is no root build orchestrator.
 Match existing files: four-space indentation for Java/Kotlin and two spaces for TypeScript. Use PascalCase for classes and React components, camelCase for methods and variables, and NestJS filenames such as `app.service.ts`. Chat uses single quotes and trailing commas through Prettier. Preserve the web app's existing semicolon style. Follow `.agents/skills/code-style/SKILL.md` for Java organization, imports, and comments.
 
 Every method declared in a Java service interface must have English Javadoc. Follow `.agents/skills/service-javadoc/SKILL.md` when creating, editing, or reviewing service interfaces.
+
+Keep Java application error handling in each service's `common.exception` package. Use `AppException(ErrorCode)` and declare new errors in the `ErrorCode` enum instead of creating separate exception classes. Follow `.agents/skills/exception-handling/SKILL.md` when adding, refactoring, or reviewing exception handling.
 
 ## Testing Guidelines
 

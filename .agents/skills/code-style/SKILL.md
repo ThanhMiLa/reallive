@@ -1,6 +1,6 @@
 ---
 name: code-style
-description: Apply this repository's Java code-organization, naming, import, and commenting conventions when writing, editing, or reviewing Java code.
+description: Apply this repository's Java code-organization, Lombok, naming, import, and commenting conventions when writing, editing, or reviewing Java code.
 ---
 
 # Java Code Style Conventions
@@ -24,6 +24,68 @@ public OrderResponse createOrder(CreateOrderRequest request) {
 
 private void validateRequest(CreateOrderRequest request) {
     // Validation logic
+}
+```
+
+## Lombok
+
+### Controllers and Services
+
+- Prefer `@RequiredArgsConstructor` together with `@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)` for controllers, service implementations, and similar Spring beans with injected dependencies.
+- Declare dependency fields using only their type and name. Let Lombok supply `private final` and generate the constructor; Spring performs constructor injection. Do not write a boilerplate constructor or add `@Autowired` when the generated constructor is the only constructor.
+- Use an explicit constructor only when initialization logic or injection annotations cannot be expressed correctly with the Lombok setup.
+
+```java
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+public class StreamServiceImpl implements StreamService {
+
+    StreamRepository streamRepository;
+    ChannelService channelService;
+
+    @NonFinal
+    @Value("${stream.playback-base-url}")
+    String playbackBaseUrl;
+}
+```
+
+- For fields populated from `application.properties` or `application.yml` with Spring's `@Value`, add `lombok.experimental.NonFinal` to override `makeFinal = true` and keep the field out of the generated required-arguments constructor.
+- `@NotNull` is a null-validation constraint, not a replacement for `@NonFinal`. Use it when a value must be non-null and ensure Bean Validation is actually invoked; adding it to an arbitrary `@Value` field does not automatically validate configuration. Do not add Lombok's `@NonNull` to a field intended for `@Value` field injection, because it makes an uninitialized field a required constructor argument.
+- Import Spring's `org.springframework.beans.factory.annotation.Value` for configuration injection, not Lombok's `@Value`.
+
+### Entities and DTOs
+
+- Prefer `@Data`, `@Builder`, `@AllArgsConstructor`, `@NoArgsConstructor`, and `@FieldDefaults(level = AccessLevel.PRIVATE)` for entity and DTO classes.
+- Declare fields using only their type and name, plus any persistence, serialization, or validation annotations. Let Lombok generate accessors, constructors, and the builder instead of writing boilerplate manually.
+- Keep these fields mutable by default; do not add `makeFinal = true` to this pattern.
+- For entities with relationships or special identity rules, customize the generated `toString`, `equals`, and `hashCode` as needed to preserve correct behavior.
+
+```java
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.FieldDefaults;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class StreamResponse {
+
+    Long id;
+    String title;
+    String playbackUrl;
 }
 ```
 
