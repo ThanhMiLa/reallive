@@ -85,7 +85,7 @@ sequenceDiagram
    | POST `/api/users/me/email-verification/otp` | Không có body nghiệp vụ | 202 khi Kafka xác nhận tiếp nhận; response chỉ có `expiresAt` của OTP |
    | POST `/api/users/me/email-verification/verify` | `{"otp":"012345"}` | 200 sau khi commit `emailVerified=true` |
    | POST `/api/users/me/become-streamer` | Không có body nghiệp vụ | 201, trả `streamerId`, `userId`, `status=ACTIVE` và các role cần thiết |
-   | POST `/api/webhooks/sendgrid/events` ở Notification | Mảng sự kiện SendGrid, chữ ký trong headers | 2xx sau khi lưu bền vững; không dùng user JWT |
+   | POST `/api/webhooks/sendgrid` ở Notification | Mảng sự kiện SendGrid, chữ ký trong headers | 2xx sau khi lưu bền vững; không dùng user JWT |
 
    Đường dẫn qua Gateway là `/user/...` cho User và `/notification/...` cho webhook. Giữ response envelope `ApiResponse`. API gửi OTP trả 202 chỉ có nghĩa yêu cầu được tiếp nhận, không có nghĩa email đã được giao.
 
@@ -288,6 +288,8 @@ sequenceDiagram
     Lưu processed/delivered/deferred/bounce/dropped, chống trùng bằng sg_event_id. Acknowledge 2xx sau lưu bền vững; DB lỗi trả non-2xx để provider có thể giao lại. Không kích hoạt gửi lại vô hạn chỉ vì deferred/bounce; không cập nhật emailVerified hoặc phát delivery event về User.
 
     Hoàn tất khi webhook hợp lệ đi qua Gateway không cần cookie/CSRF user, webhook giả bị chặn, duplicate/out-of-order events không làm sai lịch sử và không có request ngược về User Service.
+
+    Đã triển khai controller, interface `SendGridWebhookService` và `SendGridWebhookServiceImpl` dùng JDK ECDSA, DTO/repository và hai bảng hiện có. Batch được lưu nguyên tử, khóa notification theo thứ tự UUID để chống trùng đồng thời; không đổi submission status hoặc dữ liệu User. Gateway chỉ miễn cookie/CSRF cho đúng POST webhook. Hướng dẫn cấu hình HTTPS/public key trên SendGrid nằm trong Notification README; bật webhook thật là thao tác cấu hình tài khoản riêng.
 
 12. **Triển khai Become Streamer nguyên tử.**
 

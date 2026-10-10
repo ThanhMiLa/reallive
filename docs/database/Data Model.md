@@ -529,7 +529,7 @@ One row represents one SendGrid webhook event. Store separate rows for each even
 | notification_id | UUID | FK, NOT NULL | Composite | References `email_notifications.id` |
 | sg_event_id | TEXT | UNIQUE when non-null | UNIQUE | SendGrid event identifier used to deduplicate webhook redelivery |
 | sg_message_id | TEXT | - | - | SendGrid message identifier from the webhook |
-| event_type | VARCHAR(50) | NOT NULL | - | Provider event type, such as `processed, delivered, deferred, bounce, dropped`; stored as text for additional event types |
+| event_type | VARCHAR(50) | NOT NULL | - | `EmailDeliveryEventType` stored with `EnumType.STRING`: `PROCESSED, DELIVERED, DEFERRED, BOUNCE, DROPPED` |
 | provider_timestamp | TIMESTAMPTZ | NOT NULL | Composite | Provider event time, converted from Unix seconds |
 | received_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Time Notification received the event |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Persistence creation time inherited from BaseEntity |
@@ -544,6 +544,8 @@ Composite index:
 Resolve the webhook's `eventId` against `email_notifications.event_id`, then persist the related `notification_id`. No recipient email or user ID is duplicated in this table. Multiple events without `sg_event_id` are allowed; uniqueness applies when the provider supplies an ID.
 
 Both email entities inherit `created_at` and `updated_at` from Notification's `common.entity.BaseEntity`, using `Instant` in Java. Migration V2 adds these audit columns to existing delivery history and backfills both from `received_at`; provider and receipt timestamps remain separate.
+
+Migration V4 converts existing lowercase delivery event types to uppercase enum names. The webhook still receives SendGrid's lowercase values and maps the five supported delivery types to `EmailDeliveryEventType`; unrelated or unknown types are ignored.
 
 ### 7.2 Relationships
 

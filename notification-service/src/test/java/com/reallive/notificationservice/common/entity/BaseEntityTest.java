@@ -2,6 +2,7 @@ package com.reallive.notificationservice.common.entity;
 
 import com.reallive.notificationservice.email.dto.message.EmailType;
 import com.reallive.notificationservice.email.entity.EmailDeliveryEventEntity;
+import com.reallive.notificationservice.email.entity.EmailDeliveryEventType;
 import com.reallive.notificationservice.email.entity.EmailNotificationEntity;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ class BaseEntityTest {
     void generatesInheritedAuditTimestampsForBothEmailEntities() {
         var notification = notification();
         entityManager.persist(notification);
-        var delivery = EmailDeliveryEventEntity.builder().notification(notification).eventType("delivered")
+        var delivery = EmailDeliveryEventEntity.builder().notification(notification).eventType(EmailDeliveryEventType.DELIVERED)
                 .providerTimestamp(Instant.parse("2026-10-10T01:00:00Z")).build();
         entityManager.persist(delivery);
         entityManager.flush();

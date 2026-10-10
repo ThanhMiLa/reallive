@@ -38,6 +38,10 @@ class DevGatewaySecurityTest {
         registry.add("spring.cloud.gateway.server.webflux.routes[0].uri",
                 () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
         registry.add("spring.cloud.gateway.server.webflux.routes[0].predicates[0]", () -> "Path=/user/**");
+        registry.add("spring.cloud.gateway.server.webflux.routes[1].id", () -> "notification-dev-test");
+        registry.add("spring.cloud.gateway.server.webflux.routes[1].uri",
+                () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
+        registry.add("spring.cloud.gateway.server.webflux.routes[1].predicates[0]", () -> "Path=/notification/**");
     }
 
     @BeforeEach
@@ -64,6 +68,20 @@ class DevGatewaySecurityTest {
     @Test
     void protectedPostStillRequiresAccessCookie() {
         client.post().uri("/user/api/private").exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @Test
+    void webhookIsPublicWhenDevCsrfIsDisabled() {
+        client.post().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isOk();
+        assertEquals(1, BACKEND_CALLS.get());
+    }
+
+    @Test
+    void otherNotificationEndpointsRemainProtectedWhenCsrfIsDisabled() {
+        client.post().uri("/notification/api/webhooks/sendgrid/extra").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/notification/api/webhooks/sendgrid/events").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized();
         assertEquals(0, BACKEND_CALLS.get());
     }
 

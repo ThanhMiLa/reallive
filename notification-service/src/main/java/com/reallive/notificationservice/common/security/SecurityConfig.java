@@ -26,7 +26,7 @@ public class SecurityConfig {
     };
 
     private static final String[] PUBLIC_ENDPOINTS_POST = {
-
+            "/api/webhooks/sendgrid"
     };
 
     private final CustomJwtDecoder customJwtDecoder;
@@ -59,6 +59,10 @@ public class SecurityConfig {
     @Bean
     BearerTokenResolver bearerTokenResolver(@Value("${auth.cookie.access-token.name}") String accessTokenName) {
         return request -> {
+            if ("POST".equals(request.getMethod()) && "/api/webhooks/sendgrid"
+                    .equals(request.getRequestURI().substring(request.getContextPath().length()))) {
+                return null;
+            }
             Cookie[] cookies = request.getCookies();
 
             if (cookies == null) {

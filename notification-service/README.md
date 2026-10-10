@@ -13,11 +13,11 @@ Java 21 / Spring Boot service responsible for outbound email through SendGrid an
 | `email.repository` / `email.entity` | Store notification requests and delivery history in the Notification database |
 | `email.dto.request` / `email.dto.response` | Define transport contracts when Kafka and webhook integration are implemented |
 
-The Kafka listener, delivery/history services and SendGrid client are implemented. The webhook endpoint and delivery-event processing remain for step 11, under `email.controller` and `email.service` / `email.service.impl`.
+The Kafka listener, delivery/history services, SendGrid client and signed Event Webhook are implemented. The webhook uses `SendGridWebhookController` and `SendGridWebhookService` with `SendGridWebhookServiceImpl`; no additional table or SDK is required.
 
 `email.configuration` provides validated email/provider settings, request/dead-letter topics, a UTC Clock, a JDK-backed WebClient and bounded Kafka error handling. The listener uses record acknowledgements, retries twice by default, and acknowledges failures only after history finalization and durable dead-letter publication.
 
-Notification does not check OTPs, query the User database, update `emailVerified`, or grant roles. Email delivery results remain in this service; User Service does not wait for webhook events. The Kafka wire DTO is defined in [the Kafka contract](../docs/contracts/Email%20Verification%20Kafka.md). SendGrid submission is implemented; webhook authentication is added in step 11.
+Notification does not check OTPs, query the User database, update `emailVerified`, or grant roles. Email delivery results remain in this service; User Service does not wait for webhook events. The Kafka wire DTO is defined in [the Kafka contract](../docs/contracts/Email%20Verification%20Kafka.md). SendGrid submission and signed webhook authentication are implemented.
 
 ## SendGrid DTOs
 
@@ -25,7 +25,7 @@ Notification does not check OTPs, query the User database, update `emailVerified
 - `email.client.sendgrid.dto.response.SendGridErrorResponse`: provider `errors` array, retaining the message and optional field while ignoring unused metadata.
 - `email.dto.request.SendGridWebhookEventRequest`: one event in the incoming webhook array, with root-level `eventId` correlation, provider IDs, Unix timestamp in seconds and optional delivery details. Unknown provider fields are ignored.
 
-Template selection belongs to Notification configuration. Mail Send success is HTTP 202 with an empty body; the client reads `X-Message-ID` when present. `SendGridSubmissionResult` is an internal outcome, not a provider JSON success-body DTO. The future webhook handler verifies signatures against original raw bytes before deserializing events.
+Template selection belongs to Notification configuration. Mail Send success is HTTP 202 with an empty body; the client reads `X-Message-ID` when present. `SendGridSubmissionResult` is an internal outcome, not a provider JSON success-body DTO. The webhook handler verifies signatures against original raw bytes before deserializing events.
 
 DTO tests cover SendGrid field names, OTP leading zeros and exclusion from `toString()`, optional sender names, error metadata, and webhook arrays with missing/extra fields. They do not call SendGrid.
 
@@ -42,6 +42,23 @@ DTO tests cover SendGrid field names, OTP leading zeros and exclusion from `toSt
 The JDK HTTP client does not follow redirects. Connect timeout defaults to 2 seconds and the total call budget to 10 seconds, shortened to the OTP time remaining. Settings are under `notification.email.sendgrid` in `application-dev.yaml`.
 
 Logs and history exclude OTPs, credentials and raw request/response bodies. DLT payloads retain the original Kafka message including its transient OTP; restrict broker access and keep the configured short retention. Automatic tests never send email to the real provider.
+
+## SendGrid Event Webhook
+
+`POST /notification/api/webhooks/sendgrid` receives a JSON array through Gateway (port `8888` locally). It requires `X-Twilio-Email-Event-Webhook-Signature` and `X-Twilio-Email-Event-Webhook-Timestamp`, not a user cookie or CSRF token. Only this exact POST endpoint bypasses user authentication; Notification verifies ECDSA/SHA-256 over the signed timestamp followed by the original request bytes, using `SENDGRID_WEBHOOK_PUBLIC_KEY`. No body or signature is logged.
+
+The service maps `processed`, `delivered`, `deferred`, `bounce` and `dropped` to `EmailDeliveryEventType` and stores uppercase enum names in `email_delivery_events` (migration V4 normalizes existing history), correlating root-level `eventId` with the existing notification. Correlated events require a nonblank `sg_event_id` and a valid Unix timestamp. A row lock plus the existing unique provider-ID constraint prevents concurrent redelivery from duplicating history. A batch commits atomically; malformed events return `400`, missing/invalid signatures return `401`, and database or verification-key configuration failures return `503`. HTTP `200` acknowledges committed events or duplicates. Submission status remains separate; webhook arrival never updates User Service or resends an email.
+
+Events without RealLive correlation, unknown notification IDs and unsupported event types are acknowledged and ignored, including SendGrid's sample integration events. Out-of-order events remain separate rows, read chronologically by the existing repository. SMTP response/reason fields have control characters replaced with spaces and are capped at 2048 characters. The signed header timestamp is verified without a short freshness window so delayed provider retries remain valid; replayed event IDs are deduplicated.
+
+For a real provider callback:
+
+1. In the same SendGrid account used for Mail Send, open **Settings → Mail Settings → Event Webhooks**.
+2. Set the POST URL to `https://<public-gateway-host>/notification/api/webhooks/sendgrid` and enable the five delivery event types above. A local test needs an HTTPS tunnel to Gateway port `8888`.
+3. Enable **Signed Event Webhook**, save it, and copy its public verification key into Notification's `SENDGRID_WEBHOOK_PUBLIC_KEY`.
+4. Restart Notification with the updated environment and use **Test Integration**. Test events without `eventId` return `200` without creating history; a real email sent through this service supplies the correlation ID.
+
+Keep the Gateway public and backend ports private. User and Notification decoders retain the existing trusted-Gateway model. See [SendGrid webhook security](https://www.twilio.com/docs/sendgrid/for-developers/tracking-events/getting-started-event-webhook-security-features) for the signed-byte contract and setup.
 
 ## Email history persistence
 
@@ -88,3 +105,5 @@ Entity unit tests verify UUID identity, equality/hash stability when audit field
 The persistence tests create and remove only their own randomly named schemas. Use a dedicated test database.
 
 For step 10 migration and row-lock checks, include `EmailHistoryMigrationTest,EmailHistoryRepositoryTest,EmailNotificationHistoryServiceTest` in `-Dtest`. The pipeline suite uses a local HTTP stub and embedded Kafka. Non-Kafka tests disable listener startup; the dedicated Kafka suites enable their required listeners explicitly.
+
+`SendGridWebhookServiceTest` checks signature and input rejection before repository access. `SendGridWebhookIntegrationTest` uses generated EC keys and the real Flyway/JPA schema to cover HTTP authentication, batch rollback, concurrent duplicates, overlapping batches, out-of-order history and webhook arrival while submission is still `PROCESSING`. Gateway tests verify raw body/header forwarding and protection of every other method/path, with CSRF enabled and disabled. No webhook test contacts SendGrid.

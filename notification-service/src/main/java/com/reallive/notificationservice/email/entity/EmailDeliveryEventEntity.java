@@ -3,6 +3,8 @@ package com.reallive.notificationservice.email.entity;
 import com.reallive.notificationservice.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
@@ -54,8 +56,9 @@ public class EmailDeliveryEventEntity extends BaseEntity {
     @Column(name = "sg_message_id", columnDefinition = "TEXT")
     String sgMessageId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "event_type", nullable = false, length = 50)
-    String eventType;
+    EmailDeliveryEventType eventType;
 
     @Column(name = "provider_timestamp", nullable = false)
     Instant providerTimestamp;

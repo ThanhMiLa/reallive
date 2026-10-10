@@ -17,9 +17,9 @@ class EmailDeliveryEventEntityTest {
     @Test
     void sameIdDefinesEqualityRegardlessOfRelationshipAndAuditFields() {
         UUID id = UUID.randomUUID();
-        var first = EmailDeliveryEventEntity.builder().id(id).eventType("processed")
+        var first = EmailDeliveryEventEntity.builder().id(id).eventType(EmailDeliveryEventType.PROCESSED)
                 .notification(new EmailNotificationEntity()).build();
-        var second = EmailDeliveryEventEntity.builder().id(id).eventType("delivered").build();
+        var second = EmailDeliveryEventEntity.builder().id(id).eventType(EmailDeliveryEventType.DELIVERED).build();
         first.setCreatedAt(Instant.parse("2026-10-10T00:00:00Z"));
         second.setUpdatedAt(Instant.parse("2026-10-10T01:00:00Z"));
         assertEquals(first, second);
@@ -56,7 +56,7 @@ class EmailDeliveryEventEntityTest {
     @Test
     void toStringDoesNotIncludeTheLazyNotification() {
         var notification = EmailNotificationEntity.builder().recipientEmail("excluded@example.com").build();
-        var event = EmailDeliveryEventEntity.builder().notification(notification).eventType("processed").build();
+        var event = EmailDeliveryEventEntity.builder().notification(notification).eventType(EmailDeliveryEventType.PROCESSED).build();
         assertFalse(event.toString().contains("excluded@example.com"));
         assertFalse(event.toString().contains("notification="));
     }

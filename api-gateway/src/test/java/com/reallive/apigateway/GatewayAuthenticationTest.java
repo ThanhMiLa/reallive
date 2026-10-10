@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -77,9 +78,9 @@ class GatewayAuthenticationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("gateway.security.signer-key", () -> SIGNING_KEY);
         registry.add("gateway.security.blacklist-timeout", () -> "50ms");
-        for (int index = 0; index < 2; index++) {
+        for (int index = 0; index < 3; index++) {
             String prefix = "spring.cloud.gateway.server.webflux.routes[" + index + "]";
-            String service = index == 0 ? "user" : "channel";
+            String service = List.of("user", "channel", "notification").get(index);
             registry.add(prefix + ".id", () -> service + "-test");
             registry.add(prefix + ".uri", () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
             registry.add(prefix + ".predicates[0]", () -> "Path=/" + service + "/**");
@@ -109,6 +110,48 @@ class GatewayAuthenticationTest {
         request(HttpMethod.POST, AUTH_PATH + "/" + action).exchange().expectStatus().isOk();
         assertEquals(1, BACKEND_CALLS.get());
         verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void webhookWithoutCookiesBypassesCsrfAndPreservesSignatureInputs() {
+        String body = "[ {\"event\":\"delivered\",\"reason\":\"Tiếng Việt\"} ]\r\n";
+        client.post().uri("/notification/api/webhooks/sendgrid")
+                .header("X-Twilio-Email-Event-Webhook-Signature", "provider-signature")
+                .header("X-Twilio-Email-Event-Webhook-Timestamp", "1700000000")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(body)
+                .exchange().expectStatus().isOk();
+        assertEquals(1, BACKEND_CALLS.get());
+        assertEquals("/notification/api/webhooks/sendgrid", LAST_REQUEST.get().path());
+        assertEquals(body, LAST_REQUEST.get().body());
+        assertEquals("provider-signature", LAST_REQUEST.get().signature());
+        assertEquals("1700000000", LAST_REQUEST.get().timestamp());
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/notification/api/webhooks/sendgrid/extra",
+            "/notification/api/webhooks/sendgrid/events", "/notification/api/private"})
+    void otherNotificationPathsStillRequireAuthenticationAndCsrf(String path) {
+        client.post().uri(path).exchange().expectStatus().isForbidden();
+        request(HttpMethod.POST, path).exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @Test
+    void otherWebhookMethodsAreNotPublic() {
+        client.get().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized();
+        client.put().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isForbidden();
+        request(HttpMethod.PUT, "/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"email-verification/otp", "email-verification/verify", "become-streamer"})
+    void userRegistrationApisRemainProtected(String action) {
+        String path = "/user/api/users/me/" + action;
+        client.post().uri(path).exchange().expectStatus().isForbidden();
+        request(HttpMethod.POST, path).exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
@@ -339,7 +382,9 @@ class GatewayAuthenticationTest {
                 LAST_REQUEST.set(new CapturedRequest(exchange.getRequestURI().getPath(),
                         exchange.getRequestHeaders().getFirst("Cookie"),
                         exchange.getRequestHeaders().getFirst("Authorization"),
-                        new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+                        new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8),
+                        exchange.getRequestHeaders().getFirst("X-Twilio-Email-Event-Webhook-Signature"),
+                        exchange.getRequestHeaders().getFirst("X-Twilio-Email-Event-Webhook-Timestamp")));
                 exchange.getResponseHeaders().add("Set-Cookie", "access_token=new-access; Path=/; HttpOnly");
                 exchange.getResponseHeaders().add("Set-Cookie", "refresh_token=new-refresh; Path=" + AUTH_PATH + "; HttpOnly");
                 exchange.sendResponseHeaders(200, -1);
@@ -363,6 +408,7 @@ class GatewayAuthenticationTest {
     private record Token(String value, String jti) {
     }
 
-    private record CapturedRequest(String path, String cookies, String authorization, String body) {
+    private record CapturedRequest(String path, String cookies, String authorization, String body,
+                                   String signature, String timestamp) {
     }
 }

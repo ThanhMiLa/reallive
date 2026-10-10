@@ -28,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(properties = "auth.cookie.access-token.name=access_token")
+@WebMvcTest(controllers = SecurityFilterChainTest.TestController.class,
+        properties = "auth.cookie.access-token.name=access_token")
 @Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class,
         JwtAccessDeniedHandler.class, SecurityFilterChainTest.TestController.class})
 class SecurityFilterChainTest {

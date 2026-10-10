@@ -6,10 +6,13 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.context.NoOpServerSecurityContextRepository;
 import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
+import org.springframework.security.web.server.csrf.CsrfWebFilter;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
 import org.springframework.security.web.server.savedrequest.NoOpServerRequestCache;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
@@ -37,6 +40,14 @@ public class SecurityConfig {
                 .csrf(csrf -> {
                     if (properties.csrfEnabled()) {
                         csrf.csrfTokenRepository(csrfRepository)
+                                .requireCsrfProtectionMatcher(exchange -> {
+                                    if (exchange.getRequest().getMethod() == HttpMethod.POST
+                                            && "/notification/api/webhooks/sendgrid"
+                                            .equals(exchange.getRequest().getPath().value())) {
+                                        return ServerWebExchangeMatcher.MatchResult.notMatch();
+                                    }
+                                    return CsrfWebFilter.DEFAULT_CSRF_MATCHER.matches(exchange);
+                                })
                                 .accessDeniedHandler((exchange, exception) -> errorWriter.write(exchange,
                                         new GatewaySecurityException(HttpStatus.FORBIDDEN, 1002,
                                                 "Invalid or missing CSRF token", Set.of())));

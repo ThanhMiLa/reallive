@@ -2,6 +2,7 @@ package com.reallive.notificationservice.email.repository;
 
 import com.reallive.notificationservice.email.dto.message.EmailType;
 import com.reallive.notificationservice.email.entity.EmailDeliveryEventEntity;
+import com.reallive.notificationservice.email.entity.EmailDeliveryEventType;
 import com.reallive.notificationservice.email.entity.EmailNotificationEntity;
 import com.reallive.notificationservice.email.entity.EmailNotificationStatus;
 import org.junit.jupiter.api.AfterAll;
@@ -162,7 +163,7 @@ class EmailHistoryRepositoryTest {
         EmailNotificationEntity notification = notification(UUID.randomUUID());
         notification.setStatus(EmailNotificationStatus.ACCEPTED);
         notifications.saveAndFlush(notification);
-        EmailDeliveryEventEntity event = deliveryEvent(notification, UUID.randomUUID().toString(), "bounce", ISSUED_AT);
+        EmailDeliveryEventEntity event = deliveryEvent(notification, UUID.randomUUID().toString(), EmailDeliveryEventType.BOUNCE, ISSUED_AT);
         event.setSgMessageId("provider-webhook-id");
         event.setResponse("550 unavailable");
         event.setReason("Mailbox unavailable");
@@ -173,7 +174,7 @@ class EmailHistoryRepositoryTest {
         assertEquals(event.getId(), reloaded.getId());
         assertEquals(notification.getId(), reloaded.getNotification().getId());
         assertEquals("provider-webhook-id", reloaded.getSgMessageId());
-        assertEquals("bounce", reloaded.getEventType());
+        assertEquals(EmailDeliveryEventType.BOUNCE, reloaded.getEventType());
         assertEquals(ISSUED_AT, reloaded.getProviderTimestamp());
         assertNotNull(reloaded.getReceivedAt());
         assertNotNull(reloaded.getCreatedAt());
@@ -190,11 +191,11 @@ class EmailHistoryRepositoryTest {
     void outOfOrderWebhookEventsAreKeptAndQueriedByProviderTime() {
         var notification = notifications.saveAndFlush(notification(UUID.randomUUID()));
         var delivered = deliveryEvents.saveAndFlush(deliveryEvent(notification, UUID.randomUUID().toString(),
-                "delivered", ISSUED_AT.plusSeconds(2)));
+                EmailDeliveryEventType.DELIVERED, ISSUED_AT.plusSeconds(2)));
         var processed = deliveryEvents.saveAndFlush(deliveryEvent(notification, UUID.randomUUID().toString(),
-                "processed", ISSUED_AT));
+                EmailDeliveryEventType.PROCESSED, ISSUED_AT));
         var other = notifications.saveAndFlush(notification(UUID.randomUUID()));
-        deliveryEvents.saveAndFlush(deliveryEvent(other, UUID.randomUUID().toString(), "processed", ISSUED_AT));
+        deliveryEvents.saveAndFlush(deliveryEvent(other, UUID.randomUUID().toString(), EmailDeliveryEventType.PROCESSED, ISSUED_AT));
         var history = deliveryEvents.findByNotificationIdOrderByProviderTimestampAscReceivedAtAsc(
                 notification.getId(), PageRequest.of(0, 10));
         assertEquals(2, history.getTotalElements());
@@ -207,17 +208,17 @@ class EmailHistoryRepositoryTest {
         var first = notifications.saveAndFlush(notification(UUID.randomUUID()));
         var second = notifications.saveAndFlush(notification(UUID.randomUUID()));
         String sgEventId = UUID.randomUUID().toString();
-        var original = deliveryEvents.saveAndFlush(deliveryEvent(first, sgEventId, "processed", ISSUED_AT));
+        var original = deliveryEvents.saveAndFlush(deliveryEvent(first, sgEventId, EmailDeliveryEventType.PROCESSED, ISSUED_AT));
         assertThrows(DataIntegrityViolationException.class, () -> deliveryEvents.saveAndFlush(
-                deliveryEvent(second, sgEventId, "processed", ISSUED_AT)));
+                deliveryEvent(second, sgEventId, EmailDeliveryEventType.PROCESSED, ISSUED_AT)));
         assertEquals(original.getId(), deliveryEvents.findBySgEventId(sgEventId).orElseThrow().getId());
     }
 
     @Test
     void allowsMultipleWebhookEventsWithoutProviderEventIds() {
         var notification = notifications.saveAndFlush(notification(UUID.randomUUID()));
-        deliveryEvents.saveAndFlush(deliveryEvent(notification, null, "processed", ISSUED_AT));
-        deliveryEvents.saveAndFlush(deliveryEvent(notification, null, "delivered", ISSUED_AT.plusSeconds(1)));
+        deliveryEvents.saveAndFlush(deliveryEvent(notification, null, EmailDeliveryEventType.PROCESSED, ISSUED_AT));
+        deliveryEvents.saveAndFlush(deliveryEvent(notification, null, EmailDeliveryEventType.DELIVERED, ISSUED_AT.plusSeconds(1)));
         assertEquals(2, deliveryEvents.findByNotificationIdOrderByProviderTimestampAscReceivedAtAsc(
                 notification.getId(), PageRequest.of(0, 10)).getTotalElements());
     }
@@ -243,7 +244,7 @@ class EmailHistoryRepositoryTest {
     @Test
     void inheritedAuditTimestampsUpdateWithoutChangingCreationTimes() {
         var notification = notifications.saveAndFlush(notification(UUID.randomUUID()));
-        var event = deliveryEvents.saveAndFlush(deliveryEvent(notification, UUID.randomUUID().toString(), "processed", ISSUED_AT));
+        var event = deliveryEvents.saveAndFlush(deliveryEvent(notification, UUID.randomUUID().toString(), EmailDeliveryEventType.PROCESSED, ISSUED_AT));
         Instant oldUpdate = ISSUED_AT.minusSeconds(3600);
         jdbc.update("UPDATE " + table("email_notifications") + " SET updated_at = ? WHERE id = ?",
                 oldUpdate.atOffset(ZoneOffset.UTC), notification.getId());
@@ -274,7 +275,7 @@ class EmailHistoryRepositoryTest {
     }
 
     private EmailDeliveryEventEntity deliveryEvent(EmailNotificationEntity notification,
-            String sgEventId, String eventType, Instant providerTimestamp) {
+            String sgEventId, EmailDeliveryEventType eventType, Instant providerTimestamp) {
         return EmailDeliveryEventEntity.builder().notification(notification).sgEventId(sgEventId)
                 .eventType(eventType).providerTimestamp(providerTimestamp).build();
     }

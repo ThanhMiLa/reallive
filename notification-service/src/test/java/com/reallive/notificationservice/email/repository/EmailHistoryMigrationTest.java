@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class EmailHistoryMigrationTest {
 
     @Test
-    void upgradesV1AndBackfillsAuditTimestampsWithoutChangingDeliveryHistory() {
+    void upgradesV1BackfillsAuditTimestampsAndNormalizesDeliveryTypesWithoutLosingHistory() {
         var dataSource = new HikariDataSource();
         dataSource.setJdbcUrl(System.getProperty("notification.test.database-url",
                 "jdbc:h2:mem:email_audit_migration;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"));
@@ -39,8 +40,13 @@ class EmailHistoryMigrationTest {
             jdbc.update("INSERT INTO " + deliveryTable
                             + " (id, notification_id, sg_event_id, event_type, provider_timestamp, received_at) VALUES (?, ?, ?, 'delivered', ?, ?)",
                     deliveryId, notificationId, "old-event", receivedAt.minusSeconds(1), receivedAt);
+            for (String type : List.of("processed", "deferred", "bounce", "dropped")) {
+                jdbc.update("INSERT INTO " + deliveryTable
+                                + " (notification_id, event_type, provider_timestamp, received_at) VALUES (?, ?, ?, ?)",
+                        notificationId, type, receivedAt.minusSeconds(1), receivedAt);
+            }
             Flyway flyway = migrations(dataSource, schema).load();
-            assertEquals(2, flyway.migrate().migrationsExecuted);
+            assertEquals(3, flyway.migrate().migrationsExecuted);
             flyway.validate();
             assertEquals(0, flyway.migrate().migrationsExecuted);
             assertNull(jdbc.queryForObject("SELECT next_attempt_at FROM " + notificationTable + " WHERE id = ?", OffsetDateTime.class, notificationId));
@@ -48,7 +54,10 @@ class EmailHistoryMigrationTest {
             assertEquals(receivedAt.plusSeconds(20).toInstant(), jdbc.queryForObject(
                     "SELECT next_attempt_at FROM " + notificationTable + " WHERE id = ?", OffsetDateTime.class, notificationId).toInstant());
             assertEquals(notificationId, jdbc.queryForObject("SELECT notification_id FROM " + deliveryTable + " WHERE id = ?", UUID.class, deliveryId));
-            assertEquals("delivered", jdbc.queryForObject("SELECT event_type FROM " + deliveryTable + " WHERE id = ?", String.class, deliveryId));
+            assertEquals("DELIVERED", jdbc.queryForObject("SELECT event_type FROM " + deliveryTable + " WHERE id = ?", String.class, deliveryId));
+            assertEquals(List.of("BOUNCE", "DEFERRED", "DELIVERED", "DROPPED", "PROCESSED"),
+                    jdbc.queryForList("SELECT event_type FROM " + deliveryTable
+                            + " WHERE notification_id = ? ORDER BY event_type", String.class, notificationId));
             for (String column : new String[]{"received_at", "created_at", "updated_at"}) {
                 assertEquals(receivedAt.toInstant(), jdbc.queryForObject(
                         "SELECT " + column + " FROM " + deliveryTable + " WHERE id = ?", OffsetDateTime.class, deliveryId).toInstant());

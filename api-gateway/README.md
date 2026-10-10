@@ -4,7 +4,7 @@ Spring Cloud Gateway WebFlux, Java 21. The development profile listens on port `
 
 ## Cookie authentication contract
 
-`AuthenticationGlobalFilter implements GlobalFilter, Ordered` authenticates every access/refresh cookie supplied on a routed request, including public endpoints. Cookie names and deletion attributes are configurable and must match user-service.
+`AuthenticationGlobalFilter implements GlobalFilter, Ordered` authenticates access/refresh cookies supplied on routed requests, including public endpoints. The SendGrid webhook POST is in `PUBLIC_ENDPOINTS_POST`; SendGrid sends no user cookies, and Notification authenticates the provider signature. Cookie names and deletion attributes are configurable and must match user-service.
 
 | Request | Required credentials |
 |---|---|
@@ -12,6 +12,7 @@ Spring Cloud Gateway WebFlux, Java 21. The development profile listens on port `
 | `POST /user/api/auth/register` | None; all supplied token cookies must be valid |
 | `POST /user/api/auth/logout` | None; all supplied token cookies must be valid |
 | `POST /user/api/auth/refresh` | None at gateway; user-service requires a refresh cookie. All supplied token cookies must be valid |
+| `POST /notification/api/webhooks/sendgrid` | SendGrid signature headers, verified by Notification; no user cookies or CSRF token |
 | Other routed endpoints | Valid access cookie; any supplied refresh cookie must also be valid |
 | `GET /api/auth/csrf` (local controller) | None; all supplied token cookies must be valid |
 
@@ -99,3 +100,7 @@ HTTP integration tests use signed JWTs and a local stub backend. Redis errors/re
 ```
 
 The optional integration tests use localhost, no password, database 4, and random keys which they delete afterward. Use a disposable test Redis, not the application's Redis. The same option in user-service enables the concurrent refresh test.
+
+## SendGrid webhook routing
+
+The existing `/notification/**` route preserves the context path, raw body and SendGrid signature headers. `POST /notification/api/webhooks/sendgrid` is public and excluded from CSRF when enabled. SendGrid requests do not contain user cookies and pass through the standard authentication filter. Notification verifies the original signed bytes before parsing or persisting. Other paths and methods remain protected. Configure a public HTTPS Gateway URL in SendGrid and keep backend ports private; see [Notification webhook setup](../notification-service/README.md#sendgrid-event-webhook).
