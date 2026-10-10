@@ -2,8 +2,12 @@ package com.reallive.userservice.auth.controller;
 
 import com.reallive.userservice.auth.dto.request.AuthRequest;
 import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
+import com.reallive.userservice.auth.dto.request.ForgotPasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
+import com.reallive.userservice.auth.dto.request.ResetPasswordRequest;
+import com.reallive.userservice.auth.dto.request.VerifyResetOtpRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
+import com.reallive.userservice.auth.dto.response.ForgotPasswordResponse;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.util.AuthenticationUserId;
@@ -84,6 +88,30 @@ public class AuthController {
     @Value("${auth.cookie.refresh-token.path}")
     String refreshTokenPath;
 
+    @NonFinal
+    @Value("${auth.cookie.reset-token.name:reset_token}")
+    String resetTokenName;
+
+    @NonFinal
+    @Value("${auth.cookie.reset-token.max-age:600}")
+    long resetTokenMaxAge;
+
+    @NonFinal
+    @Value("${auth.cookie.reset-token.secure:false}")
+    boolean isCookieResetTokenSecure;
+
+    @NonFinal
+    @Value("${auth.cookie.reset-token.http-only:true}")
+    boolean resetTokenHttpOnly;
+
+    @NonFinal
+    @Value("${auth.cookie.reset-token.same-site:Lax}")
+    String resetTokenSameSite;
+
+    @NonFinal
+    @Value("${auth.cookie.reset-token.path:/user/api/auth/reset-password}")
+    String resetTokenPath;
+
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(@RequestBody @Valid AuthRequest authRequest, HttpServletResponse response) {
         AuthResponse result = authService.login(authRequest);
@@ -163,6 +191,47 @@ public class AuthController {
                 .build());
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<ForgotPasswordResponse>> forgotPassword(
+            @RequestBody @Valid ForgotPasswordRequest request) {
+        ForgotPasswordResponse result = authService.forgotPassword(request);
+        return ResponseEntity.ok(ApiResponse.<ForgotPasswordResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Password reset OTP sent successfully")
+                .result(result)
+                .build());
+    }
+
+    @PostMapping("/verify-reset-otp")
+    public ResponseEntity<ApiResponse<Void>> verifyResetOtp(
+            @RequestBody @Valid VerifyResetOtpRequest request,
+            HttpServletResponse response) {
+        String resetToken = authService.verifyResetOtp(request);
+        addResetTokenCookie(response, resetToken);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(200)
+                .code(1000)
+                .message("OTP verified successfully")
+                .result(null)
+                .build());
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @CookieValue(name = "${auth.cookie.reset-token.name:reset_token}", required = false) String resetToken,
+            @RequestBody @Valid ResetPasswordRequest request,
+            HttpServletResponse response) {
+        authService.resetPassword(resetToken, request);
+        clearResetTokenCookie(response);
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(200)
+                .code(1000)
+                .message("Password reset successfully")
+                .result(null)
+                .build());
+    }
+
     // ==================== Private Helper Methods ====================
 
     /**
@@ -204,6 +273,22 @@ public class AuthController {
 
         response.addHeader(HttpHeaders.SET_COOKIE, expiredAccessToken.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, expiredRefreshToken.toString());
+    }
+
+    private void addResetTokenCookie(HttpServletResponse response, String resetToken) {
+        ResponseCookie resetTokenCookie = buildCookie(
+                resetTokenName, resetToken,
+                resetTokenHttpOnly, isCookieResetTokenSecure,
+                resetTokenPath, resetTokenMaxAge, resetTokenSameSite);
+        response.addHeader(HttpHeaders.SET_COOKIE, resetTokenCookie.toString());
+    }
+
+    private void clearResetTokenCookie(HttpServletResponse response) {
+        ResponseCookie expiredResetToken = buildCookie(
+                resetTokenName, "",
+                resetTokenHttpOnly, isCookieResetTokenSecure,
+                resetTokenPath, 0, resetTokenSameSite);
+        response.addHeader(HttpHeaders.SET_COOKIE, expiredResetToken.toString());
     }
 
     private ResponseCookie buildCookie(String name, String value,

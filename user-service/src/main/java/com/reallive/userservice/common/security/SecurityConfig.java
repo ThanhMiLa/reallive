@@ -29,7 +29,10 @@ public class SecurityConfig {
             "/api/auth/login",
             "/api/auth/register",
             "/api/auth/refresh",
-            "/api/auth/logout"
+            "/api/auth/logout",
+            "/api/auth/forgot-password",
+            "/api/auth/verify-reset-otp",
+            "/api/auth/reset-password"
     };
 
     private final CustomJwtDecoder customJwtDecoder;

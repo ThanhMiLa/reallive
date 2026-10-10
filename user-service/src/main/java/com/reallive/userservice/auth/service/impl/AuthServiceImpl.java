@@ -8,18 +8,28 @@ import com.nimbusds.jose.Payload;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.reallive.userservice.auth.adapter.kafka.PasswordResetEmailPublisher;
+import com.reallive.userservice.auth.adapter.redis.PasswordResetOtpStore;
+import com.reallive.userservice.auth.dto.request.AuthRequest;
 import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
+import com.reallive.userservice.auth.dto.request.ForgotPasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
+import com.reallive.userservice.auth.dto.request.ResetPasswordRequest;
+import com.reallive.userservice.auth.dto.request.VerifyResetOtpRequest;
+import com.reallive.userservice.auth.dto.response.AuthResponse;
+import com.reallive.userservice.auth.dto.response.ForgotPasswordResponse;
+import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.mapper.UserMapper;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
-import com.reallive.userservice.auth.dto.request.AuthRequest;
-import com.reallive.userservice.auth.dto.response.AuthResponse;
-import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.service.AuthService;
+import com.reallive.userservice.auth.util.PasswordResetOtpHasher;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.util.UserValidator;
+import com.reallive.userservice.user.adapter.kafka.message.EmailType;
+import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,25 +37,28 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-
 
 @Service
 @RequiredArgsConstructor
@@ -59,6 +72,10 @@ public class AuthServiceImpl implements AuthService {
     RoleRepository roleRepository;
     StringRedisTemplate redisTemplate;
     ProfileRepository profileRepository;
+    PasswordResetOtpStore passwordResetOtpStore;
+    PasswordResetEmailPublisher passwordResetEmailPublisher;
+    PasswordResetOtpHasher passwordResetOtpHasher;
+    SecureRandom secureRandom = new SecureRandom();
 
 
     @NonFinal
@@ -72,6 +89,14 @@ public class AuthServiceImpl implements AuthService {
     @NonFinal
     @Value("${jwt.ttl_refreshToken}")
     long TTL_REFRESH_TOKEN;
+
+    @NonFinal
+    @Value("${email-verification.otp.ttl-seconds:60}")
+    long otpTtlSeconds;
+
+    @NonFinal
+    @Value("${auth.cookie.reset-token.max-age:600}")
+    long resetTokenTtlSeconds;
 
 
     @Override
@@ -273,5 +298,155 @@ public class AuthServiceImpl implements AuthService {
             });
         }
         return stringJoiner.toString();
+    }
+
+    @Override
+    public ForgotPasswordResponse forgotPassword(ForgotPasswordRequest request) {
+        UserEntity user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        UserValidator.validateActive(user);
+
+        checkResetCooldown(user.getId());
+
+        String otp = String.format(Locale.ROOT, "%06d", secureRandom.nextInt(1_000_000));
+        String otpHash = hashResetOtp(user, otp);
+        Instant issuedAt = Instant.now();
+        Instant expiresAt = issuedAt.plusSeconds(otpTtlSeconds);
+        saveResetOtp(user.getId(), otpHash);
+
+        EmailVerificationRequestedMessage message = EmailVerificationRequestedMessage.builder()
+                .schemaVersion(1)
+                .eventId(UUID.randomUUID())
+                .challengeId(UUID.randomUUID())
+                .userId(user.getId())
+                .emailType(EmailType.PASSWORD_RESET)
+                .recipientEmail(user.getEmail())
+                .otp(otp)
+                .issuedAt(issuedAt)
+                .expiresAt(expiresAt)
+                .build();
+
+        publishResetEmail(message, otpHash);
+        return ForgotPasswordResponse.builder().expiresAt(expiresAt).build();
+    }
+
+    @Override
+    public String verifyResetOtp(VerifyResetOtpRequest request) {
+        UserEntity user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        UserValidator.validateActive(user);
+
+        String otpHash = hashResetOtp(user, request.getOtp());
+        consumeResetOtp(user.getId(), otpHash);
+
+        byte[] tokenBytes = new byte[32];
+        secureRandom.nextBytes(tokenBytes);
+        String resetToken = HexFormat.of().formatHex(tokenBytes);
+
+        try {
+            passwordResetOtpStore.saveResetToken(resetToken, user.getId(), Duration.ofSeconds(resetTokenTtlSeconds));
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw new AppException(ErrorCode.OTP_VERIFICATION_UNAVAILABLE);
+        }
+
+        return resetToken;
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(String resetToken, ResetPasswordRequest request) {
+        if (resetToken == null || resetToken.isBlank()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        if (!Objects.equals(request.getNewPassword(), request.getConfirmPassword())) {
+            throw new AppException(ErrorCode.PASSWORD_NOT_MATCH);
+        }
+
+        UUID userId;
+        try {
+            userId = passwordResetOtpStore.consumeResetToken(resetToken)
+                    .orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        UserValidator.validateActive(user);
+
+        if (user.getPasswordHash() != null && passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            throw new AppException(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT);
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
+
+    private void checkResetCooldown(UUID userId) {
+        boolean cooldown;
+        try {
+            cooldown = passwordResetOtpStore.hasCooldown(userId);
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw new AppException(ErrorCode.OTP_REQUEST_UNAVAILABLE);
+        }
+        if (cooldown) {
+            throw new AppException(ErrorCode.OTP_COOLDOWN);
+        }
+    }
+
+    private String hashResetOtp(UserEntity user, String otp) {
+        try {
+            return passwordResetOtpHasher.hash(user.getId(), user.getEmail(), otp);
+        } catch (IllegalStateException | IllegalArgumentException exception) {
+            throw new AppException(ErrorCode.OTP_CONFIGURATION_INVALID);
+        }
+    }
+
+    private void saveResetOtp(UUID userId, String otpHash) {
+        boolean acquired;
+        try {
+            acquired = passwordResetOtpStore.save(userId, otpHash).acquired();
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw new AppException(ErrorCode.OTP_REQUEST_UNAVAILABLE);
+        }
+        if (!acquired) {
+            throw new AppException(ErrorCode.OTP_COOLDOWN);
+        }
+    }
+
+    private void consumeResetOtp(UUID userId, String otpHash) {
+        EmailVerificationOtpCheckResult checkResult;
+        try {
+            checkResult = passwordResetOtpStore.consume(userId, otpHash);
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw new AppException(ErrorCode.OTP_VERIFICATION_UNAVAILABLE);
+        }
+        switch (checkResult) {
+            case VALID -> { }
+            case INVALID -> throw new AppException(ErrorCode.OTP_MISMATCH);
+            case NOT_FOUND -> throw new AppException(ErrorCode.OTP_NOT_FOUND);
+        }
+    }
+
+    private void publishResetEmail(EmailVerificationRequestedMessage message, String otpHash) {
+        try {
+            passwordResetEmailPublisher.publish(message);
+        } catch (AppException exception) {
+            if (exception.getErrorCode() == ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED) {
+                cancelResetOtp(message.getUserId(), otpHash);
+            }
+            throw new AppException(ErrorCode.OTP_REQUEST_UNAVAILABLE);
+        } catch (RuntimeException exception) {
+            throw new AppException(ErrorCode.OTP_REQUEST_UNAVAILABLE);
+        }
+    }
+
+    private void cancelResetOtp(UUID userId, String otpHash) {
+        try {
+            passwordResetOtpStore.deleteIfCurrent(userId, otpHash);
+        } catch (RuntimeException exception) {
+            log.warn("Unable to clean up a password reset request for user {}", userId);
+        }
     }
 }

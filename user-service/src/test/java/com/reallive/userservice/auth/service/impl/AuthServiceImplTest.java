@@ -6,10 +6,16 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.reallive.userservice.auth.adapter.kafka.PasswordResetEmailPublisher;
+import com.reallive.userservice.auth.adapter.redis.PasswordResetOtpStore;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
 import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
+import com.reallive.userservice.auth.dto.request.ForgotPasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
+import com.reallive.userservice.auth.dto.request.ResetPasswordRequest;
+import com.reallive.userservice.auth.dto.request.VerifyResetOtpRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
+import com.reallive.userservice.auth.dto.response.ForgotPasswordResponse;
 import com.reallive.userservice.auth.entity.PermissionEntity;
 import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.auth.entity.UserEntity;
@@ -17,8 +23,13 @@ import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.mapper.UserMapper;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.auth.util.PasswordResetOtpHasher;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.user.adapter.kafka.message.EmailType;
+import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
+import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.repository.ProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +42,9 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -40,6 +53,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -59,7 +73,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -79,6 +95,9 @@ class AuthServiceImplTest {
     private ProfileRepository profileRepository;
     private StringRedisTemplate redisTemplate;
     private ValueOperations<String, String> valueOperations;
+    private PasswordResetOtpStore passwordResetOtpStore;
+    private PasswordResetEmailPublisher passwordResetEmailPublisher;
+    private PasswordResetOtpHasher passwordResetOtpHasher;
     private AuthServiceImpl authService;
 
     @BeforeEach
@@ -91,6 +110,9 @@ class AuthServiceImplTest {
         profileRepository = mock(ProfileRepository.class);
         redisTemplate = mock(StringRedisTemplate.class);
         valueOperations = mock(ValueOperations.class);
+        passwordResetOtpStore = mock(PasswordResetOtpStore.class);
+        passwordResetEmailPublisher = mock(PasswordResetEmailPublisher.class);
+        passwordResetOtpHasher = mock(PasswordResetOtpHasher.class);
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
@@ -100,12 +122,17 @@ class AuthServiceImplTest {
                 passwordEncoder,
                 roleRepository,
                 redisTemplate,
-                profileRepository
+                profileRepository,
+                passwordResetOtpStore,
+                passwordResetEmailPublisher,
+                passwordResetOtpHasher
         );
 
         ReflectionTestUtils.setField(authService, "SIGNER_KEY", SIGNING_KEY);
         ReflectionTestUtils.setField(authService, "TTL_ACCESS_TOKEN", 900L);
         ReflectionTestUtils.setField(authService, "TTL_REFRESH_TOKEN", 2592000L);
+        ReflectionTestUtils.setField(authService, "otpTtlSeconds", 60L);
+        ReflectionTestUtils.setField(authService, "resetTokenTtlSeconds", 600L);
     }
 
     // =========================================================================
@@ -640,7 +667,8 @@ class AuthServiceImplTest {
                 UserRepository users = mock(UserRepository.class);
                 when(users.findById(user.getId())).thenReturn(Optional.of(user));
                 AuthServiceImpl service = new AuthServiceImpl(users, mock(UserMapper.class),
-                        mock(PasswordEncoder.class), mock(RoleRepository.class), redis, mock(ProfileRepository.class));
+                        mock(PasswordEncoder.class), mock(RoleRepository.class), redis, mock(ProfileRepository.class),
+                        mock(PasswordResetOtpStore.class), mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class));
                 ReflectionTestUtils.setField(service, "SIGNER_KEY", signingKey);
                 ReflectionTestUtils.setField(service, "TTL_ACCESS_TOKEN", 900L);
                 ReflectionTestUtils.setField(service, "TTL_REFRESH_TOKEN", 2592000L);
@@ -948,6 +976,10 @@ class AuthServiceImplTest {
         return user;
     }
 
+    private UserEntity createTestUser() {
+        return createUser("testuser", "hashed-password", UserStatus.ACTIVE);
+    }
+
     private String createSignedToken(String type, String subject, String jti, Instant expiry) throws JOSEException {
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .subject(subject)
@@ -959,5 +991,414 @@ class AuthServiceImplTest {
         SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS512), claims);
         signedJWT.sign(new MACSigner(SIGNING_KEY.getBytes(StandardCharsets.UTF_8)));
         return signedJWT.serialize();
+    }
+
+    // =========================================================================
+    // 6. FORGOT PASSWORD TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("Forgot Password Branch Coverage")
+    class ForgotPasswordTests {
+
+        @Test
+        @DisplayName("Throws USER_NOT_FOUND when email does not exist")
+        void forgotPassword_UserNotFound() {
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("unknown@example.com").build();
+            when(userRepository.findByEmail("unknown@example.com")).thenReturn(Optional.empty());
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.USER_NOT_FOUND, ex.getErrorCode());
+            verify(passwordResetOtpStore, never()).hasCooldown(any());
+        }
+
+        @Test
+        @DisplayName("Throws USER_NOT_ACTIVE when user is inactive or banned")
+        void forgotPassword_UserNotActive() {
+            UserEntity inactiveUser = createTestUser();
+            inactiveUser.setStatus(UserStatus.BANNED);
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("banned@example.com").build();
+            when(userRepository.findByEmail("banned@example.com")).thenReturn(Optional.of(inactiveUser));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, ex.getErrorCode());
+            verify(passwordResetOtpStore, never()).hasCooldown(any());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_COOLDOWN when cooldown is active in store")
+        void forgotPassword_OtpCooldownActive() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(true);
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_COOLDOWN, ex.getErrorCode());
+            verify(passwordResetOtpHasher, never()).hash(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_REQUEST_UNAVAILABLE when checking cooldown fails in Redis")
+        void forgotPassword_CooldownStoreThrows() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenThrow(new RedisConnectionFailureException("Redis down"));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_REQUEST_UNAVAILABLE, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_CONFIGURATION_INVALID when hasher throws IllegalStateException")
+        void forgotPassword_HasherThrows() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString()))
+                    .thenThrow(new IllegalStateException("Missing HMAC key"));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_CONFIGURATION_INVALID, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_COOLDOWN when store save returns acquired = false")
+        void forgotPassword_SaveAcquiredFalse() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString())).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.save(eq(user.getId()), eq("hashed-otp")))
+                    .thenReturn(new EmailVerificationCooldownResult(false, Duration.ofSeconds(30)));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_COOLDOWN, ex.getErrorCode());
+            verify(passwordResetEmailPublisher, never()).publish(any());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_REQUEST_UNAVAILABLE when store save throws DataAccessException")
+        void forgotPassword_SaveStoreThrows() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString())).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.save(eq(user.getId()), eq("hashed-otp")))
+                    .thenThrow(new RedisConnectionFailureException("Redis down"));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_REQUEST_UNAVAILABLE, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_REQUEST_UNAVAILABLE and cleans up OTP when Kafka publish fails before submission")
+        void forgotPassword_KafkaPublishFailed_RollsBackRedis() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString())).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.save(eq(user.getId()), eq("hashed-otp")))
+                    .thenReturn(new EmailVerificationCooldownResult(true, Duration.ZERO));
+            doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED))
+                    .when(passwordResetEmailPublisher).publish(any());
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_REQUEST_UNAVAILABLE, ex.getErrorCode());
+            verify(passwordResetOtpStore).deleteIfCurrent(user.getId(), "hashed-otp");
+        }
+
+        @Test
+        @DisplayName("Throws OTP_REQUEST_UNAVAILABLE without deleting OTP when Kafka outcome is uncertain")
+        void forgotPassword_KafkaPublishUncertain_DoesNotDeleteOtp() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString())).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.save(eq(user.getId()), eq("hashed-otp")))
+                    .thenReturn(new EmailVerificationCooldownResult(true, Duration.ZERO));
+            doThrow(new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN))
+                    .when(passwordResetEmailPublisher).publish(any());
+
+            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
+            assertEquals(ErrorCode.OTP_REQUEST_UNAVAILABLE, ex.getErrorCode());
+            verify(passwordResetOtpStore, never()).deleteIfCurrent(any(), any());
+        }
+
+        @Test
+        @DisplayName("Successfully creates OTP, publishes Kafka message, and returns expiresAt")
+        void forgotPassword_Success() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString())).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.save(eq(user.getId()), eq("hashed-otp")))
+                    .thenReturn(new EmailVerificationCooldownResult(true, Duration.ZERO));
+
+            ForgotPasswordResponse response = authService.forgotPassword(request);
+
+            assertNotNull(response);
+            assertNotNull(response.getExpiresAt());
+            assertTrue(response.getExpiresAt().isAfter(Instant.now()));
+
+            ArgumentCaptor<EmailVerificationRequestedMessage> messageCaptor =
+                    ArgumentCaptor.forClass(EmailVerificationRequestedMessage.class);
+            verify(passwordResetEmailPublisher).publish(messageCaptor.capture());
+            EmailVerificationRequestedMessage published = messageCaptor.getValue();
+            assertEquals(user.getId(), published.getUserId());
+            assertEquals(EmailType.PASSWORD_RESET, published.getEmailType());
+            assertEquals("user@example.com", published.getRecipientEmail());
+            assertNotNull(published.getOtp());
+        }
+    }
+
+    // =========================================================================
+    // 7. VERIFY RESET OTP TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("Verify Reset OTP Branch Coverage")
+    class VerifyResetOtpTests {
+
+        @Test
+        @DisplayName("Throws USER_NOT_FOUND when email does not exist")
+        void verifyResetOtp_UserNotFound() {
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("unknown@example.com").otp("123456").build();
+            when(userRepository.findByEmail("unknown@example.com")).thenReturn(Optional.empty());
+
+            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
+            assertEquals(ErrorCode.USER_NOT_FOUND, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws USER_NOT_ACTIVE when user is inactive or banned")
+        void verifyResetOtp_UserNotActive() {
+            UserEntity user = createTestUser();
+            user.setStatus(UserStatus.BANNED);
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("suspended@example.com").otp("123456").build();
+            when(userRepository.findByEmail("suspended@example.com")).thenReturn(Optional.of(user));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_NOT_FOUND when OTP is expired or not found in store")
+        void verifyResetOtp_OtpNotFound() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("user@example.com").otp("123456").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpHasher.hash(user.getId(), "user@example.com", "123456")).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.consume(user.getId(), "hashed-otp")).thenReturn(EmailVerificationOtpCheckResult.NOT_FOUND);
+
+            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
+            assertEquals(ErrorCode.OTP_NOT_FOUND, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_MISMATCH when OTP does not match")
+        void verifyResetOtp_OtpMismatch() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("user@example.com").otp("123456").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpHasher.hash(user.getId(), "user@example.com", "123456")).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.consume(user.getId(), "hashed-otp")).thenReturn(EmailVerificationOtpCheckResult.INVALID);
+
+            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
+            assertEquals(ErrorCode.OTP_MISMATCH, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_VERIFICATION_UNAVAILABLE when consume throws DataAccessException")
+        void verifyResetOtp_ConsumeStoreThrows() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("user@example.com").otp("123456").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpHasher.hash(user.getId(), "user@example.com", "123456")).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.consume(user.getId(), "hashed-otp")).thenThrow(new RedisConnectionFailureException("Redis down"));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
+            assertEquals(ErrorCode.OTP_VERIFICATION_UNAVAILABLE, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws OTP_VERIFICATION_UNAVAILABLE when saveResetToken throws DataAccessException")
+        void verifyResetOtp_SaveTokenStoreThrows() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("user@example.com").otp("123456").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpHasher.hash(user.getId(), "user@example.com", "123456")).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.consume(user.getId(), "hashed-otp")).thenReturn(EmailVerificationOtpCheckResult.VALID);
+            doThrow(new RedisConnectionFailureException("Redis down"))
+                    .when(passwordResetOtpStore).saveResetToken(anyString(), eq(user.getId()), any(Duration.class));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
+            assertEquals(ErrorCode.OTP_VERIFICATION_UNAVAILABLE, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Successfully consumes OTP, persists reset token, and returns 64-character hex token")
+        void verifyResetOtp_Success() {
+            UserEntity user = createTestUser();
+            user.setEmail("user@example.com");
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("user@example.com").otp("123456").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpHasher.hash(user.getId(), "user@example.com", "123456")).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.consume(user.getId(), "hashed-otp")).thenReturn(EmailVerificationOtpCheckResult.VALID);
+
+            String token = authService.verifyResetOtp(request);
+
+            assertNotNull(token);
+            assertEquals(64, token.length()); // 32 bytes hex
+            verify(passwordResetOtpStore).saveResetToken(eq(token), eq(user.getId()), eq(Duration.ofSeconds(600)));
+        }
+    }
+
+    // =========================================================================
+    // 8. RESET PASSWORD TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("Reset Password Branch Coverage")
+    class ResetPasswordTests {
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {"   "})
+        @DisplayName("Throws UNAUTHENTICATED when reset token is null, empty or blank")
+        void resetPassword_TokenMissingOrBlank(String token) {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword(token, request));
+            assertEquals(ErrorCode.UNAUTHENTICATED, ex.getErrorCode());
+            verify(passwordResetOtpStore, never()).consumeResetToken(any());
+        }
+
+        @Test
+        @DisplayName("Throws PASSWORD_NOT_MATCH when newPassword and confirmPassword do not match")
+        void resetPassword_PasswordMismatch() {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("differentSecret123")
+                    .build();
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("valid-token", request));
+            assertEquals(ErrorCode.PASSWORD_NOT_MATCH, ex.getErrorCode());
+            verify(passwordResetOtpStore, never()).consumeResetToken(any());
+        }
+
+        @Test
+        @DisplayName("Throws UNAUTHENTICATED when reset token is expired or invalid in store")
+        void resetPassword_TokenNotFoundInStore() {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+            when(passwordResetOtpStore.consumeResetToken("expired-token")).thenReturn(Optional.empty());
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("expired-token", request));
+            assertEquals(ErrorCode.UNAUTHENTICATED, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws UNAUTHENTICATED when store throws DataAccessException")
+        void resetPassword_StoreThrows() {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+            when(passwordResetOtpStore.consumeResetToken("token")).thenThrow(new RedisConnectionFailureException("Redis down"));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("token", request));
+            assertEquals(ErrorCode.UNAUTHENTICATED, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws USER_NOT_FOUND when user associated with token does not exist")
+        void resetPassword_UserNotFound() {
+            UUID userId = UUID.randomUUID();
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+            when(passwordResetOtpStore.consumeResetToken("valid-token")).thenReturn(Optional.of(userId));
+            when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("valid-token", request));
+            assertEquals(ErrorCode.USER_NOT_FOUND, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws USER_NOT_ACTIVE when user is not active")
+        void resetPassword_UserNotActive() {
+            UserEntity user = createTestUser();
+            user.setStatus(UserStatus.BANNED);
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+            when(passwordResetOtpStore.consumeResetToken("valid-token")).thenReturn(Optional.of(user.getId()));
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("valid-token", request));
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, ex.getErrorCode());
+        }
+
+        @Test
+        @DisplayName("Throws NEW_PASSWORD_SAME_AS_CURRENT when new password matches current password")
+        void resetPassword_NewPasswordSameAsCurrent() {
+            UserEntity user = createTestUser();
+            user.setPasswordHash("hashed-old-secret");
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("oldSecret123")
+                    .confirmPassword("oldSecret123")
+                    .build();
+            when(passwordResetOtpStore.consumeResetToken("valid-token")).thenReturn(Optional.of(user.getId()));
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("oldSecret123", "hashed-old-secret")).thenReturn(true);
+
+            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("valid-token", request));
+            assertEquals(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT, ex.getErrorCode());
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Successfully updates password and saves user when request is valid")
+        void resetPassword_Success() {
+            UserEntity user = createTestUser();
+            user.setPasswordHash("hashed-old-secret");
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newBrandSecret123")
+                    .confirmPassword("newBrandSecret123")
+                    .build();
+            when(passwordResetOtpStore.consumeResetToken("valid-token")).thenReturn(Optional.of(user.getId()));
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("newBrandSecret123", "hashed-old-secret")).thenReturn(false);
+            when(passwordEncoder.encode("newBrandSecret123")).thenReturn("hashed-newBrandSecret123");
+
+            authService.resetPassword("valid-token", request);
+
+            assertEquals("hashed-newBrandSecret123", user.getPasswordHash());
+            verify(userRepository).save(user);
+        }
     }
 }

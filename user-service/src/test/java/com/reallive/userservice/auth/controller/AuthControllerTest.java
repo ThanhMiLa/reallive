@@ -3,8 +3,12 @@ package com.reallive.userservice.auth.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
 import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
+import com.reallive.userservice.auth.dto.request.ForgotPasswordRequest;
 import com.reallive.userservice.auth.dto.request.RegisterRequest;
+import com.reallive.userservice.auth.dto.request.ResetPasswordRequest;
+import com.reallive.userservice.auth.dto.request.VerifyResetOtpRequest;
 import com.reallive.userservice.auth.dto.response.AuthResponse;
+import com.reallive.userservice.auth.dto.response.ForgotPasswordResponse;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
@@ -32,6 +36,7 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -76,6 +81,13 @@ class AuthControllerTest {
         ReflectionTestUtils.setField(controller, "refreshTokenSameSite", "Lax");
         ReflectionTestUtils.setField(controller, "refreshTokenPath", "/api/auth");
 
+        ReflectionTestUtils.setField(controller, "resetTokenName", "reset_token");
+        ReflectionTestUtils.setField(controller, "resetTokenMaxAge", 600L);
+        ReflectionTestUtils.setField(controller, "isCookieResetTokenSecure", false);
+        ReflectionTestUtils.setField(controller, "resetTokenHttpOnly", true);
+        ReflectionTestUtils.setField(controller, "resetTokenSameSite", "Lax");
+        ReflectionTestUtils.setField(controller, "resetTokenPath", "/api/auth/reset-password");
+
         AnnotationConfigWebApplicationContext context = new AnnotationConfigWebApplicationContext();
         contexts.add(context);
         context.setServletContext(new MockServletContext());
@@ -85,7 +97,9 @@ class AuthControllerTest {
             beanFactory.registerSingleton("exceptionHandler", new GlobalExceptionHandler());
             beanFactory.addEmbeddedValueResolver(value -> value
                     .replace("${auth.cookie.access-token.name}", "access_token")
-                    .replace("${auth.cookie.refresh-token.name}", "refresh_token"));
+                    .replace("${auth.cookie.refresh-token.name}", "refresh_token")
+                    .replace("${auth.cookie.reset-token.name:reset_token}", "reset_token")
+                    .replace("${auth.cookie.reset-token.name}", "reset_token"));
         });
         context.refresh();
 
@@ -661,6 +675,287 @@ class AuthControllerTest {
                             org.hamcrest.Matchers.hasItem(containsString("access_token=fresh-access-token"))))
                     .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
                             org.hamcrest.Matchers.hasItem(containsString("refresh_token=fresh-refresh-token"))));
+        }
+    }
+
+    // =========================================================================
+    // 6. FORGOT PASSWORD CONTROLLER TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("POST /api/auth/forgot-password")
+    class ForgotPasswordEndpointTests {
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when email format is invalid")
+        void forgotPassword_ReturnsBadRequest_WhenEmailInvalid() throws Exception {
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                    .email("not-an-email")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/forgot-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 404 Not Found when user with email does not exist")
+        void forgotPassword_ReturnsNotFound_WhenUserNotFound() throws Exception {
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                    .email("unknown@example.com")
+                    .build();
+
+            when(authService.forgotPassword(any(ForgotPasswordRequest.class)))
+                    .thenThrow(new AppException(ErrorCode.USER_NOT_FOUND));
+
+            mockMvc.perform(post("/api/auth/forgot-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_FOUND.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 429 Too Many Requests when OTP cooldown is active")
+        void forgotPassword_ReturnsTooManyRequests_WhenCooldownActive() throws Exception {
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                    .email("user@example.com")
+                    .build();
+
+            when(authService.forgotPassword(any(ForgotPasswordRequest.class)))
+                    .thenThrow(new AppException(ErrorCode.OTP_COOLDOWN));
+
+            mockMvc.perform(post("/api/auth/forgot-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.OTP_COOLDOWN.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 200 OK and expiration details on successful forgot password request")
+        void forgotPassword_ReturnsOk_OnSuccess() throws Exception {
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                    .email("user@example.com")
+                    .build();
+
+            Instant expiresAt = Instant.now().plusSeconds(60);
+            ForgotPasswordResponse serviceResponse = ForgotPasswordResponse.builder()
+                    .expiresAt(expiresAt)
+                    .build();
+
+            when(authService.forgotPassword(any(ForgotPasswordRequest.class))).thenReturn(serviceResponse);
+
+            mockMvc.perform(post("/api/auth/forgot-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.code").value(1000))
+                    .andExpect(jsonPath("$.message").value("Password reset OTP sent successfully"))
+                    .andExpect(jsonPath("$.result.expiresAt").isNotEmpty());
+        }
+    }
+
+    // =========================================================================
+    // 7. VERIFY RESET OTP CONTROLLER TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("POST /api/auth/verify-reset-otp")
+    class VerifyResetOtpEndpointTests {
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when email format is invalid")
+        void verifyResetOtp_ReturnsBadRequest_WhenEmailInvalid() throws Exception {
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder()
+                    .email("invalid-email")
+                    .otp("123456")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/verify-reset-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when OTP format is invalid (not 6 digits)")
+        void verifyResetOtp_ReturnsBadRequest_WhenOtpInvalid() throws Exception {
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder()
+                    .email("user@example.com")
+                    .otp("123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/verify-reset-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.OTP_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when OTP is incorrect (OTP_MISMATCH)")
+        void verifyResetOtp_ReturnsBadRequest_WhenOtpMismatch() throws Exception {
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder()
+                    .email("user@example.com")
+                    .otp("123456")
+                    .build();
+
+            when(authService.verifyResetOtp(any(VerifyResetOtpRequest.class)))
+                    .thenThrow(new AppException(ErrorCode.OTP_MISMATCH));
+
+            mockMvc.perform(post("/api/auth/verify-reset-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.OTP_MISMATCH.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 200 OK, sets HttpOnly reset_token cookie, and does not expose token in body")
+        void verifyResetOtp_ReturnsOk_AndSetsResetCookie_OnSuccess() throws Exception {
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder()
+                    .email("user@example.com")
+                    .otp("123456")
+                    .build();
+
+            String token = "a".repeat(64);
+            when(authService.verifyResetOtp(any(VerifyResetOtpRequest.class))).thenReturn(token);
+
+            mockMvc.perform(post("/api/auth/verify-reset-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.code").value(1000))
+                    .andExpect(jsonPath("$.message").value("OTP verified successfully"))
+                    .andExpect(jsonPath("$.result").value(nullValue()))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("reset_token=" + token))))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("Path=/api/auth/reset-password"))))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("HttpOnly"))));
+        }
+    }
+
+    // =========================================================================
+    // 8. RESET PASSWORD CONTROLLER TESTS
+    // =========================================================================
+    @Nested
+    @DisplayName("POST /api/auth/reset-password")
+    class ResetPasswordEndpointTests {
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when newPassword is less than 5 characters")
+        void resetPassword_ReturnsBadRequest_WhenNewPasswordInvalid() throws Exception {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("12")
+                    .confirmPassword("12345")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/reset-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.PASSWORD_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when confirmPassword is less than 5 characters")
+        void resetPassword_ReturnsBadRequest_WhenConfirmPasswordInvalid() throws Exception {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("12345")
+                    .confirmPassword("12")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/reset-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.PASSWORD_CONFIRM_INVALID.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 401 Unauthorized when resetToken cookie is missing or invalid")
+        void resetPassword_ReturnsUnauthorized_WhenTokenMissingOrInvalid() throws Exception {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("newSecret123")
+                    .build();
+
+            doThrow(new AppException(ErrorCode.UNAUTHENTICATED))
+                    .when(authService).resetPassword(isNull(), any(ResetPasswordRequest.class));
+
+            mockMvc.perform(post("/api/auth/reset-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHENTICATED.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when passwords do not match")
+        void resetPassword_ReturnsBadRequest_WhenPasswordsDoNotMatch() throws Exception {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("newSecret123")
+                    .confirmPassword("differentSecret123")
+                    .build();
+
+            doThrow(new AppException(ErrorCode.PASSWORD_NOT_MATCH))
+                    .when(authService).resetPassword(eq("valid-reset-token"), any(ResetPasswordRequest.class));
+
+            mockMvc.perform(post("/api/auth/reset-password")
+                            .cookie(new Cookie("reset_token", "valid-reset-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.PASSWORD_NOT_MATCH.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 400 Bad Request when new password is same as current password")
+        void resetPassword_ReturnsBadRequest_WhenNewPasswordSameAsCurrent() throws Exception {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("sameSecret123")
+                    .confirmPassword("sameSecret123")
+                    .build();
+
+            doThrow(new AppException(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT))
+                    .when(authService).resetPassword(eq("valid-reset-token"), any(ResetPasswordRequest.class));
+
+            mockMvc.perform(post("/api/auth/reset-password")
+                            .cookie(new Cookie("reset_token", "valid-reset-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT.getCode()));
+        }
+
+        @Test
+        @DisplayName("Returns 200 OK and clears reset_token cookie on successful password reset")
+        void resetPassword_ReturnsOk_AndClearsResetCookie_OnSuccess() throws Exception {
+            ResetPasswordRequest request = ResetPasswordRequest.builder()
+                    .newPassword("brandNewSecret123")
+                    .confirmPassword("brandNewSecret123")
+                    .build();
+
+            mockMvc.perform(post("/api/auth/reset-password")
+                            .cookie(new Cookie("reset_token", "valid-reset-token"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.code").value(1000))
+                    .andExpect(jsonPath("$.message").value("Password reset successfully"))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("reset_token=;"))))
+                    .andExpect(header().stringValues(HttpHeaders.SET_COOKIE,
+                            org.hamcrest.Matchers.hasItem(containsString("Max-Age=0"))));
+
+            verify(authService).resetPassword(eq("valid-reset-token"), any(ResetPasswordRequest.class));
         }
     }
 

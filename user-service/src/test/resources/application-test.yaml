@@ -33,5 +33,12 @@ auth:
       http-only: true
       same-site: Lax
       path: /api/auth
+    reset-token:
+      name: reset_token
+      max-age: 600
+      secure: false
+      http-only: true
+      same-site: Lax
+      path: /api/auth/reset-password
   cors:
     allowed-origins: http://localhost:5173

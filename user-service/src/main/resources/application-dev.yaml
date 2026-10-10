@@ -92,3 +92,10 @@ auth:
       http-only: ${REFRESH_TOKEN_HTTP_ONLY:true}
       same-site: ${REFRESH_TOKEN_SAME_SITE:Lax}
       path: ${REFRESH_TOKEN_PATH:/user/api/auth}
+    reset-token:
+      name: ${RESET_TOKEN_COOKIE_NAME:reset_token}
+      max-age: ${RESET_TOKEN_MAX_AGE:600}
+      secure: ${RESET_TOKEN_SECURE:false}
+      http-only: ${RESET_TOKEN_HTTP_ONLY:true}
+      same-site: ${RESET_TOKEN_SAME_SITE:Lax}
+      path: ${RESET_TOKEN_PATH:/user/api/auth/reset-password}
