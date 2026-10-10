@@ -68,6 +68,9 @@ public class EmailDeliveryProperties {
         @Pattern(regexp = "d-[A-Za-z0-9-]+")
         private String emailVerificationTemplateId;
 
+        @Pattern(regexp = "d-[A-Za-z0-9-]+")
+        private String passwordResetTemplateId;
+
         @NotBlank
         private String baseUrl = "https://api.sendgrid.com";
 

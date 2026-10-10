@@ -80,6 +80,14 @@ class EmailNotificationHistoryServiceTest {
     }
 
     @Test
+    void committedCreationSelectsPasswordResetTemplateWhenEmailTypeIsPasswordReset() {
+        var message = EmailDeliveryTestSupport.message(NOW);
+        message.setEmailType(com.reallive.notificationservice.email.dto.message.EmailType.PASSWORD_RESET);
+        var created = history.create(message);
+        assertEquals("d-test-password-reset-template", created.getTemplateId());
+    }
+
+    @Test
     void simultaneousClaimsAllowOnlyOneProviderOwner() throws Exception {
         var message = create();
         var start = new CountDownLatch(1);

@@ -1,5 +1,6 @@
 package com.reallive.notificationservice.email.dto.message;
 
 public enum EmailType {
-    EMAIL_VERIFICATION
+    EMAIL_VERIFICATION,
+    PASSWORD_RESET
 }

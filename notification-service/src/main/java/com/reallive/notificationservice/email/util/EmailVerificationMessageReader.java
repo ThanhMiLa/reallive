@@ -38,7 +38,8 @@ public class EmailVerificationMessageReader {
     private void validate(String key, EmailVerificationRequestedMessage message) {
         if (message == null || message.getSchemaVersion() != 1 || message.getEventId() == null
                 || message.getChallengeId() == null || message.getUserId() == null
-                || !message.getUserId().toString().equals(key) || message.getEmailType() != EmailType.EMAIL_VERIFICATION
+                || !message.getUserId().toString().equals(key)
+                || (message.getEmailType() != EmailType.EMAIL_VERIFICATION && message.getEmailType() != EmailType.PASSWORD_RESET)
                 || message.getRecipientEmail() == null || message.getRecipientEmail().isBlank()
                 || message.getRecipientEmail().length() > 255
                 || !validator.validate(new Recipient(message.getRecipientEmail())).isEmpty()

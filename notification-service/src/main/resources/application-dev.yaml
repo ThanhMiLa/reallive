@@ -75,6 +75,7 @@ notification:
       sender-name: ${SENDGRID_FROM_NAME:RealLive}
       webhook-verification-public-key: ${SENDGRID_WEBHOOK_PUBLIC_KEY:}
       email-verification-template-id: ${SENDGRID_EMAIL_VERIFICATION_TEMPLATE_ID}
+      password-reset-template-id: ${SENDGRID_PASSWORD_RESET_TEMPLATE_ID:${SENDGRID_EMAIL_VERIFICATION_TEMPLATE_ID}}
       base-url: https://api.sendgrid.com
       connect-timeout: 2s
       request-timeout: 10s

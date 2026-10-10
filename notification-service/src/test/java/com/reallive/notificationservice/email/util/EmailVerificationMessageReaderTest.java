@@ -37,6 +37,13 @@ class EmailVerificationMessageReaderTest {
         assertEquals(message, reader.read(message.getUserId().toString(), mapper.writeValueAsString(message)));
     }
 
+    @Test
+    void acceptsPasswordResetEmailType() {
+        var message = EmailDeliveryTestSupport.message(Instant.now());
+        message.setEmailType(com.reallive.notificationservice.email.dto.message.EmailType.PASSWORD_RESET);
+        assertEquals(message, reader.read(message.getUserId().toString(), mapper.writeValueAsString(message)));
+    }
+
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"null", "[]", "{", "{\"otp\":\"012345\"}", "private-012345"})

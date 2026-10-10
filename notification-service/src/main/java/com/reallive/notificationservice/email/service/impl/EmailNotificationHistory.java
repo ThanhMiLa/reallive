@@ -4,6 +4,7 @@ import com.reallive.notificationservice.common.exception.AppException;
 import com.reallive.notificationservice.common.exception.ErrorCode;
 import com.reallive.notificationservice.email.dto.response.SendGridSubmissionResult;
 import com.reallive.notificationservice.email.configuration.EmailDeliveryProperties;
+import com.reallive.notificationservice.email.dto.message.EmailType;
 import com.reallive.notificationservice.email.dto.message.EmailVerificationRequestedMessage;
 import com.reallive.notificationservice.email.entity.EmailNotificationEntity;
 import com.reallive.notificationservice.email.entity.EmailNotificationStatus;
@@ -159,9 +160,14 @@ public class EmailNotificationHistory {
     }
 
     private EmailNotificationEntity notification(EmailVerificationRequestedMessage message) {
+        String templateId = message.getEmailType() == EmailType.PASSWORD_RESET
+                && properties.getSendgrid().getPasswordResetTemplateId() != null
+                && !properties.getSendgrid().getPasswordResetTemplateId().isBlank()
+                ? properties.getSendgrid().getPasswordResetTemplateId()
+                : properties.getSendgrid().getEmailVerificationTemplateId();
         return EmailNotificationEntity.builder().eventId(message.getEventId()).userId(message.getUserId())
                 .emailType(message.getEmailType()).recipientEmail(message.getRecipientEmail())
-                .templateId(properties.getSendgrid().getEmailVerificationTemplateId())
+                .templateId(templateId)
                 .issuedAt(message.getIssuedAt().truncatedTo(ChronoUnit.MICROS))
                 .expiresAt(message.getExpiresAt().truncatedTo(ChronoUnit.MICROS)).build();
     }

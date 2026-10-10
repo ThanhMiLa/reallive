@@ -57,3 +57,4 @@ notification:
       sender-name: RealLive
       webhook-verification-public-key: test-webhook-public-key
       email-verification-template-id: d-test-template
+      password-reset-template-id: d-test-password-reset-template
