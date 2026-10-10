@@ -76,9 +76,13 @@ notification:
       webhook-verification-public-key: ${SENDGRID_WEBHOOK_PUBLIC_KEY:}
       email-verification-template-id: ${SENDGRID_EMAIL_VERIFICATION_TEMPLATE_ID}
 
+auth:
+  cookie:
+    access-token:
+      name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
+
 management:
   health:
     redis:
       enabled: false
-
 

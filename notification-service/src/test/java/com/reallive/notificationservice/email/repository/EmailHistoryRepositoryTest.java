@@ -176,6 +176,8 @@ class EmailHistoryRepositoryTest {
         assertEquals("bounce", reloaded.getEventType());
         assertEquals(ISSUED_AT, reloaded.getProviderTimestamp());
         assertNotNull(reloaded.getReceivedAt());
+        assertNotNull(reloaded.getCreatedAt());
+        assertNotNull(reloaded.getUpdatedAt());
         assertEquals("550 unavailable", reloaded.getResponse());
         assertEquals("Mailbox unavailable", reloaded.getReason());
         assertEquals("5.1.1", reloaded.getSmtpStatus());
@@ -236,6 +238,33 @@ class EmailHistoryRepositoryTest {
         assertFalse(notifications.existsByEventId(eventId));
         assertTrue(deliveryEvents.findBySgEventId(sgEventId).isEmpty());
         assertFalse(deliveryEvents.existsBySgEventId(sgEventId));
+    }
+
+    @Test
+    void inheritedAuditTimestampsUpdateWithoutChangingCreationTimes() {
+        var notification = notifications.saveAndFlush(notification(UUID.randomUUID()));
+        var event = deliveryEvents.saveAndFlush(deliveryEvent(notification, UUID.randomUUID().toString(), "processed", ISSUED_AT));
+        Instant oldUpdate = ISSUED_AT.minusSeconds(3600);
+        jdbc.update("UPDATE " + table("email_notifications") + " SET updated_at = ? WHERE id = ?",
+                oldUpdate.atOffset(ZoneOffset.UTC), notification.getId());
+        jdbc.update("UPDATE " + table("email_delivery_events") + " SET updated_at = ? WHERE id = ?",
+                oldUpdate.atOffset(ZoneOffset.UTC), event.getId());
+        var notificationBefore = notifications.findById(notification.getId()).orElseThrow();
+        var eventBefore = deliveryEvents.findById(event.getId()).orElseThrow();
+        Instant notificationCreatedAt = notificationBefore.getCreatedAt();
+        Instant eventCreatedAt = eventBefore.getCreatedAt();
+        Instant receivedAt = eventBefore.getReceivedAt();
+        notificationBefore.setAttemptCount(1);
+        eventBefore.setResponse("Accepted by mail server");
+        notifications.saveAndFlush(notificationBefore);
+        deliveryEvents.saveAndFlush(eventBefore);
+        var notificationAfter = notifications.findById(notification.getId()).orElseThrow();
+        var eventAfter = deliveryEvents.findById(event.getId()).orElseThrow();
+        assertEquals(notificationCreatedAt, notificationAfter.getCreatedAt());
+        assertEquals(eventCreatedAt, eventAfter.getCreatedAt());
+        assertEquals(receivedAt, eventAfter.getReceivedAt());
+        assertTrue(notificationAfter.getUpdatedAt().isAfter(oldUpdate));
+        assertTrue(eventAfter.getUpdatedAt().isAfter(oldUpdate));
     }
 
     private EmailNotificationEntity notification(UUID userId) {

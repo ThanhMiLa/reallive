@@ -531,6 +531,8 @@ One row represents one SendGrid webhook event. Store separate rows for each even
 | event_type | VARCHAR(50) | NOT NULL | - | Provider event type, such as `processed, delivered, deferred, bounce, dropped`; stored as text for additional event types |
 | provider_timestamp | TIMESTAMPTZ | NOT NULL | Composite | Provider event time, converted from Unix seconds |
 | received_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Time Notification received the event |
+| created_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Persistence creation time inherited from BaseEntity |
+| updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Last persistence update time inherited from BaseEntity |
 | response | TEXT | - | - | Sanitized mail-server response |
 | reason | TEXT | - | - | Sanitized provider failure reason |
 | smtp_status | VARCHAR(50) | - | - | Webhook `status`, distinct from HTTP submission status |
@@ -539,6 +541,8 @@ Composite index:
 - `INDEX (notification_id, provider_timestamp)`
 
 Resolve the webhook's `eventId` against `email_notifications.event_id`, then persist the related `notification_id`. No recipient email or user ID is duplicated in this table. Multiple events without `sg_event_id` are allowed; uniqueness applies when the provider supplies an ID.
+
+Both email entities inherit `created_at` and `updated_at` from Notification's `common.entity.BaseEntity`, using `Instant` in Java. Migration V2 adds these audit columns to existing delivery history and backfills both from `received_at`; provider and receipt timestamps remain separate.
 
 ### 7.2 Relationships
 

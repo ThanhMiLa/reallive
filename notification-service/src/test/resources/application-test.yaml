@@ -35,6 +35,11 @@ spring:
     hibernate:
       ddl-auto: validate
 
+auth:
+  cookie:
+    access-token:
+      name: access_token
+
 management:
   health:
     redis:

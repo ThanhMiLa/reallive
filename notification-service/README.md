@@ -36,7 +36,7 @@ Flyway `V1__create_email_history_tables.sql` creates two tables shared by all em
 - `email_notifications`: Kafka `event_id`, user, recipient, email type, selected template, submission status, attempt count, latest HTTP/error details, provider message ID and timestamps. `event_id` is unique; `user_id` has no cross-service foreign key. Expiration is optional for emails without a deadline. Submission statuses are `PENDING`, `PROCESSING`, `ACCEPTED`, `FAILED`, `EXPIRED`, `UNKNOWN`.
 - `email_delivery_events`: individual webhook events, linked by a required foreign key to a notification. Provider event IDs are unique when present; multiple null IDs are allowed. Events retain provider and receipt times, message ID and optional SMTP response/reason/status.
 
-`EmailNotificationEntity` and `EmailDeliveryEventEntity` use UUID identifiers and `Instant` timestamps mapped to PostgreSQL `TIMESTAMPTZ`. Delivery events use a lazy many-to-one relationship. `EmailType` reuses the current message enum; add types as new email flows are implemented. No OTP, OTP hash, challenge ID, template payload or metadata column is persisted. Error/response fields must receive sanitized details when delivery and webhook services are added.
+`EmailNotificationEntity` and `EmailDeliveryEventEntity` extend the service-local `common.entity.BaseEntity`, inheriting `createdAt` and `updatedAt` as `Instant` timestamps mapped to PostgreSQL `TIMESTAMPTZ`. Migration V2 adds audit columns to delivery events and backfills existing rows from `received_at`; the original receipt and provider timestamps remain separate. Delivery events use a lazy many-to-one relationship. `EmailType` reuses the current message enum; add types as new email flows are implemented. No OTP, OTP hash, challenge ID, template payload or metadata column is persisted. Error/response fields must receive sanitized details when delivery and webhook services are added.
 
 `EmailNotificationRepository` looks up a request by `eventId` and paginates a user's history with newest requests first. `EmailDeliveryEventRepository` looks up `sgEventId` and paginates a notification's delivery events by provider time and then receipt time. Resolve a webhook's `eventId` to the notification before storing the relationship. Provider submission status remains separate from delivery history.
 
@@ -69,4 +69,6 @@ The test profile supplies H2 and fake provider credentials. `EmailDeliveryProper
   -Dnotification.test.database-password=notification_test_password test
 ```
 
-The persistence test creates and removes only its own randomly named schema. Use a dedicated test database.
+Entity unit tests verify UUID identity, equality/hash stability when audit fields change, and exclusion of the lazy relationship from `toString`. Persistence tests verify inherited audit timestamps on insert/update. `EmailHistoryMigrationTest` verifies upgrading V1 to V2 preserves existing delivery rows and backfills their audit fields.
+
+The persistence tests create and remove only their own randomly named schemas. Use a dedicated test database.

@@ -1,5 +1,6 @@
 package com.reallive.notificationservice.email.entity;
 
+import com.reallive.notificationservice.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -34,7 +35,7 @@ import java.util.UUID;
         uniqueConstraints = @UniqueConstraint(name = "uk_email_delivery_events_sg_event_id", columnNames = "sg_event_id"),
         indexes = @Index(name = "idx_email_delivery_events_notification_timestamp",
                 columnList = "notification_id, provider_timestamp"))
-public class EmailDeliveryEventEntity {
+public class EmailDeliveryEventEntity extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

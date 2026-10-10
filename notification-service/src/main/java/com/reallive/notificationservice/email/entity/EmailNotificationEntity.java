@@ -1,5 +1,6 @@
 package com.reallive.notificationservice.email.entity;
 
+import com.reallive.notificationservice.common.entity.BaseEntity;
 import com.reallive.notificationservice.email.dto.message.EmailType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,8 +18,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -32,7 +31,7 @@ import java.util.UUID;
 @Table(name = "email_notifications",
         uniqueConstraints = @UniqueConstraint(name = "uk_email_notifications_event_id", columnNames = "event_id"),
         indexes = @Index(name = "idx_email_notifications_user_created_at", columnList = "user_id, created_at"))
-public class EmailNotificationEntity {
+public class EmailNotificationEntity extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -77,14 +76,6 @@ public class EmailNotificationEntity {
 
     @Column(name = "expires_at")
     Instant expiresAt;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    Instant createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    Instant updatedAt;
 
     @Override
     public final boolean equals(Object other) {
