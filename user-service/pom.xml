@@ -32,6 +32,7 @@
         <mapstruct.version>1.6.3</mapstruct.version>
         <aws-sdk.version>2.55.11</aws-sdk.version>
         <twelvemonkeys.version>3.13.0</twelvemonkeys.version>
+        <jacocoArgLine/>
     </properties>
     <dependencies>
         <dependency>
@@ -182,7 +183,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                    <argLine>@{jacocoArgLine} -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
                 </configuration>
             </plugin>
             <plugin>
@@ -248,4 +249,49 @@
         </plugins>
     </build>
 
+    <profiles>
+        <profile>
+            <id>become-streamer-coverage</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <version>0.8.12</version>
+                        <executions>
+                            <execution>
+                                <id>streamer-coverage-agent</id>
+                                <goals><goal>prepare-agent</goal></goals>
+                                <configuration><propertyName>jacocoArgLine</propertyName></configuration>
+                            </execution>
+                            <execution>
+                                <id>streamer-coverage-report</id>
+                                <phase>verify</phase>
+                                <goals><goal>report</goal><goal>check</goal></goals>
+                                <configuration>
+                                    <includes>
+                                        <include>com/reallive/userservice/streamer/controller/StreamerRegistrationController.class</include>
+                                        <include>com/reallive/userservice/streamer/service/impl/StreamerRegistrationServiceImpl.class</include>
+                                    </includes>
+                                    <rules>
+                                        <rule>
+                                            <element>CLASS</element>
+                                            <limits>
+                                                <limit>
+                                                    <counter>LINE</counter><value>COVEREDRATIO</value><minimum>1.00</minimum>
+                                                </limit>
+                                                <limit>
+                                                    <counter>BRANCH</counter><value>COVEREDRATIO</value><minimum>1.00</minimum>
+                                                </limit>
+                                            </limits>
+                                        </rule>
+                                    </rules>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

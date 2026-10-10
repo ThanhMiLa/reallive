@@ -73,8 +73,8 @@ storage:
 
 jwt:
   signer-key: ${JWT_SIGNER_KEY}
-  ttl_accessToken: ${AUTH_ACCESS_TOKEN_TTL:900}
-  ttl_refreshToken: ${AUTH_REFRESH_TOKEN_TTL:2592000}
+  ttl_accessToken: ${AUTH_ACCESS_TOKEN_TTL:86400}
+  ttl_refreshToken: ${AUTH_REFRESH_TOKEN_TTL:604800}
 
 auth:
   cookie:

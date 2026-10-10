@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface StreamerRepository extends JpaRepository<StreamerEntity, UUID> {
 
     Optional<StreamerEntity> findByUserId(UUID userId);
+
+    boolean existsByUserId(UUID userId);
 }

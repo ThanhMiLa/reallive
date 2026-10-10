@@ -37,7 +37,9 @@ public enum ErrorCode {
     /** Publication failed before the message was submitted to Kafka. */
     EMAIL_VERIFICATION_PUBLISH_FAILED(1028, "Unable to publish email verification request", HttpStatus.SERVICE_UNAVAILABLE),
     /** Publication failed after submission began; Kafka may have received the message. */
-    EMAIL_VERIFICATION_PUBLISH_UNCERTAIN(1029, "Email verification publication outcome is unknown", HttpStatus.SERVICE_UNAVAILABLE);
+    EMAIL_VERIFICATION_PUBLISH_UNCERTAIN(1029, "Email verification publication outcome is unknown", HttpStatus.SERVICE_UNAVAILABLE),
+    ALREADY_STREAMER(1030, "User is already registered as a streamer", HttpStatus.CONFLICT),
+    STREAMER_ROLE_NOT_FOUND(1031, "Streamer role is unavailable", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final int code;
     private final String message;

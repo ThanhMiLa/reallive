@@ -176,7 +176,28 @@ Redis consumption and the database transaction are separate. If the database sav
 
 `VerifyEmailOtpServiceTest` and `EmailVerificationControllerTest` cover the service contract, validation, authentication, persistence and failure responses. `VerifyEmailOtpIntegrationTest` uses real Redis and an H2 database for request/verify/replay, wrong-code TTL preservation, expiry, user/email binding, concurrent verification and database commit rollback. Its email publisher is mocked and it is enabled by `-Duser.test.redis-port=...`; run it against the isolated Redis instance described above.
 
-StreamerRegistrationServiceImpl remains a scaffold for a later step.
+## Become Streamer
+
+`POST /api/users/me/become-streamer` (through Gateway: `/user/api/users/me/become-streamer`) requires an access-token cookie and no request body. The controller derives the user ID from the authenticated principal; supplied body fields cannot select another user.
+
+`StreamerRegistrationServiceImpl` starts one transaction, locks the user with `findByIdForUpdate`, and reads eligibility from the database. The account must be `ACTIVE`, the email must be verified, and the user must have neither a `STREAMER` role nor any record in `streamers`. An existing record blocks registration regardless of status, including a banned streamer whose role was removed. JWT role/status/email claims do not determine eligibility.
+
+After all checks, including loading the seeded `STREAMER` role, registration preserves existing roles, adds `STREAMER` and its configured permissions through membership, and creates an `ACTIVE` streamer with `verifiedAt` set to the current UTC time. Both writes commit or roll back together. HTTP 200 returns the standard `ApiResponse` with `result: {"streamerId":"...","userId":"...","status":"ACTIVE","roles":["USER","STREAMER"]}`; additional existing roles remain in the response.
+
+| Failure | HTTP | Code |
+|---|---|---|
+| Missing or invalid authentication | 401 | 1001 |
+| User missing from the database | 404 | 1004 |
+| Account not active | 403 | 1003 |
+| Email not verified | 403 | 1027 |
+| Existing STREAMER role or streamer record | 409 | 1030 |
+| Seeded STREAMER role missing | 500 | 1031 |
+
+Registration does not replace the current JWT. The client can use the existing auth refresh endpoint to obtain a new token reflecting database roles.
+
+`StreamerRegistrationServiceImplTest` covers successful registration and each rejection without mutation. `StreamerRegistrationIntegrationTest` runs the security filter, controller, service, Flyway and JPA together, testing role permissions, ownership, stale JWT claims, all existing streamer statuses, repeated/concurrent requests and rollback during either database write. It uses H2 by default; the `streamer.test.database-*` properties below select a disposable PostgreSQL database and each test class creates and drops only its own schema.
+
+Run `./mvnw -Pbecome-streamer-coverage clean verify` to enforce 100% line and branch coverage for `StreamerRegistrationController` and `StreamerRegistrationServiceImpl`. The HTML report is `target/site/jacoco/index.html`; coverage of the rest of User Service is outside this feature-specific check.
 
 ## Streamer persistence
 
@@ -184,9 +205,9 @@ V4 preserves the historical profiles migration with checksum `-843705742`. Datab
 
 Flyway V6 adds `streamers` with a unique, required `user_id` referencing `users`, status validation (`PENDING`, `ACTIVE`, `SUSPENDED`, `BANNED`), verification and suspension timestamps, and a suspension reason. `StreamerEntity` and `StreamerRepository.findByUserId` expose the record independently of the user's roles, including bans that remain after role removal. Status must be supplied explicitly when saving a streamer.
 
-V5 seeds the `STREAMER` role if absent, preserving any existing role ID, permissions and memberships. It does not grant roles to users or introduce new permissions. Streamer registration will add this role alongside existing roles through `user_roles`; account registration now initializes a mutable role set.
+V5 seeds the `STREAMER` role if absent, preserving any existing role ID, permissions and memberships. It does not grant roles to users or introduce new permissions. Streamer registration adds this role alongside existing roles through `user_roles`; account registration initializes a mutable role set.
 
-`UserRepository.findByIdForUpdate` acquires `PESSIMISTIC_WRITE` on the user row. The registration service must call it inside the transaction before reading eligibility, then read roles and the streamer record in that same transaction. The lock lasts until commit or rollback; requests for the same user wait and recheck committed database state. Different users remain independent. The unique constraint additionally prevents duplicate streamer records at the database level. The registration service and API business logic remain scheduled for a later step.
+`UserRepository.findByIdForUpdate` acquires `PESSIMISTIC_WRITE` on the user row. Registration calls it inside the transaction before reading eligibility, then reads roles and checks streamer existence in that same transaction. The lock lasts until commit or rollback; requests for the same user wait and recheck committed database state. Different users remain independent. The unique constraint additionally prevents duplicate streamer records at the database level. Future ban/suspend/role-removal workflows must acquire the same user lock before changing streamer state or role membership.
 
 ## Gateway trust and business authorization
 
