@@ -1,0 +1,588 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>RealLive - Next-Gen Live Streaming Platform</title>
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Inter Google Font -->
+    <link href="https://fonts.googleapis.com" rel="preconnect">
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            cyan: '#00f0ff',
+                            cyanHover: '#00c8d6',
+                            purple: '#8b5cf6',
+                            dark900: '#08090d',
+                            dark800: '#0f1118',
+                            dark700: '#151822',
+                            dark600: '#1f2433',
+                            darkBorder: '#232838',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- BEGIN: Custom Styles -->
+    <style data-purpose="scrollbar-styling">
+        /* Custom thin dark scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #08090d;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #232838;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+    </style>
+    <style data-purpose="glow-effects">
+        .neon-glow-cyan {
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.35);
+        }
+        .neon-border-cyan {
+            border-color: rgba(0, 240, 255, 0.4);
+        }
+    </style>
+    <!-- END: Custom Styles -->
+</head>
+<body class="bg-[#08090d] text-gray-100 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-black overflow-x-hidden">
+<!-- BEGIN: TopHeader -->
+<header class="h-14 bg-[#0f1118] border-b border-[#232838] flex items-center justify-between px-4 sticky top-0 z-50">
+    <!-- Left: Brand Logo & Hamburger -->
+    <div class="flex items-center gap-4">
+        <button aria-label="Toggle menu" class="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-[#1f2433] transition">
+            <i class="fa-solid fa-bars text-lg"></i>
+        </button>
+        <!-- Brand Logo -->
+        <a class="flex items-center gap-2 group" href="#">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center neon-glow-cyan">
+                <i class="fa-solid fa-play text-xs text-black pl-0.5"></i>
+            </div>
+            <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#00f0ff] bg-clip-text text-transparent">
+          Real<span class="text-[#00f0ff]">Live</span>
+</span>
+        </a>
+    </div>
+    <!-- Center: Search Bar -->
+    <div class="flex-1 max-w-xl mx-6 hidden md:block">
+        <div class="relative w-full">
+<span class="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+<i class="fa-solid fa-magnifying-glass text-sm"></i>
+</span>
+            <input class="w-full bg-[#151822] text-sm text-gray-200 placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-[#232838] focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition" placeholder="Search streams, categories, or streamers..." type="text">
+        </div>
+    </div>
+    <!-- Right: Quick Actions & Profile -->
+    <div class="flex items-center gap-3"><button aria-label="Language" class="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-[#1f2433] transition"><i class="fa-solid fa-globe text-base"></i></button><button class="text-sm font-semibold text-gray-200 hover:text-white px-3 py-1.5 rounded-lg transition">Log In</button><button class="text-sm font-bold bg-[#53fc18] hover:bg-[#46e012] text-black px-4 py-1.5 rounded-lg shadow transition">Sign Up</button></div>
+</header>
+<!-- END: TopHeader -->
+<!-- BEGIN: ApplicationLayout (Sidebar + Main) -->
+<div class="flex-1 flex overflow-hidden">
+    <!-- BEGIN: LeftSidebarNavigation -->
+    <aside class="w-64 bg-[#0f1118] border-r border-[#232838] flex flex-col justify-between hidden lg:flex select-none">
+        <div class="overflow-y-auto px-3 py-3 space-y-6">
+            <!-- Primary Navigation -->
+            <nav class="space-y-1">
+                <!-- Active Tab: Home -->
+                <a class="flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-semibold bg-[#151822] text-[#00f0ff] border-l-4 border-[#00f0ff] shadow-sm" href="#">
+                    <i class="fa-solid fa-house w-4 text-center"></i>
+                    <span class="">Home</span>
+                </a>
+                <!-- Browse -->
+                <a class="flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-[#151822] transition" href="#">
+                    <i class="fa-solid fa-compass w-4 text-center text-gray-400"></i>
+                    <span class="">Browse</span>
+                </a>
+                <!-- Following -->
+                <a class="flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-[#151822] transition" href="#">
+                    <i class="fa-solid fa-heart w-4 text-center text-gray-400"></i>
+                    <span class="">Following</span>
+                </a>
+                <!-- Donate / Drops -->
+                <a class="flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-[#151822] transition" href="#">
+                    <i class="fa-solid fa-gift w-4 text-center text-gray-400"></i>
+                    <span class="">Drops &amp; Rewards</span>
+                </a>
+            </nav>
+            <!-- Following Section (No viewer counts as requested) -->
+            <div>
+                <div class="flex items-center justify-between px-3 mb-2">
+                    <span class="text-xs font-bold text-gray-400 tracking-wider">FOLLOWING</span>
+                    <i class="fa-solid fa-arrow-down-up-across-line text-xs text-gray-500"></i>
+                </div>
+                <div class="space-y-1">
+                    <!-- Streamer 1 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="BenjaminTran" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbqQaWQEcBLqvH3Wk6KBh7tOYQaYo6IQij2S_N1q_jgI4rZqgQZ49iUZ1E6AEJHjalxhMAx0bgSTf9zWQ50fQJP5PEj6u-rxPX-bSkauUF2aWCcdJ_hsb4o-YeYz9X8GTCK8Ri2O-IuTeicD2iA2umh6RgGKPNgrqn1ymF933Jg5aosZ-R6ptxpsGxyelb_AR3P8DA37mk2vKE4wTJwQzzePNHpUnFGnLLJBfPYF4Gxm2TgjbsLImgkw">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">BenjaminTran</span>
+                            <span class="text-[11px] text-gray-400 truncate">Just Chatting</span>
+                        </div>
+                    </a>
+                    <!-- Streamer 2 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="Shyvana" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8VJzEr2bNH5VpaRFFDYSLC0ZubinXuF2mjh41ItgUwjhBLi3pqyuuWu-7Phqoa8UJalyxzFzSFDweuUsjIFy_yM2fbVw5hdf4HOhTHxWl90H6Pd_au7ssEQlEPbRQjqh_vlkTQwOM1u44OdfczwlRdHOVzlEydKorQfzW8F_PiBF6aTKBLCW8ZEBVOGZ3JgKGhQ5GGNnlwxgnxsZ7WwPHSFYhA9BlxKWagZN2_dLl0Ny5aNDeLPrXrg">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">Shyvana</span>
+                            <span class="text-[11px] text-gray-400 truncate">Valorant</span>
+                        </div>
+                    </a>
+                    <!-- Streamer 3 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="Kaelen" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsRiCWrd_3QQ0qWlz-LDP1pqsRTxpUC5xq49FAET19C5Pxa0moXN-pU9c9uTzV17yd5bOLDy2UQjhaz_Yz7RKnc8unsQC0qitv2X6Fhr8dHXzSyKGJDbUxfFKYWHzKdODQd2YvnBKr_lkHZqw2_QEUp6-BNorpVhHayNlk1Fq5ykOE8SMegvKCUu2PsPj2W9n0G6-Q1lzT8Hw-V5tirhlxqc1MhIDYhBpkDlrPQqX4lvtgU0T0x-X-Sw">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">Kaelen</span>
+                            <span class="text-[11px] text-gray-400 truncate">Counter-Strike 2</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+            <!-- Recommended Section (No viewer counts as requested) -->
+            <div>
+                <div class="flex items-center justify-between px-3 mb-2">
+                    <span class="text-xs font-bold text-gray-400 tracking-wider">RECOMMENDED</span>
+                </div>
+                <div class="space-y-1">
+                    <!-- Streamer 1 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="bladeito" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAchmpNgXpU_cn3cTMusu7CXKkGs8Wi2MOIKqguoJG-wTHOsvXWW9WBhp0RJlY1Dooafaaq7vYt72mPTj4AzIWNL-3nmyns7Ifmjc8Bh6wX_BXpKruhfH3XyRQp2ZHDp9CK_T-bIHDqU_fiiQncRmH6IIO5nRddO7WG63wH58LWV0eJ48yOF18b9fmGZf7YXPIkzvYUahUwIKiuL1RKYR-rcCv0AURLVkl4fujHbCQjg0x5gnLr-8V-HA">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">bladeito</span>
+                            <span class="text-[11px] text-gray-400 truncate">Counter-Strike 2</span>
+                        </div>
+                    </a>
+                    <!-- Streamer 2 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="Astaturo" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYS16C7Oq7rxRsvql5igz4liQTx5_JArIPbSKw6XsK4tyV1_JXh7IPrUFSABwNheQczhbrFDU9kJGoHBxghRlaX931pSfy8dmPjpCGXLncLYzs8Y3k3l13SaYYBHE8TzwGfE3EDO87d9Hk4Vb-KJMpRpJhLCMb7b9QgzPys1CbnN8Ia8FD9bCBzqYozhCuTbkdm9R1QqhDuvVCQr3zzDsgySwvqo0dFjBBzjm-oP-ihJXTZ4r9kfxvSg">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">Astaturo</span>
+                            <span class="text-[11px] text-gray-400 truncate">GTA V</span>
+                        </div>
+                    </a>
+                    <!-- Streamer 3 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="FrankDimes" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvS-TGpBdGzDVO1OdctLiXSnC7ysWJBfH19V_JtpAXuPBvw1x1xwRTys_6wSsitJkdxgY2-GYlf8zH4mNbuHaxybi-WXBWf54xzmOTDaH0FVccOXAnGoofvDv_h5W_vXbqkjLdKawzYpyeUz1g3YSDUbntuxlV60jzuIPZCkOsASeMfN89LulOkjoBOQ2kD5jgkDFR6utQBT9AmPRySfF4cbw2HImikfQCXKdiMtMMvnQGHpbfW4cZzQ">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">FrankDimes</span>
+                            <span class="text-[11px] text-gray-400 truncate">Dota 2</span>
+                        </div>
+                    </a>
+                    <!-- Streamer 4 -->
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#151822] transition group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="Miken" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDS3fdSSCLXzABaj5fMLPb9h2FhMjg62_zcxc9QHfGy_hnI7ZLc3_Xk5pg5HfE32_xr7UVofMJ6-9j8V7s0DI60h-LQLaETmK2wa0cQ8IsrhZLXU6aF7DIwGP_5Db403lVwCy3124nzM3GCXwe6dUcwbL3ENAXvFgdG9aNGeGSoLXhDBsJO_iCYeGayCUk7ogFnfuvMsf59fbIfkRL8Ekg0ZaOt0dw8ZePR5oNO-op1XO6Mz8n1tSBe8A">
+                            <span class="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]"></span>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-semibold text-gray-200 truncate group-hover:text-white">Miken</span>
+                            <span class="text-[11px] text-gray-400 truncate">Minecraft</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <!-- Left Sidebar Footer Profile Status -->
+        <div class="p-3 border-t border-[#232838] bg-[#0c0d14] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-xs font-medium text-gray-300">Live Network Online</span>
+            </div>
+            <i class="fa-solid fa-gear text-gray-400 hover:text-white cursor-pointer text-xs"></i>
+        </div>
+    </aside>
+    <!-- END: LeftSidebarNavigation -->
+    <!-- BEGIN: MainContentArea -->
+    <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-5">
+        <!-- BEGIN: HeroLiveStreamAndChatSection -->
+        <section aria-label="Featured Live Stream and Chat" class="mb-10">
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+                <!-- Featured Live Stream Video Player Preview (Left) -->
+                <div class="xl:col-span-9 bg-black rounded-xl overflow-hidden relative border border-[#232838] flex flex-col justify-between shadow-2xl group min-h-[460px] md:min-h-[500px]">
+                    <!-- Video Background / Snapshot -->
+                    <div class="absolute inset-0 z-0">
+                        <img alt="CS2 Pro Match Stream" class="w-full h-full object-cover filter brightness-[0.85] contrast-[1.05]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMJVpHRE1G_i8rBvCAouNKYXhi7TmX_X2ROHkKWhB-nBBtbpxS7MPuOXW6ig4G-d98esdwryFS5ioZUBoThKhIq1DpxqMttGT4hJx10yKz7HFsV0hHr0xNTR0Rdb727yFxQxQde-iXnjRJu7Ff3csKlk3fMc2aZRSexfQ6JneGyX-Uq7NB65G0EH2arg26_AA9sp5a--k95T14qG6t54APz5FebP6JNecD9BiYg6HsxBoIoq-MKN38qw">
+                        <!-- Ambient vignette overlay -->
+                        <div class="absolute inset-0 bg-gradient-to-t from-[#08090d] via-transparent to-black/60"></div>
+                    </div>
+                    <!-- Top Overlays: Live Badge, Viewer Count, Sound Toggle -->
+                    <div class="relative z-10 p-4 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+<span class="inline-flex items-center gap-1.5 bg-red-600/90 backdrop-blur-md text-white text-xs font-bold px-2.5 py-1 rounded-md shadow">
+<span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+                  LIVE
+                </span>
+                            <span class="inline-flex items-center gap-1.5 bg-black/70 backdrop-blur-md text-gray-200 text-xs font-medium px-2.5 py-1 rounded-md border border-white/10">
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  3.6K viewers
+                </span>
+                        </div>
+                        <!-- Top Right Controls (Sponsor / Volume) -->
+                        <div class="flex items-center gap-2">
+<span class="px-2.5 py-1 rounded bg-yellow-500/80 text-black font-extrabold text-[11px] tracking-wider uppercase">
+                  ESL Official
+                </span>
+                            <button class="w-8 h-8 rounded-md bg-black/60 backdrop-blur-md text-gray-300 hover:text-white flex items-center justify-center border border-white/10 hover:bg-black/90 transition">
+                                <i class="fa-solid fa-volume-high text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Bottom Floating Player Details Overlay -->
+                    <div class="relative z-10 p-4 sm:p-5">
+                        <div class="bg-[#0f1118]/90 backdrop-blur-md rounded-xl p-4 border border-[#232838] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+                            <!-- Streamer Details -->
+                            <div class="flex items-center gap-3.5">
+                                <div class="relative">
+                                    <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-purple-600 p-0.5">
+                                        <img alt="ESLCS Avatar" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCCUIJPeY0aF73E7OfJg0RnF5PN-obWthJC0P3cE9IrIHwtD5li7W7MyTFXlW_MzXZxOzCFqI1U7fELe3cBbF6Boo1CTX5lfKlGTjyTDkm6GQHWNUcLAnw5WaR5MjQXC8p-GJeGx13IhnVggq_gr7RTorfeWw85nZOLgaIs2Xljx09DtO9He__X81N58T4EoSc4wz6jVT0U1xF6_FqK1dbRpZlCPUtBkdXre45YCQpjGw4rvsFOXPaSTg">
+                                    </div>
+                                    <span class="absolute -bottom-1 -right-1 bg-emerald-500 text-[9px] text-black font-bold px-1 rounded-full">
+<i class="fa-solid fa-check"></i>
+</span>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h2 class="font-bold text-base text-white tracking-wide">ESLCS</h2>
+                                        <i class="fa-solid fa-circle-check text-xs text-[#00f0ff]"></i>
+                                    </div>
+                                    <p class="text-xs sm:text-sm text-gray-300 font-medium line-clamp-1">
+                                        LIVE: Team Vitality vs. MOUZ - ESL Pro League Grand Final
+                                    </p>
+                                    <div class="flex items-center gap-2 mt-1.5">
+                                        <span class="text-[11px] font-medium bg-[#1f2433] text-gray-300 px-2 py-0.5 rounded">Counter-Strike 2</span>
+                                        <span class="text-[11px] font-medium bg-[#1f2433] text-gray-400 px-2 py-0.5 rounded">English</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Action Button & Carousel Indicators -->
+                            <div class="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-gray-700/50">
+                                <!-- Carousel Dots -->
+                                <div class="flex items-center gap-1.5 hidden sm:flex">
+                                    <span class="w-6 h-1.5 bg-[#00f0ff] rounded-full"></span>
+                                    <span class="w-1.5 h-1.5 bg-gray-600 rounded-full"></span>
+                                    <span class="w-1.5 h-1.5 bg-gray-600 rounded-full"></span>
+                                    <span class="w-1.5 h-1.5 bg-gray-600 rounded-full"></span>
+                                </div>
+                                <!-- Arrow Controls -->
+                                <div class="flex items-center gap-1">
+                                    <button class="w-8 h-8 rounded-lg bg-[#151822] hover:bg-[#1f2433] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#232838]">
+                                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                                    </button>
+                                    <button class="w-8 h-8 rounded-lg bg-[#151822] hover:bg-[#1f2433] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#232838]">
+                                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                                    </button>
+                                </div>
+                                <!-- Watch CTA Button -->
+                                <a class="px-5 py-2.5 bg-[#00f0ff] hover:bg-[#00c8d6] text-black font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 neon-glow-cyan transition" href="#">
+                                    <span class="">Watch now</span>
+                                    <i class="fa-solid fa-play text-[10px]"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Embedded Live Chat Panel (Right) -->
+                <div class="xl:col-span-3 bg-[#0f1118] border border-[#232838] rounded-xl flex flex-col justify-between h-[460px] md:h-[500px] overflow-hidden shadow-xl">
+                    <!-- Chat Header -->
+                    <div class="px-4 py-3 border-b border-[#232838] flex items-center justify-between bg-[#151822]/50">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-regular fa-comments text-[#00f0ff] text-sm"></i>
+                            <h3 class="text-sm font-bold text-white tracking-wide">Stream Chat</h3>
+                        </div>
+                        <div class="flex items-center gap-2 text-gray-400">
+                            <button class="hover:text-white text-xs p-1"><i class="fa-solid fa-user-group"></i></button>
+                            <button class="hover:text-white text-xs p-1"><i class="fa-solid fa-sliders"></i></button>
+                        </div>
+                    </div>
+                    <!-- Chat Message List (Auto-scrolled view) -->
+                    <div class="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+                        <!-- Message 1 -->
+                        <div class="leading-relaxed">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-yellow-500/20 text-yellow-400 font-bold mr-1">10</span>
+                            <span class="font-bold text-emerald-400 hover:underline cursor-pointer">comegetsum2345:</span>
+                            <span class="text-gray-300 pl-1">botx</span>
+                        </div>
+                        <!-- Message 2 -->
+                        <div class="leading-relaxed bg-[#151822]/40 -mx-2 px-2 py-1 rounded">
+                            <span class="inline-flex items-center px-1 py-0.2 rounded text-[10px] bg-purple-600/30 text-purple-300 font-semibold mr-1">👑 SUB</span>
+                            <span class="font-bold text-amber-400 hover:underline cursor-pointer">PrestoMagic:</span>
+                            <span class="text-gray-200 pl-1">🐶 LET'S GOOO!</span>
+                        </div>
+                        <!-- Message 3 -->
+                        <div class="leading-relaxed">
+                            <span class="inline-flex items-center px-1 py-0.2 rounded text-[10px] bg-cyan-500/20 text-cyan-300 font-semibold mr-1">37</span>
+                            <span class="font-bold text-pink-400 hover:underline cursor-pointer">Almdar_Ali:</span>
+                            <span class="text-gray-300 pl-1">lets gooo</span>
+                        </div>
+                        <!-- Message 4 -->
+                        <div class="leading-relaxed">
+                            <span class="font-bold text-green-400 hover:underline cursor-pointer">KansasDan620:</span>
+                            <span class="text-gray-300 pl-1">Mouz are dogwater</span>
+                        </div>
+                        <!-- Message 5 -->
+                        <div class="leading-relaxed">
+                            <span class="inline-flex items-center px-1 py-0.2 rounded text-[10px] bg-blue-600/20 text-blue-300 font-semibold mr-1">43</span>
+                            <span class="font-bold text-[#00f0ff] hover:underline cursor-pointer">markokokotko:</span>
+                            <span class="text-gray-300 pl-1">🔥</span>
+                        </div>
+                        <!-- Message 6 -->
+                        <div class="leading-relaxed">
+                            <span class="font-bold text-indigo-400 hover:underline cursor-pointer">smithereens117:</span>
+                            <span class="text-gray-300 pl-1">damn I bet my whole house on mouz</span>
+                        </div>
+                        <!-- Message 7 (Reply style) -->
+                        <div class="leading-relaxed pl-2 border-l-2 border-gray-700 text-gray-400 text-[11px]">
+                            <p class="">Replying to <span class="text-indigo-300">smithereens117</span>: rip bro</p>
+                        </div>
+                        <!-- Message 8 -->
+                        <div class="leading-relaxed">
+                            <span class="inline-flex items-center px-1 py-0.2 rounded text-[10px] bg-blue-600/20 text-blue-300 font-semibold mr-1">43</span>
+                            <span class="font-bold text-[#00f0ff] hover:underline cursor-pointer">markokokotko:</span>
+                            <span class="text-gray-300 pl-1">gg wp</span>
+                        </div>
+                        <!-- Message 9 -->
+                        <div class="leading-relaxed">
+                            <span class="font-bold text-purple-400 hover:underline cursor-pointer">P0rsche_M0nkey:</span>
+                            <span class="text-gray-300 pl-1">lets go vita</span>
+                        </div>
+                        <!-- Message 10 -->
+                        <div class="leading-relaxed">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-yellow-500/20 text-yellow-400 font-bold mr-1">11</span>
+                            <span class="font-bold text-red-400 hover:underline cursor-pointer">xThomasTv:</span>
+                            <span class="text-gray-300 pl-1">mezii fullshock typical UK gaming</span>
+                        </div>
+                    </div>
+                    <!-- Bottom Chat Input Bar -->
+                    <div class="p-3 border-t border-[#232838] bg-[#0c0d14]">
+                        <div class="relative flex items-center">
+                            <input class="w-full bg-[#151822] text-xs text-gray-200 placeholder-gray-500 pl-3 pr-16 py-2 rounded-lg border border-[#232838] focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff]" placeholder="Send a message..." type="text">
+                            <div class="absolute right-2 flex items-center gap-1.5 text-gray-400">
+                                <button aria-label="Emoji" class="hover:text-yellow-400 transition"><i class="fa-regular fa-face-smile text-xs"></i></button>
+                                <button aria-label="Send" class="hover:text-[#00f0ff] transition"><i class="fa-solid fa-paper-plane text-xs"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mt-2 text-[11px] text-gray-500">
+                            <span class="">Slow mode: 3s</span>
+                            <button class="hover:text-gray-300">Rules</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- END: HeroLiveStreamAndChatSection -->
+        <!-- BEGIN: StreamsForYouSection -->
+        <section aria-label="Streams For You" class="mb-10">
+            <!-- Section Header -->
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-xl font-bold text-white tracking-wide">
+                        <span class="text-[#00f0ff]">Streams</span> For You
+                    </h2>
+                    <span class="w-2 h-2 rounded-full bg-[#00f0ff]"></span>
+                </div>
+                <a class="text-xs font-semibold text-gray-400 hover:text-[#00f0ff] transition flex items-center gap-1" href="#">
+                    <span class="">View all</span>
+                    <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </a>
+            </div>
+            <!-- Live Streams Grid (4 Cards in a row) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Card 1: CS2 Tournament -->
+                <article class="bg-[#0f1118] border border-[#232838] rounded-xl overflow-hidden hover:border-[#00f0ff]/50 transition duration-200 flex flex-col group cursor-pointer">
+                    <!-- Thumbnail Box -->
+                    <div class="relative aspect-video w-full overflow-hidden bg-gray-900">
+                        <img alt="CS2 Pro Game" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB7jVKwoKbLilBVWbTSe-C5Fxr1WLxyRutnTaFZ8_z1Dmw2e-JeiuZBYRKGmB4_rkfHfIs9DRUlPNSJ9oRo_bwfoAULZvzL2OZaH4eRoVCZ4CcxoqHDG-JgUQbGxA9TfLRecqqca6c9jFqSd9G2D8mz8rKbDOT9qJ3jpl-MS4aoIdZXfo5caraANQsfUGEBWWk4_MgOXoSUTsIrLpypI3Pqbr2HeHdn6ZVCc2wlCAZsHTekqTH1Z5-9yw">
+                        <!-- Live & Viewer Badges -->
+                        <div class="absolute top-2 left-2 flex items-center gap-1.5">
+<span class="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                  LIVE
+                </span>
+                            <span class="bg-black/80 backdrop-blur-sm text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 flex items-center gap-1">
+<i class="fa-regular fa-eye text-[9px] text-[#00f0ff]"></i>
+                  1.4K
+                </span>
+                        </div>
+                    </div>
+                    <!-- Card Content Body -->
+                    <div class="p-3.5 flex gap-3 flex-1">
+                        <img alt="bladeito avatar" class="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#232838]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBxYF2Wwjmq6iSQRbRsde-CZanFgw6kmu-0_wrMy3rGQEPbgYg3osrSyRNw6Q-aINeOtqfOHk5wO7c48RZc9Sqkrq7o1CcM_Jli5Uxs8eWRc9ckgBkWz7XUhXf2lvqxUhtA04N20TShQAYPx3tmukoEPd9DuFIBd8br7Aa_M6CBtmKwK3V0BnKUV7Q7x6xQvsFB49XIsdFlN4Wkde0CyNh0Z84uCgVvJR5HcKGr1eZ_ZAULM58K3AB3Xg">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-sm font-semibold text-white truncate group-hover:text-[#00f0ff] transition" title="17:00 VITALITY [0] VS [1] MOUZ - CS2 GRAND FINAL">
+                                17:00 VITALITY [0] VS [1] MOUZ - CS2
+                            </h3>
+                            <p class="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                bladeito
+                                <i class="fa-solid fa-circle-check text-[10px] text-gray-500"></i>
+                            </p>
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                <span class="text-[11px] font-medium bg-[#151822] text-gray-300 px-2 py-0.5 rounded border border-[#232838]">Counter-Strike 2</span>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                <!-- Card 2: Astaturo -->
+                <article class="bg-[#0f1118] border border-[#232838] rounded-xl overflow-hidden hover:border-[#00f0ff]/50 transition duration-200 flex flex-col group cursor-pointer">
+                    <!-- Thumbnail Box -->
+                    <div class="relative aspect-video w-full overflow-hidden bg-gray-900">
+                        <img alt="Astaturo Stream" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBhAEyE3iL7lO3wB8MLuYg4vVgV7f46easD3VjrWM_oh4IPlD5yH0zVfKj2YC6QO3xSrHmARGbxRXiPmSkzJUdnawBLaz0oSVjiv0ptJlTZhjl7h9D6e04Z6XdQ9LMURO4qBH2aUrj8HbB38E9KEo9iyHPJGFxaEIb93DeQIyomOHvV66qDwnEbJnPAvMvSRuRmCShrE1f5QBnGJ1xLO4yEHZfO87XgvehOWCYRaEBkdxQuwybU6UD_-A">
+                        <div class="absolute top-2 left-2 flex items-center gap-1.5">
+<span class="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                  LIVE
+                </span>
+                            <span class="bg-black/80 backdrop-blur-sm text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 flex items-center gap-1">
+<i class="fa-regular fa-eye text-[9px] text-[#00f0ff]"></i>
+                  1.7K
+                </span>
+                        </div>
+                    </div>
+                    <!-- Card Content Body -->
+                    <div class="p-3.5 flex gap-3 flex-1">
+                        <img alt="Astaturo avatar" class="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#232838]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA29Ymn2bVWlG8mfcFXDUNz0hcll5QxiTJRu0x6U6N9uf8RzI1rg3uN6ywhHZeeyxyg-dtyu98ronv3OLQDZY-7_MX8Vt7_KGXyaFQR-X-fTm9_VeDK11oEDAjreF0IP7G-tYtBj3WIDvD1KuFCwhd67W6Qfh_K_k7niIWpv94Atj-JVPpWGjeEKyAkKrEuEcDC69PGDu6wmNSlMrKvbrZZREcstFM-jSIaZRygkn58UEUIhjevt059TQ">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-sm font-semibold text-white truncate group-hover:text-[#00f0ff] transition" title="🔴 ČOKE PIDE MAJKL DŽEKSON | Find The Needle">
+                                🔴 ČOKE PIDE MAJKL DŽEKSON | Speedrun
+                            </h3>
+                            <p class="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                Astaturo
+                            </p>
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                <span class="text-[11px] font-medium bg-[#151822] text-gray-300 px-2 py-0.5 rounded border border-[#232838]">Just Chatting</span>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                <!-- Card 3: Fortnite Live -->
+                <article class="bg-[#0f1118] border border-[#232838] rounded-xl overflow-hidden hover:border-[#00f0ff]/50 transition duration-200 flex flex-col group cursor-pointer">
+                    <!-- Thumbnail Box -->
+                    <div class="relative aspect-video w-full overflow-hidden bg-gray-900">
+                        <img alt="Fortnite Gameplay" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5Gbe5FqW1GPf5BFVQtfJjXvdGGoGQY1h1nnghX83MuG4Wt4lWQnld4nEeyFhILuaPHNlNQ3yzpSm09DVHb-KqdyZZURFGlGjdV9DLd6BhAMl5mnwqPfEnkpelY24W1eDp53_GgqSXKhiu25QHnB5x2o07EGYMPlw7yFY7B5bALtt3dmAz_MpI_UDB-CX55dxfFSthUiirYwwhZPIOIJ-On7XGqPtLWhGnbwd_GJ2aSZvtMfzxS3Ubwg">
+                        <div class="absolute top-2 left-2 flex items-center gap-1.5">
+<span class="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                  LIVE
+                </span>
+                            <span class="bg-black/80 backdrop-blur-sm text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 flex items-center gap-1">
+<i class="fa-regular fa-eye text-[9px] text-[#00f0ff]"></i>
+                  1.2K
+                </span>
+                        </div>
+                    </div>
+                    <!-- Card Content Body -->
+                    <div class="p-3.5 flex gap-3 flex-1">
+                        <img alt="2SekundovyMato avatar" class="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#232838]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYiEKKc2VDGeF7KYGnnT6P3epGgyvwpl4Ez0aKroU4_JX2_WLIIASsOLdd9Z7dj1uVx6z64N_VceGSJnQqwpO9IJJ74E4H1q40I4oWBoPXznh9E48JyvRmg8B7vu6SFRnK780VvqLomZ_lATFuf8fOnAwvZ_C83_5Is5iHopwJKFqswPyMyaFRFYWvDcs1i1mzVXT7Z7vS7G8Sf4VBJ3MUQfUSeahIlbfswEy2AVsTEqyAr9f659k7lQ">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-sm font-semibold text-white truncate group-hover:text-[#00f0ff] transition" title="ULTRA GALAKTICKY GAMING NO SLEEP DUO">
+                                ULTRA GALAKTICKY GAMING NO SLEEP
+                            </h3>
+                            <p class="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                2SekundovyMato
+                                <i class="fa-solid fa-circle-check text-[10px] text-gray-500"></i>
+                            </p>
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                <span class="text-[11px] font-medium bg-[#151822] text-gray-300 px-2 py-0.5 rounded border border-[#232838]">Fortnite</span>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                <!-- Card 4: Valorant Arena -->
+                <article class="bg-[#0f1118] border border-[#232838] rounded-xl overflow-hidden hover:border-[#00f0ff]/50 transition duration-200 flex flex-col group cursor-pointer">
+                    <!-- Thumbnail Box -->
+                    <div class="relative aspect-video w-full overflow-hidden bg-gray-900">
+                        <img alt="Arena Esports" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB5RBS5jvT-MfmgnYOea9rUo-5ErpTVIpdjcA2W-_LSLhigjU201kROcexfSfJsIO0C3Yy4FSsYouh9Ui3orJQ6sU9HUPUoP2D5ugaBGPfOmjmv4U1vVl-eYhl9vEcqF2GMWnljSJBmJWoDXV3T5pMNeThBBswvgZV1ejaFRJChG0BrC1oy0rmGwRKqRTlwuQI0UeJkEWZUf3oGFxGEPJzkOHk7sc_BwI704f8Fh1UXidAKbpRnidTOkA">
+                        <div class="absolute top-2 left-2 flex items-center gap-1.5">
+<span class="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                  LIVE
+                </span>
+                            <span class="bg-black/80 backdrop-blur-sm text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 flex items-center gap-1">
+<i class="fa-regular fa-eye text-[9px] text-[#00f0ff]"></i>
+                  850
+                </span>
+                        </div>
+                    </div>
+                    <!-- Card Content Body -->
+                    <div class="p-3.5 flex gap-3 flex-1">
+                        <img alt="oskartommy avatar" class="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#232838]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiyQEjfbhHfNDsvJ2emJ7q57zZD6NKLf_o5gqcou3PXcQtW96P8vdTJK9_TMsJ6xWl5yDN6Ags8777F8mktLSzASg8TMuhKea-slP_FBU2tSrRugdW91su1Bw3v13UzxJtv3EevL10dGgyai8INezfk2CGzu0z5jZ9EVRebet-nXalyBk2bvpNfSLwYBovxAAnptGhjE5P7OXLHLfZwqjEgSFDVh6PBOq137-h_mO5kR8SANE4D3mlpQ">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-sm font-semibold text-white truncate group-hover:text-[#00f0ff] transition" title="Vitality (0:0) MOUZ - BO5 Grand Final Watch Party">
+                                Vitality (0:0) MOUZ - BO5 Watch Party
+                            </h3>
+                            <p class="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                                oskartommy
+                            </p>
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                <span class="text-[11px] font-medium bg-[#151822] text-gray-300 px-2 py-0.5 rounded border border-[#232838]">Valorant</span>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+        <!-- END: StreamsForYouSection -->
+    </main>
+    <!-- END: MainContentArea -->
+</div>
+<!-- END: ApplicationLayout -->
+<!-- BEGIN: InteractiveScripts -->
+<script data-purpose="carousel-and-chat-interaction">
+    // Lightweight mock interactions for live preview responsiveness
+    document.addEventListener('DOMContentLoaded', () => {
+        // Input keypress mock for sending chat messages
+        const chatInput = document.querySelector('input[placeholder="Send a message..."]');
+        const chatContainer = document.querySelector('[aria-label="Featured Live Stream and Chat"] .overflow-y-auto');
+
+        if (chatInput && chatContainer) {
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && chatInput.value.trim() !== '') {
+                    const newMsg = document.createElement('div');
+                    newMsg.className = 'leading-relaxed bg-[#151822]/60 -mx-2 px-2 py-1 rounded';
+                    newMsg.innerHTML = `
+              <span class="inline-flex items-center px-1 py-0.2 rounded text-[10px] bg-cyan-500/30 text-cyan-300 font-semibold mr-1">YOU</span>
+              <span class="font-bold text-white">Guest:</span>
+              <span class="text-gray-200 pl-1">${chatInput.value.trim()}</span>
+            `;
+                    chatContainer.appendChild(newMsg);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    chatInput.value = '';
+                }
+            });
+        }
+    });
+</script>
+<!-- END: InteractiveScripts -->
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto" id="auth-modal-overlay"><div class="relative w-full max-w-md rounded-2xl bg-[#11131d] border border-white/10 p-6 sm:p-8 shadow-2xl"><button class="absolute top-5 right-5 text-gray-400 hover:text-white transition p-1 rounded-lg hover:bg-white/5" onclick="document.getElementById('auth-modal-overlay').remove()" type="button"><i class="fa-solid fa-xmark text-lg"></i></button><div class="flex flex-col items-center mb-6"><div class="flex items-center gap-2 group mb-2"><span class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#00f0ff] bg-clip-text text-transparent">Real<span class="text-[#00f0ff]">Live</span></span></div></div><div class="flex border-b border-gray-800 mb-6"><button class="pb-3 px-4 font-bold text-sm text-[#00f0ff] border-b-2 border-[#00f0ff] transition">Log In</button><button class="pb-3 px-4 font-medium text-sm text-gray-400 hover:text-white transition">Sign Up</button></div><form class="space-y-4"><div class="space-y-1.5"><label class="block text-xs font-semibold text-gray-300">Email or Username</label><input class="w-full bg-[#151822] border border-[#232838] rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition" placeholder="Email or username" type="text"></div><div class="space-y-1.5"><label class="block text-xs font-semibold text-gray-300">Password</label><div class="relative flex items-center"><input class="w-full bg-[#151822] border border-[#232838] rounded-lg px-3.5 py-2.5 pr-10 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition" placeholder="Password" type="password"><button class="absolute right-3 text-gray-400 hover:text-gray-200" type="button"><i class="fa-regular fa-eye-slash text-sm"></i></button></div></div><div class="flex justify-end"><a class="text-xs font-medium text-gray-400 hover:text-[#00f0ff] transition" href="#">Forgot password?</a></div><button class="w-full py-3 px-4 rounded-lg bg-[#53fc18] hover:bg-[#46e012] text-black font-extrabold text-sm tracking-wide transition shadow-lg" type="submit">Log In</button></form><div class="relative flex items-center justify-center my-6"><div class="border-t border-gray-800 w-full"></div><span class="bg-[#11131d] px-3 text-xs text-gray-500 font-medium absolute">or continue with</span></div><div class="flex flex-col gap-3"><button class="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#151822] hover:bg-[#1f2433] border border-[#232838] rounded-lg text-sm text-gray-200 transition font-medium" type="button"><i class="fa-brands fa-google text-red-400"></i><span class="">Google</span></button></div><div class="mt-6 text-center"><p class="text-xs text-gray-400">Don't have an account? <a class="text-[#00f0ff] font-semibold hover:underline" href="#">Sign Up</a></p></div></div></div>
+
+</body></html>
