@@ -9,16 +9,18 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
 @AllArgsConstructor
+@RequestMapping("/internal")
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class WalletController {
     WalletService walletService;
 
-    @PostMapping("/wallets/create/{userId}")
+    @PostMapping("/api/wallets/create/{userId}")
     public ResponseEntity<ApiResponse<WalletCreationResponse>> createWallet(@PathVariable UUID userId) {
         WalletCreationResponse response = walletService.createWallet(userId);
         return ResponseEntity.ok(ApiResponse.<WalletCreationResponse>builder()
