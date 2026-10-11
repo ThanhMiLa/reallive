@@ -8,16 +8,15 @@ import com.reallive.paymentservice.wallet.mapper.WalletMapper;
 import com.reallive.paymentservice.wallet.repository.UserWalletRepository;
 import com.reallive.paymentservice.wallet.service.WalletService;
 import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.mapstruct.factory.Mappers;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class WalletServiceImpl implements WalletService {
     UserWalletRepository userWalletRepository;

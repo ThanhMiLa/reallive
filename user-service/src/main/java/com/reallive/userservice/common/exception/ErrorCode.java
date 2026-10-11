@@ -43,7 +43,8 @@ public enum ErrorCode {
     CURRENT_PASSWORD_INVALID(1032, "Current password must be at least 5 characters long", HttpStatus.BAD_REQUEST),
     CURRENT_PASSWORD_INCORRECT(1033, "Current password is incorrect", HttpStatus.BAD_REQUEST),
     NEW_PASSWORD_SAME_AS_CURRENT(1034, "New password cannot be the same as current password", HttpStatus.BAD_REQUEST),
-    PASSWORD_NOT_SET(1035, "User account does not have a local password set", HttpStatus.BAD_REQUEST);
+    PASSWORD_NOT_SET(1035, "User account does not have a local password set", HttpStatus.BAD_REQUEST),
+    PAYMENT_SERVICE_UNAVAILABLE(1036, "Payment service unavailable", HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final int code;
     private final String message;

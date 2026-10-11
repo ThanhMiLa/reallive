@@ -99,3 +99,8 @@ auth:
       http-only: ${RESET_TOKEN_HTTP_ONLY:true}
       same-site: ${RESET_TOKEN_SAME_SITE:Lax}
       path: ${RESET_TOKEN_PATH:/user/api/auth/reset-password}
+
+
+app:
+  service:
+    payment: ${PAYMENT_SERVICE_BASE_URL:http://localhost:8083/payment}
