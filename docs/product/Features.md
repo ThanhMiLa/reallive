@@ -4,12 +4,13 @@
 - Login ✅
 - Logout ✅
 - Register ✅
-- Forgot Password
-- Change Password
+- Forgot Password ✅
+- Change Password ✅
 - Become Streamer ✅
 - Update Profile ✅
 - View Profile ✅
 - Verify Email ✅
+- Create Wallet
 
 ## II - Channel
 - Create channel

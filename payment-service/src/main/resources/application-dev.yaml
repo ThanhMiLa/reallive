@@ -1,0 +1,27 @@
+server:
+  port: 8083
+  servlet:
+    context-path: /payment
+
+spring:
+  application:
+    name: payment
+
+  datasource:
+    url: ${PAYMENT_DB_URL:jdbc:postgresql://localhost:5435/reallive_payment}
+    username: ${PAYMENT_DB_USERNAME:payment_service}
+    password: ${PAYMENT_DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+auth:
+  cookie:
+    access-token:
+      name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
