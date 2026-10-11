@@ -24,6 +24,9 @@ import com.reallive.userservice.auth.mapper.UserMapper;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.util.PasswordResetOtpHasher;
+import com.reallive.userservice.client.wallet.WalletClient;
+import com.reallive.userservice.client.wallet.WalletCreationResponse;
+import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
@@ -40,6 +43,10 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import feign.FeignException;
+import feign.Request;
+import feign.Response;
+import feign.RetryableException;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.dao.DataAccessException;
@@ -50,14 +57,17 @@ import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactor
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.net.SocketTimeoutException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -99,6 +109,7 @@ class AuthServiceImplTest {
     private PasswordResetEmailPublisher passwordResetEmailPublisher;
     private PasswordResetOtpHasher passwordResetOtpHasher;
     private AuthServiceImpl authService;
+    private WalletClient walletClient;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -113,6 +124,7 @@ class AuthServiceImplTest {
         passwordResetOtpStore = mock(PasswordResetOtpStore.class);
         passwordResetEmailPublisher = mock(PasswordResetEmailPublisher.class);
         passwordResetOtpHasher = mock(PasswordResetOtpHasher.class);
+        walletClient = mock(WalletClient.class);
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
@@ -125,7 +137,8 @@ class AuthServiceImplTest {
                 profileRepository,
                 passwordResetOtpStore,
                 passwordResetEmailPublisher,
-                passwordResetOtpHasher
+                passwordResetOtpHasher,
+                walletClient
         );
 
         ReflectionTestUtils.setField(authService, "SIGNER_KEY", SIGNING_KEY);
@@ -269,7 +282,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.USERNAME_ALREADY_EXISTS, exception.getErrorCode());
-            verifyNoInteractions(profileRepository);
+            verifyNoInteractions(profileRepository, walletClient);
         }
 
         @Test
@@ -287,7 +300,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.EMAIL_ALREADY_EXISTS, exception.getErrorCode());
-            verifyNoInteractions(profileRepository);
+            verifyNoInteractions(profileRepository, walletClient);
         }
 
         @Test
@@ -305,7 +318,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.PASSWORD_NOT_MATCH, exception.getErrorCode());
-            verifyNoInteractions(profileRepository);
+            verifyNoInteractions(profileRepository, walletClient);
         }
 
         @Test
@@ -326,7 +339,7 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class, () -> authService.register(request));
             assertEquals(ErrorCode.USER_NOT_FOUND, exception.getErrorCode());
-            verifyNoInteractions(profileRepository);
+            verifyNoInteractions(profileRepository, walletClient);
         }
 
         @Test
@@ -356,6 +369,9 @@ class AuthServiceImplTest {
             when(passwordEncoder.encode("password123")).thenReturn("encoded_pwd");
             when(roleRepository.findByName("USER")).thenReturn(Optional.of(roleUser));
             when(userRepository.save(mappedUser)).thenReturn(savedUser);
+            when(walletClient.createWallet(savedUser.getId())).thenReturn(ResponseEntity.ok(
+                    ApiResponse.<WalletCreationResponse>builder().result(WalletCreationResponse.builder()
+                            .id(UUID.randomUUID()).userId(savedUser.getId()).balance(0L).build()).build()));
 
             // Stubs for automatic login call
             when(userRepository.findByUsername("new_user")).thenReturn(Optional.of(savedUser));
@@ -370,11 +386,13 @@ class AuthServiceImplTest {
             assertNotNull(response.getAccessToken());
             assertNotNull(response.getRefreshToken());
             ArgumentCaptor<ProfileEntity> profileCaptor = ArgumentCaptor.forClass(ProfileEntity.class);
-            InOrder registrationOrder = inOrder(userRepository, profileRepository);
+            InOrder registrationOrder = inOrder(userRepository, profileRepository, walletClient);
             registrationOrder.verify(userRepository).save(mappedUser);
             registrationOrder.verify(profileRepository).save(profileCaptor.capture());
+            registrationOrder.verify(walletClient).createWallet(savedUser.getId());
             registrationOrder.verify(userRepository).findByUsername("new_user");
             verifyNoMoreInteractions(profileRepository);
+            verifyNoMoreInteractions(walletClient);
 
             ProfileEntity profile = profileCaptor.getValue();
             assertSame(savedUser, profile.getUser());
@@ -396,6 +414,7 @@ class AuthServiceImplTest {
 
             verifyNoInteractions(profileRepository);
             verify(userRepository, never()).findByUsername(any());
+            verifyNoInteractions(walletClient);
         }
 
         @Test
@@ -414,6 +433,90 @@ class AuthServiceImplTest {
             verify(userRepository).save(mappedUser);
             verify(profileRepository).save(any(ProfileEntity.class));
             verify(userRepository, never()).findByUsername(any());
+            verifyNoInteractions(walletClient);
+        }
+
+        @Test
+        void registrationMapsApplicationFailureFromWalletAndDoesNotIssueTokens() {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity savedUser = prepareSavedRegistration(request);
+            when(walletClient.createWallet(savedUser.getId()))
+                    .thenThrow(new AppException(ErrorCode.UNAUTHENTICATED));
+
+            AppException failure = assertThrows(AppException.class, () -> authService.register(request));
+
+            assertEquals(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE, failure.getErrorCode());
+            verify(walletClient).createWallet(savedUser.getId());
+            verify(userRepository, never()).findByUsername(any());
+        }
+
+        @ParameterizedTest
+        @ValueSource(ints = {400, 401, 403, 404, 409, 500, 503})
+        void registrationCurrentlyPropagatesFeignHttpFailuresWithoutIssuingTokens(int status) {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity savedUser = prepareSavedRegistration(request);
+            FeignException failure = FeignException.errorStatus("WalletClient#createWallet",
+                    Response.builder().status(status).reason("Payment request failed")
+                            .headers(Map.of()).request(walletRequest()).build());
+            when(walletClient.createWallet(savedUser.getId())).thenThrow(failure);
+
+            assertSame(failure, assertThrows(FeignException.class, () -> authService.register(request)));
+            verify(userRepository, never()).findByUsername(any());
+        }
+
+        @Test
+        void registrationCurrentlyPropagatesReadTimeoutWithoutIssuingTokens() {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity savedUser = prepareSavedRegistration(request);
+            RetryableException failure = new RetryableException(-1, "Read timed out", Request.HttpMethod.POST,
+                    new SocketTimeoutException("Read timed out"), (Long) null, walletRequest());
+            when(walletClient.createWallet(savedUser.getId())).thenThrow(failure);
+
+            assertSame(failure, assertThrows(RetryableException.class, () -> authService.register(request)));
+            verify(userRepository, never()).findByUsername(any());
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"missing-response", "missing-body", "missing-result"})
+        void registrationCurrentlyRejectsIncompletePaymentReplyWithNullPointerException(String reply) {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity savedUser = prepareSavedRegistration(request);
+            ResponseEntity<ApiResponse<WalletCreationResponse>> response = switch (reply) {
+                case "missing-response" -> null;
+                case "missing-body" -> ResponseEntity.ok().build();
+                default -> ResponseEntity.ok(ApiResponse.<WalletCreationResponse>builder().build());
+            };
+            when(walletClient.createWallet(savedUser.getId())).thenReturn(response);
+
+            assertThrows(NullPointerException.class, () -> authService.register(request));
+            verify(userRepository, never()).findByUsername(any());
+        }
+
+        @Test
+        void loginFailureAfterWalletCreationStillPropagates() {
+            RegisterRequest request = createRegistrationRequest();
+            UserEntity savedUser = prepareSavedRegistration(request);
+            when(walletClient.createWallet(savedUser.getId())).thenReturn(ResponseEntity.ok(
+                    ApiResponse.<WalletCreationResponse>builder().result(WalletCreationResponse.builder()
+                            .id(UUID.randomUUID()).userId(savedUser.getId()).balance(0L).build()).build()));
+            when(userRepository.findByUsername(request.getUsername())).thenReturn(Optional.empty());
+
+            AppException failure = assertThrows(AppException.class, () -> authService.register(request));
+
+            assertEquals(ErrorCode.UNAUTHENTICATED, failure.getErrorCode());
+            verify(walletClient).createWallet(savedUser.getId());
+        }
+
+        private UserEntity prepareSavedRegistration(RegisterRequest request) {
+            UserEntity mappedUser = prepareRegistration(request);
+            UserEntity savedUser = createUser(request.getUsername(), "encoded_pwd", UserStatus.ACTIVE);
+            when(userRepository.save(mappedUser)).thenReturn(savedUser);
+            return savedUser;
+        }
+
+        private Request walletRequest() {
+            return Request.create(Request.HttpMethod.POST, "http://payment/internal/api/wallets/create/user-id",
+                    Map.of(), (byte[]) null, StandardCharsets.UTF_8, null);
         }
 
         private RegisterRequest createRegistrationRequest() {
@@ -668,7 +771,8 @@ class AuthServiceImplTest {
                 when(users.findById(user.getId())).thenReturn(Optional.of(user));
                 AuthServiceImpl service = new AuthServiceImpl(users, mock(UserMapper.class),
                         mock(PasswordEncoder.class), mock(RoleRepository.class), redis, mock(ProfileRepository.class),
-                        mock(PasswordResetOtpStore.class), mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class));
+                        mock(PasswordResetOtpStore.class), mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class),
+                        mock(WalletClient.class));
                 ReflectionTestUtils.setField(service, "SIGNER_KEY", signingKey);
                 ReflectionTestUtils.setField(service, "TTL_ACCESS_TOKEN", 900L);
                 ReflectionTestUtils.setField(service, "TTL_REFRESH_TOKEN", 2592000L);
