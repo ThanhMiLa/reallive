@@ -10,10 +10,10 @@
 - Update Profile ✅
 - View Profile ✅
 - Verify Email ✅
-- Create Wallet
+- Create Wallet ✅
 
 ## II - Channel
-- Create channel
+- Create channel 
 - Update Channel
 - Follow / Unfollow Channel
 - View Follower
