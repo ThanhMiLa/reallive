@@ -55,12 +55,15 @@ jobs:
       - name: Build and run all tests
         run: >-
           ./mvnw --batch-mode --no-transfer-progress
-          -Pbecome-streamer-coverage
+          -Pbecome-streamer-coverage,wallet-creation-coverage
           -Duser.test.redis-port=6379
           -Dgateway.test.redis-port=6379
           -Dstreamer.test.database-url=jdbc:postgresql://127.0.0.1:5432/reallive_test
           -Dstreamer.test.database-username=ci_test
           -Dstreamer.test.database-password=ci_test_password
+          -Dregistration.test.database-url=jdbc:postgresql://127.0.0.1:5432/reallive_test
+          -Dregistration.test.database-username=ci_test
+          -Dregistration.test.database-password=ci_test_password
           clean verify
       - name: Upload test and coverage reports
         if: always()
@@ -71,5 +74,6 @@ jobs:
             user-service/target/surefire-reports/
             user-service/target/failsafe-reports/
             user-service/target/site/jacoco/
+            user-service/target/site/jacoco-wallet/
           if-no-files-found: warn
           retention-days: 7
