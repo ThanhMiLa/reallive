@@ -49,7 +49,6 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
                 .status(StreamerStatus.ACTIVE)
                 .verifiedAt(LocalDateTime.now(ZoneOffset.UTC))
                 .build();
-
         StreamerEntity streamer = streamerRepository.save(streamerEntity);
 
         return BecomeStreamerResponse.builder()
