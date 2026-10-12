@@ -12,6 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -22,19 +23,24 @@ class GlobalExceptionHandlerTest {
 
     @ParameterizedTest
     @CsvSource({"UNAUTHENTICATED,401,1001,Unauthorized", "ACCESS_DENIED,403,1002,Access Denied",
-            "CHANNEL_DATA_UNAVAILABLE,503,1003,Channel data unavailable"})
+            "CHANNEL_DATA_UNAVAILABLE,503,1003,Channel data unavailable",
+            "CHANNEL_REQUEST_INVALID,400,1004,Invalid channel request",
+            "CHANNEL_ALREADY_EXISTED,400,1005,Channel already existed"})
     void mapsAppExceptionToTheStandardHttpEnvelope(ErrorCode errorCode, int httpStatus, int code,
                                                    String message) throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new FailingController(errorCode))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         Instant before = Instant.now();
 
+        boolean channelFailure = errorCode == ErrorCode.CHANNEL_DATA_UNAVAILABLE
+                || errorCode == ErrorCode.CHANNEL_REQUEST_INVALID
+                || errorCode == ErrorCode.CHANNEL_ALREADY_EXISTED;
         var response = mvc.perform(get("/test/failure"))
                 .andExpect(status().is(httpStatus))
                 .andExpect(jsonPath("$.status").value(httpStatus))
                 .andExpect(jsonPath("$.code").value(code))
                 .andExpect(jsonPath("$.message").value(message))
-                .andExpect(jsonPath("$.result").value(nullValue()))
+                .andExpect(jsonPath("$.result").value(channelFailure ? is(false) : nullValue()))
                 .andReturn().getResponse();
 
         var json = new ObjectMapper().readTree(response.getContentAsString());
@@ -53,7 +59,7 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.status").value(503))
                 .andExpect(jsonPath("$.code").value(1003))
                 .andExpect(jsonPath("$.message").value("Channel data unavailable"))
-                .andExpect(jsonPath("$.result").value(nullValue()))
+                .andExpect(jsonPath("$.result").value(false))
                 .andReturn().getResponse();
 
         assertFalse(response.getContentAsString().contains("private SQL or connection detail"));

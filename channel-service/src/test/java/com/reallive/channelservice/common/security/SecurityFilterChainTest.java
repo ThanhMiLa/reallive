@@ -162,7 +162,7 @@ class SecurityFilterChainTest {
                 .andExpect(jsonPath("$.status").value(503))
                 .andExpect(jsonPath("$.code").value(1003))
                 .andExpect(jsonPath("$.message").value("Channel data unavailable"))
-                .andExpect(jsonPath("$.result").value(nullValue()))
+                .andExpect(jsonPath("$.result").value(false))
                 .andReturn().getResponse();
 
         assertFalse(response.getContentAsString().contains("private SQL detail"));
