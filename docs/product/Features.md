@@ -10,10 +10,10 @@
 - Update Profile ✅
 - View Profile ✅
 - Verify Email ✅
-- Create Wallet ✅
+- Set Category Preferences
 
 ## II - Channel
-- Create channel 
+- Create channel ✅
 - Update Channel
 - Follow / Unfollow Channel
 - View Follower
@@ -44,6 +44,7 @@
 - Unban User
 
 ## VI - Donate / Coin / Payment
+- Create Wallet ✅
 - Ranking Donate
 - Buy Coin
 - View Coin Balance
@@ -73,6 +74,8 @@
 
 ## IX - Discovery / Search
 - Live Stream List
+- Channel List
+- Category List
 - Following Feed
 - Recommended Streams
 
