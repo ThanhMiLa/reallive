@@ -57,3 +57,5 @@ Tests use H2 in PostgreSQL compatibility mode, apply the actual Flyway migration
 ```
 
 Supply `channel.test.database-password` if required. Use a dedicated test database and a user with schema creation permission. The repository test creates and drops only its own randomly named schema.
+
+Common tests cover response serialization, application error propagation, HTTP error envelopes, JWT claim parsing, cookie selection and scope-to-authority mapping. MockMvc tests run the real security filter chain and method authorization with the development context path and a custom access-cookie name, including 401/403 responses and authenticated database failures returning 503. `BaseEntity` audit timestamps are exercised by the persistence tests.
