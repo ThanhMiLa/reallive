@@ -204,16 +204,18 @@ public class AuthServiceImpl implements AuthService {
             throw new AppException(ErrorCode.PASSWORD_NOT_MATCH);
         }
 
-
+        // Build User
         UserEntity userEntity = userMapper.toUserEntity(registerRequest);
         userEntity.setPasswordHash(passwordEncoder.encode(registerRequest.getPassword()));
         userEntity.setRoles(new HashSet<>(Set.of(roleRepository.findByName("USER")
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)))));
         userEntity = userRepository.save(userEntity);
 
+        //Build Profile
         ProfileEntity profile = buildProfileEntity(userEntity);
         profileRepository.save(profile);
 
+        //Build Wallet
         createWallet(userEntity.getId());
 
         AuthRequest authenticationRequest = AuthRequest.builder()
