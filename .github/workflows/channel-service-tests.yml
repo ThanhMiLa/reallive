@@ -1,0 +1,62 @@
+name: Channel Service tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test channel-service
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: reallive_test
+          POSTGRES_USER: ci_test
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_test -d reallive_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: channel-service
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: channel-service/pom.xml
+      - name: Build and run all tests
+        run: >-
+          ./mvnw --batch-mode --no-transfer-progress
+          -Dchannel.test.database-url=jdbc:postgresql://127.0.0.1:5432/reallive_test
+          -Dchannel.test.database-username=ci_test
+          -Dchannel.test.database-password=ci_test_password
+          clean verify
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: test-reports-channel-service
+          path: |
+            channel-service/target/surefire-reports/
+            channel-service/target/failsafe-reports/
+          if-no-files-found: warn
+          retention-days: 7
