@@ -7,21 +7,12 @@ import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
-import jakarta.validation.Validator;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +24,7 @@ public class ChannelServiceImpl implements ChannelService {
     @Override
     @Transactional
     public boolean createChannel(CreateChannelRequest request) {
-        if(channelRepository.findByStreamerId(request.getStreamerId()).isPresent()) {
+        if (channelRepository.findByStreamerId(request.getStreamerId()).isPresent()) {
             throw new AppException(ErrorCode.CHANNEL_ALREADY_EXISTED);
         }
         ChannelEntity channelEntity = ChannelEntity.builder()

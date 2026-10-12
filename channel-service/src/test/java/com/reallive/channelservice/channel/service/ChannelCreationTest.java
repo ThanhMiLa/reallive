@@ -310,6 +310,34 @@ class ChannelCreationTest {
     }
 
     @Test
+    void repositoryReturningNoIdProducesFalseInsteadOfReportingSuccess() throws Exception {
+        CreateChannelRequest request = request("Channel without generated ID", null);
+        doAnswer(invocation -> invocation.getArgument(0)).when(channels).saveAndFlush(any(ChannelEntity.class));
+
+        mvc.perform(post(ENDPOINT).contextPath("/channel").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result").value(false));
+
+        assertFalse(channels.existsByStreamerId(request.getStreamerId()));
+    }
+
+    @Test
+    void lookupFailureReturns503WithoutAttemptingInsert() throws Exception {
+        CreateChannelRequest request = request("Channel with unavailable storage", null);
+        doThrow(new DataAccessResourceFailureException("private connection details"))
+                .when(channels).findByStreamerId(request.getStreamerId());
+        clearInvocations(channels);
+
+        mvc.perform(post(ENDPOINT).contextPath("/channel").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(1003))
+                .andExpect(jsonPath("$.message").value("Channel data unavailable"))
+                .andExpect(jsonPath("$.result").value(false));
+
+        verify(channels, never()).saveAndFlush(any(ChannelEntity.class));
+    }
+
+    @Test
     void directServiceCallPersistsNormalizedBuilderName() {
         CreateChannelRequest validRequest = request("  " + "a".repeat(150) + "  ", null);
         assertTrue(channelService.createChannel(validRequest));

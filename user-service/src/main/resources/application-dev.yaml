@@ -104,3 +104,4 @@ auth:
 app:
   service:
     payment: ${PAYMENT_SERVICE_BASE_URL:http://localhost:8083/payment}
+    channel: ${CHANNEL_SERVICE_BASE_URL:http://localhost:8081/channel}

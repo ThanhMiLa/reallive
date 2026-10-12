@@ -1,6 +1,7 @@
 app:
   service:
     payment: http://127.0.0.1:1/payment
+    channel: http://127.0.0.1:1/channel
 
 spring:
   datasource:
