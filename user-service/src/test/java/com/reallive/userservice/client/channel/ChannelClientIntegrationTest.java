@@ -102,15 +102,19 @@ class ChannelClientIntegrationTest {
         assertEquals(1, CHANNEL.callCount());
     }
 
-    @Test
-    void patchesAvatarJsonToTheStreamersInternalEndpoint() throws Exception {
+    @ParameterizedTest
+    @CsvSource(value = {
+            "New name,https://images.example.com/avatars/new.png",
+            "New name,NULL",
+            "NULL,https://images.example.com/avatars/new.png",
+            "NULL,NULL"
+    }, nullValues = "NULL")
+    void patchesOptionalProfileFieldsToTheStreamersInternalEndpoint(String name, String avatarUrl) throws Exception {
         CreateChannelRequest channel = request();
         client.createChannel(channel);
         CHANNEL.takeRequest();
-        String avatarUrl = "https://images.example.com/avatars/new.png";
-
-        var response = client.updateChannelAvatar(channel.getStreamerId(),
-                UpdateChannelAvatarRequest.builder().avatarUrl(avatarUrl).build());
+        var response = client.updateChannelProfile(channel.getStreamerId(),
+                UpdateChannelProfileRequest.builder().name(name).avatarUrl(avatarUrl).build());
         var request = CHANNEL.takeRequest();
 
         assertEquals("PATCH", request.method());
@@ -118,7 +122,17 @@ class ChannelClientIntegrationTest {
         assertTrue(request.header("Content-Type").startsWith("application/json"));
         assertNull(request.header("Cookie"));
         assertNull(request.header("Authorization"));
-        assertEquals(avatarUrl, mapper.readTree(request.body()).path("avatarUrl").asString());
+        var json = mapper.readTree(request.body());
+        if (name == null) {
+            assertTrue(json.path("name").isNull() || json.path("name").isMissingNode());
+        } else {
+            assertEquals(name, json.path("name").asString());
+        }
+        if (avatarUrl == null) {
+            assertTrue(json.path("avatarUrl").isNull() || json.path("avatarUrl").isMissingNode());
+        } else {
+            assertEquals(avatarUrl, json.path("avatarUrl").asString());
+        }
         assertEquals(200, response.getStatusCode().value());
         assertNotNull(response.getBody());
         assertEquals(200, response.getBody().getStatus());
@@ -126,7 +140,8 @@ class ChannelClientIntegrationTest {
         assertEquals(Boolean.TRUE, response.getBody().getResult());
         assertEquals(2, CHANNEL.callCount());
 
-        assertTrue(resolver.updateChannelAvatar(channel.getStreamerId(), avatarUrl));
+        assertTrue(resolver.updateChannelProfile(channel.getStreamerId(), name, avatarUrl));
+        assertEquals(request.body(), CHANNEL.takeRequest().body());
         assertEquals(3, CHANNEL.callCount());
     }
 
@@ -140,11 +155,11 @@ class ChannelClientIntegrationTest {
             "500,CHANNEL_SERVICE_UNAVAILABLE",
             "503,CHANNEL_SERVICE_UNAVAILABLE"
     })
-    void avatarResolverMapsRealHttpFailuresWithoutRetry(int status, ErrorCode expectedError) {
+    void profileResolverMapsRealHttpFailuresWithoutRetry(int status, ErrorCode expectedError) {
         CHANNEL.setErrorStatus(status);
 
         AppException failure = assertThrows(AppException.class,
-                () -> resolver.updateChannelAvatar(UUID.randomUUID(), "https://images.example.com/avatar.png"));
+                () -> resolver.updateChannelProfile(UUID.randomUUID(), "New name", "https://images.example.com/avatar.png"));
 
         assertEquals(expectedError, failure.getErrorCode());
         assertEquals(1, CHANNEL.callCount());
@@ -153,13 +168,13 @@ class ChannelClientIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = ChannelHttpTestServer.Mode.class,
             names = {"INVALID_JSON", "EMPTY_BODY", "FALSE_RESULT", "NULL_RESULT"})
-    void avatarResolverRejectsMalformedOrUnsuccessfulHttpResponses(ChannelHttpTestServer.Mode mode) {
+    void profileResolverRejectsMalformedOrUnsuccessfulHttpResponses(ChannelHttpTestServer.Mode mode) {
         CreateChannelRequest channel = request();
         client.createChannel(channel);
         CHANNEL.setMode(mode);
 
         AppException failure = assertThrows(AppException.class,
-                () -> resolver.updateChannelAvatar(channel.getStreamerId(), "https://images.example.com/avatar.png"));
+                () -> resolver.updateChannelProfile(channel.getStreamerId(), "New name", "https://images.example.com/avatar.png"));
 
         assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
         assertEquals(2, CHANNEL.callCount());

@@ -26,6 +26,6 @@ public interface ChannelClient {
             value = "/internal/api/channels/by-streamer/{streamerId}/avatar",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<ApiResponse<Boolean>> updateChannelAvatar(@PathVariable("streamerId") UUID streamerId,
-                                                             @RequestBody UpdateChannelAvatarRequest request);
+    ResponseEntity<ApiResponse<Boolean>> updateChannelProfile(@PathVariable("streamerId") UUID streamerId,
+                                                              @RequestBody UpdateChannelProfileRequest request);
 }

@@ -1,6 +1,7 @@
 package com.reallive.channelservice.channel.controller.internal;
 
 import com.reallive.channelservice.channel.client.streamer.ActiveStreamerResolver;
+import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
@@ -42,11 +43,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "server.servlet.context-path=/channel",
-        "spring.datasource.url=jdbc:h2:mem:channel_avatar_update;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"
+        "spring.datasource.url=jdbc:h2:mem:channel_profile_update;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class ChannelAvatarUpdateIntegrationTest {
+class ChannelProfileUpdateIntegrationTest {
 
     @Autowired
     private MockMvc mvc;
@@ -75,7 +76,7 @@ class ChannelAvatarUpdateIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(ChannelStatus.class)
-    void updatesOnlyAvatarForTheSuppliedStreamerWithoutUploadingOrCallingUserService(ChannelStatus channelStatus)
+    void updatesNameAndAvatarForTheSuppliedStreamerWithoutUploadingOrCallingUserService(ChannelStatus channelStatus)
             throws Exception {
         channel.setStatus(channelStatus);
         channels.saveAndFlush(channel);
@@ -84,18 +85,84 @@ class ChannelAvatarUpdateIntegrationTest {
         String avatarUrl = "https://images.example.com/avatars/new.png";
 
         mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
-                        .contentType(MediaType.APPLICATION_JSON).content(body(avatarUrl)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "  New channel name  ", "avatarUrl", avatarUrl))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.code").value(1000))
-                .andExpect(jsonPath("$.message").value("Channel avatar updated successfully"))
+                .andExpect(jsonPath("$.message").value("Channel profile updated successfully"))
                 .andExpect(jsonPath("$.result").value(true))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
 
         assertEquals(avatarUrl, channels.findById(channel.getId()).orElseThrow().getAvatarUrl());
+        assertEquals("New channel name", channels.findById(channel.getId()).orElseThrow().getName());
         assertEquals(originalFields, unchangedFields(channel.getId()));
         assertEquals(otherChannel.getAvatarUrl(), channels.findById(otherChannel.getId()).orElseThrow().getAvatarUrl());
+        assertEquals(otherChannel.getName(), channels.findById(otherChannel.getId()).orElseThrow().getName());
         verifyNoInteractions(storage, streamerResolver);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Renamed channel", "  Nguyễn Văn A  "})
+    void updatesNameOnlyAndPreservesAvatar(String name) throws Exception {
+        mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", name))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result").value(true));
+
+        ChannelEntity updated = channels.findById(channel.getId()).orElseThrow();
+        assertEquals(name.strip(), updated.getName());
+        assertEquals(channel.getAvatarUrl(), updated.getAvatarUrl());
+        verifyNoInteractions(storage, streamerResolver);
+    }
+
+    @Test
+    void nullAvatarPreservesAvatarWhenUpdatingName() throws Exception {
+        mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"New name\",\"avatarUrl\":null}"))
+                .andExpect(status().isOk());
+
+        ChannelEntity updated = channels.findById(channel.getId()).orElseThrow();
+        assertEquals("New name", updated.getName());
+        assertEquals(channel.getAvatarUrl(), updated.getAvatarUrl());
+    }
+
+    @Test
+    void nullNamePreservesNameWhenUpdatingAvatar() throws Exception {
+        String avatarUrl = "https://images.example.com/new.png";
+        mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":null,\"avatarUrl\":\"" + avatarUrl + "\"}"))
+                .andExpect(status().isOk());
+
+        ChannelEntity updated = channels.findById(channel.getId()).orElseThrow();
+        assertEquals(channel.getName(), updated.getName());
+        assertEquals(avatarUrl, updated.getAvatarUrl());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"name\":null}", "{\"avatarUrl\":null}", "{\"name\":null,\"avatarUrl\":null}"})
+    void nullOrOmittedFieldsPreserveTheExistingChannel(String body) throws Exception {
+        Map<String, Object> original = jdbc.queryForMap("SELECT * FROM channels WHERE id = ?", channel.getId());
+
+        mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result").value(true));
+
+        assertEquals(original, jdbc.queryForMap("SELECT * FROM channels WHERE id = ?", channel.getId()));
+        verifyNoInteractions(storage, streamerResolver);
+    }
+
+    @Test
+    void acceptsNameAtTheDatabaseLengthLimit() throws Exception {
+        String name = "a".repeat(150);
+        mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", name))))
+                .andExpect(status().isOk());
+
+        assertEquals(name, channels.findById(channel.getId()).orElseThrow().getName());
     }
 
     @ParameterizedTest
@@ -107,6 +174,7 @@ class ChannelAvatarUpdateIntegrationTest {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.result").value(true));
         }
         assertEquals(avatarUrl, channels.findById(channel.getId()).orElseThrow().getAvatarUrl());
+        assertEquals(channel.getName(), channels.findById(channel.getId()).orElseThrow().getName());
     }
 
     @Test
@@ -123,23 +191,29 @@ class ChannelAvatarUpdateIntegrationTest {
 
     @ParameterizedTest
     @MethodSource("invalidBodies")
-    void rejectsInvalidBodiesWithoutChangingAvatar(String body) throws Exception {
+    void rejectsInvalidBodiesWithoutChangingNameOrAvatar(String body) throws Exception {
         mvc.perform(patch(endpoint(channel.getStreamerId())).contextPath("/channel")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(1004));
 
         assertEquals(channel.getAvatarUrl(), channels.findById(channel.getId()).orElseThrow().getAvatarUrl());
+        assertEquals(channel.getName(), channels.findById(channel.getId()).orElseThrow().getName());
         verifyNoInteractions(storage, streamerResolver);
     }
 
     static Stream<String> invalidBodies() {
-        return Stream.of("", "null", "{", "[]", "{}", "{\"avatarUrl\":null}",
+        return Stream.of("", "null", "{", "[]",
                 "{\"avatarUrl\":\"\"}", "{\"avatarUrl\":\"   \"}", "{\"avatarUrl\":\"/avatar.png\"}",
                 "{\"avatarUrl\":\"ftp://example.com/avatar.png\"}", "{\"avatarUrl\":\"https://\"}",
                 "{\"avatarUrl\":\"https://example.com/a b\"}",
                 "{\"avatarUrl\":\"https://example.com:65536/avatar.png\"}",
-                "{\"avatarUrl\":\"https://example.com/" + "a".repeat(482) + "\"}");
+                "{\"avatarUrl\":\"https://example.com/" + "a".repeat(482) + "\"}",
+                "{\"name\":\"\"}", "{\"name\":\"   \"}", "{\"name\":\"\\t\\n\"}",
+                "{\"name\":\"\u00a0\"}", "{\"name\":\"\u2003\"}",
+                "{\"name\":\"" + "a".repeat(151) + "\"}",
+                "{\"name\":\"New name\",\"avatarUrl\":\"invalid-url\"}",
+                "{\"name\":\"   \",\"avatarUrl\":\"https://example.com/new.png\"}");
     }
 
     @Test
@@ -187,13 +261,15 @@ class ChannelAvatarUpdateIntegrationTest {
     }
 
     @Test
-    void avatarUpdateRollsBackWithCallerTransaction() {
+    void profileUpdateRollsBackWithCallerTransaction() {
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
-            service.updateChannelAvatar(channel.getStreamerId(), "https://example.com/new.png");
+            service.updateChannelProfile(channel.getStreamerId(), UpdateChannelProfileRequest.builder()
+                    .name("Changed name").avatarUrl("https://example.com/new.png").build());
             transaction.setRollbackOnly();
         });
 
         assertEquals(channel.getAvatarUrl(), channels.findById(channel.getId()).orElseThrow().getAvatarUrl());
+        assertEquals(channel.getName(), channels.findById(channel.getId()).orElseThrow().getName());
     }
 
     private ChannelEntity createChannel() {
@@ -214,6 +290,7 @@ class ChannelAvatarUpdateIntegrationTest {
 
     private Map<String, Object> unchangedFields(UUID channelId) {
         Map<String, Object> fields = new HashMap<>(jdbc.queryForMap("SELECT * FROM channels WHERE id = ?", channelId));
+        fields.remove("NAME");
         fields.remove("AVATAR_URL");
         fields.remove("UPDATED_AT");
         return fields;

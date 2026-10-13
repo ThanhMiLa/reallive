@@ -30,14 +30,23 @@ public interface ProfileService {
      * managed avatar after commit, or the new upload after rollback, is best effort; cleanup
      * failure does not fail a committed update.</p>
      *
+     * <p>When a display name or avatar is supplied and the user has a streamer record, the
+     * corresponding channel fields are synchronized through Channel Service before the local
+     * profile update completes. Omitted fields are not synchronized, and date-of-birth-only
+     * updates do not call Channel Service. A synchronization error aborts the local update.
+     * Channel Service commits in a separate transaction.</p>
+     *
      * @param userId the authenticated user whose profile is updated
      * @param request the profile fields to change, with {@code null} fields left unchanged
      * @return the updated profile and account details; avatar URL and date of birth may be {@code null}
      * @throws AppException with {@link ErrorCode#PROFILE_UPDATE_EMPTY} if no field is supplied,
      *                      {@link ErrorCode#PROFILE_NOT_FOUND} if the profile does not exist,
      *                      {@link ErrorCode#USER_NOT_ACTIVE} if the user is inactive,
-     *                      {@link ErrorCode#AVATAR_INVALID} if the avatar is invalid, or
-     *                      {@link ErrorCode#AVATAR_UPLOAD_FAILED} if uploading the avatar fails
+     *                      {@link ErrorCode#AVATAR_INVALID} if the avatar is invalid,
+     *                      {@link ErrorCode#AVATAR_UPLOAD_FAILED} if uploading the avatar fails,
+     *                      {@link ErrorCode#CHANNEL_NOT_FOUND} if the streamer's channel is missing,
+     *                      {@link ErrorCode#CHANNEL_REQUEST_INVALID} if Channel Service rejects the request, or
+     *                      {@link ErrorCode#CHANNEL_SERVICE_UNAVAILABLE} if synchronization fails
      * @throws IllegalStateException if the configured avatar URL exceeds the supported length
      */
     UserProfileResponse updateMyProfile(UUID userId, UpdateProfileRequest request);

@@ -8,6 +8,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class UpdateChannelAvatarRequest {
+public class UpdateChannelProfileRequest {
+    String name;
     String avatarUrl;
 }

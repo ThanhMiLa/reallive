@@ -6,7 +6,6 @@ import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.service.R2StorageService;
 import com.reallive.userservice.common.util.UserValidator;
-import com.reallive.userservice.streamer.entity.StreamerEntity;
 import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
@@ -69,8 +68,20 @@ public class ProfileServiceImpl implements ProfileService {
         if (avatar != null) {
             replaceAvatar(profile, userId, avatar);
         }
+
+        synchronizeChannelProfile(userId, profile, request);
         profileRepository.save(profile);
         return profileMapper.toResponse(profile);
+    }
+
+    private void synchronizeChannelProfile(UUID userId, ProfileEntity profile, UpdateProfileRequest request) {
+        if (request.getDisplayName() == null && request.getAvatar() == null) {
+            return;
+        }
+        String name = request.getDisplayName() == null ? null : profile.getDisplayName();
+        String avatarUrl = request.getAvatar() == null ? null : profile.getAvatarUrl();
+        streamerRepository.findByUserId(userId)
+                .ifPresent(streamer -> channelClientResolver.updateChannelProfile(streamer.getId(), name, avatarUrl));
     }
 
     private void replaceAvatar(ProfileEntity profile, UUID userId, AvatarImage avatar) {
@@ -83,9 +94,6 @@ public class ProfileServiceImpl implements ProfileService {
         registerAvatarCleanup(userId, objectKey, oldAvatarUrl);
         r2StorageService.upload(objectKey, avatar.content(), avatar.contentType());
         profile.setAvatarUrl(newAvatarUrl);
-
-        streamerRepository.findByUserId(userId)
-                .ifPresent(streamer -> channelClientResolver.updateChannelAvatar(streamer.getId(), newAvatarUrl));
     }
 
     /** R2 operations are compensated after the database transaction outcome is known. */

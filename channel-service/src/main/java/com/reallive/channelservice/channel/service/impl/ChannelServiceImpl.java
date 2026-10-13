@@ -2,6 +2,7 @@ package com.reallive.channelservice.channel.service.impl;
 
 import com.reallive.channelservice.channel.client.streamer.ActiveStreamerResolver;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
+import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
@@ -103,10 +104,15 @@ public class ChannelServiceImpl implements ChannelService {
 
     @Override
     @Transactional
-    public boolean updateChannelAvatar(UUID streamerId, String avatarUrl) {
+    public boolean updateChannelProfile(UUID streamerId, UpdateChannelProfileRequest request) {
         ChannelEntity channel = channelRepository.findByStreamerIdForUpdate(streamerId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
-        channel.setAvatarUrl(avatarUrl);
+        if (request.getName() != null) {
+            channel.setName(request.getName().strip());
+        }
+        if (request.getAvatarUrl() != null) {
+            channel.setAvatarUrl(request.getAvatarUrl());
+        }
         channelRepository.save(channel);
         return true;
     }

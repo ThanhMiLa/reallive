@@ -1,7 +1,7 @@
 package com.reallive.channelservice.channel.dto.request;
 
 import com.reallive.channelservice.channel.dto.validation.HttpUrl;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -15,10 +15,13 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class UpdateChannelAvatarRequest {
+public class UpdateChannelProfileRequest {
 
-    @NotBlank
-    @Size(max = 500)
+    @Size(min = 1, max = 150)
+    @Pattern(regexp = "(?sU).*\\S.*")
+    String name;
+
+    @Size(min = 1, max = 500)
     @HttpUrl
     String avatarUrl;
 }

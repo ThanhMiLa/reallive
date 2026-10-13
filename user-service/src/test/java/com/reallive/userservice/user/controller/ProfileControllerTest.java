@@ -3,10 +3,14 @@ package com.reallive.userservice.user.controller;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
 import com.reallive.userservice.common.service.R2StorageService;
+import com.reallive.userservice.streamer.entity.StreamerEntity;
+import com.reallive.userservice.streamer.entity.StreamerStatus;
+import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 import com.reallive.userservice.user.entity.ProfileEntity;
@@ -16,6 +20,7 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +39,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
+import org.mockito.ArgumentCaptor;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -98,6 +104,12 @@ class ProfileControllerTest {
     @Autowired
     private ProfileRepository profileRepository;
 
+    @Autowired
+    private StreamerRepository streamerRepository;
+
+    @MockitoBean
+    private ChannelClientResolver channelClientResolver;
+
     @MockitoBean
     private CustomJwtDecoder jwtDecoder;
 
@@ -118,6 +130,7 @@ class ProfileControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        streamerRepository.deleteAll();
         profileRepository.deleteAll();
         userRepository.deleteAll();
     }
@@ -268,6 +281,85 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.result.dob").value("2000-01-01"))
                 .andExpect(jsonPath("$.result.avatarUrl").value("https://images.example.com/old.png"));
         verifyNoInteractions(storage);
+    }
+
+    @Test
+    void updateStreamerNameSynchronizesOnlyTheTrimmedName() throws Exception {
+        UserEntity user = createProfile();
+        StreamerEntity streamer = createStreamer(user);
+        authenticate(user.getId().toString());
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/users/me")
+                        .param("displayName", "  New streamer  ").cookie(accessCookie()))
+                .andExpect(status().isOk());
+
+        ProfileEntity saved = profileRepository.findByUserId(user.getId()).orElseThrow();
+        assertEquals("New streamer", saved.getDisplayName());
+        assertEquals("https://images.example.com/old.png", saved.getAvatarUrl());
+        verify(channelClientResolver).updateChannelProfile(streamer.getId(), "New streamer", null);
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void updateStreamerNameAndAvatarSynchronizesBothAndCommitsProfile() throws Exception {
+        UserEntity user = createProfile();
+        StreamerEntity streamer = createStreamer(user);
+        authenticate(user.getId().toString());
+        when(storage.getPublicUrl(anyString())).thenAnswer(invocation -> "https://images.example.com/" + invocation.getArgument(0));
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/users/me").file(avatar())
+                        .param("displayName", "  New streamer  ").cookie(accessCookie()))
+                .andExpect(status().isOk());
+
+        ProfileEntity saved = profileRepository.findByUserId(user.getId()).orElseThrow();
+        assertEquals("New streamer", saved.getDisplayName());
+        assertTrue(saved.getAvatarUrl().startsWith("https://images.example.com/avatars/" + user.getId() + "/"));
+        verify(channelClientResolver).updateChannelProfile(streamer.getId(), "New streamer", saved.getAvatarUrl());
+        verify(storage).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
+        verify(storage, never()).deleteQuietly(anyString());
+    }
+
+    @Test
+    void updateStreamerDobDoesNotCallChannelService() throws Exception {
+        UserEntity user = createProfile();
+        createStreamer(user);
+        authenticate(user.getId().toString());
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/users/me")
+                        .param("dob", "2001-02-03").cookie(accessCookie()))
+                .andExpect(status().isOk());
+
+        ProfileEntity saved = profileRepository.findByUserId(user.getId()).orElseThrow();
+        assertEquals(LocalDate.of(2001, 2, 3), saved.getDob());
+        assertEquals("Viewer", saved.getDisplayName());
+        assertEquals("https://images.example.com/old.png", saved.getAvatarUrl());
+        verifyNoInteractions(channelClientResolver, storage);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ErrorCode.class,
+            names = {"CHANNEL_SERVICE_UNAVAILABLE", "CHANNEL_NOT_FOUND", "CHANNEL_REQUEST_INVALID"})
+    void channelSyncFailureRollsBackProfileAndDeletesOnlyTheNewUpload(ErrorCode errorCode) throws Exception {
+        UserEntity user = createProfile();
+        StreamerEntity streamer = createStreamer(user);
+        authenticate(user.getId().toString());
+        when(storage.getPublicUrl(anyString())).thenAnswer(invocation -> "https://images.example.com/" + invocation.getArgument(0));
+        doThrow(new AppException(errorCode)).when(channelClientResolver)
+                .updateChannelProfile(eq(streamer.getId()), eq("New streamer"), anyString());
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/users/me").file(avatar())
+                        .param("displayName", "  New streamer  ").param("dob", "2001-02-03").cookie(accessCookie()))
+                .andExpect(status().is(errorCode.getHttpStatus().value()))
+                .andExpect(jsonPath("$.code").value(errorCode.getCode()));
+
+        ProfileEntity unchanged = profileRepository.findByUserId(user.getId()).orElseThrow();
+        assertEquals("Viewer", unchanged.getDisplayName());
+        assertEquals(LocalDate.of(2000, 1, 1), unchanged.getDob());
+        assertEquals("https://images.example.com/old.png", unchanged.getAvatarUrl());
+        ArgumentCaptor<String> objectKey = ArgumentCaptor.forClass(String.class);
+        verify(storage).upload(objectKey.capture(), any(byte[].class), eq("image/png"));
+        verify(storage).deleteQuietly(objectKey.getValue());
+        verify(storage, never()).deleteManagedAvatar(any(), any());
     }
 
     @Test
@@ -754,6 +846,10 @@ class ProfileControllerTest {
 
         assertEquals("https://images.example.com/old.png", profileRepository.findByUserId(user.getId()).orElseThrow().getAvatarUrl());
         verifyNoInteractions(storage);
+    }
+
+    private StreamerEntity createStreamer(UserEntity user) {
+        return streamerRepository.saveAndFlush(StreamerEntity.builder().user(user).status(StreamerStatus.ACTIVE).build());
     }
 
     private UserEntity createProfile() {

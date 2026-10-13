@@ -1,6 +1,7 @@
 package com.reallive.channelservice.channel.service;
 
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
+import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.common.exception.AppException;
@@ -23,19 +24,23 @@ public interface ChannelService {
     boolean createChannel(CreateChannelRequest request);
 
     /**
-     * Synchronizes the avatar URL of the supplied streamer's non-deleted channel.
+     * Synchronizes the supplied name and avatar URL of the streamer's non-deleted channel.
      *
-     * <p>Only the avatar URL and persistence audit timestamp are changed. Channel status does not
+     * <p>Null request fields preserve their current values, and a request with both fields null
+     * leaves the channel unchanged. Supplied fields must not be empty or blank; names are stripped
+     * of leading and trailing whitespace. Only the supplied fields and persistence audit timestamp
+     * are changed. Channel status does not
      * restrict this internal synchronization. Updates are serialized by a row lock and join the
      * current local transaction when present. No file is uploaded or deleted, and User Service
      * is not called.</p>
      *
      * @param streamerId the streamer ID owning the channel, not the user ID
-     * @param avatarUrl the validated nonblank HTTP/HTTPS URL, at most 500 characters
-     * @return {@code true} when the avatar URL is saved
+     * @param request the validated optional name (at most 150 characters) and HTTP/HTTPS avatar URL
+     *                (at most 500 characters)
+     * @return {@code true} when the request is applied, including a request with both fields null
      * @throws AppException if the channel is missing or soft-deleted
      */
-    boolean updateChannelAvatar(UUID streamerId, String avatarUrl);
+    boolean updateChannelProfile(UUID streamerId, UpdateChannelProfileRequest request);
 
     /**
      * Updates the supplied profile fields and categories of the active channel owned by the user.

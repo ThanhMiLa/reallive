@@ -5,7 +5,6 @@ import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import feign.FeignException;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -37,16 +36,23 @@ class ChannelClientResolverTest {
         streamerId = UUID.randomUUID();
     }
 
-    @Test
-    void sendsTheStreamerIdAndAvatarUrlAndReturnsConfirmedSuccess() {
-        when(client.updateChannelAvatar(eq(streamerId), any(UpdateChannelAvatarRequest.class)))
+    @ParameterizedTest
+    @CsvSource(value = {
+            "New name,https://images.example.com/avatars/new.png",
+            "New name,NULL",
+            "NULL,https://images.example.com/avatars/new.png",
+            "NULL,NULL"
+    }, nullValues = "NULL")
+    void sendsOptionalNameAndAvatarAndReturnsConfirmedSuccess(String name, String avatarUrl) {
+        when(client.updateChannelProfile(eq(streamerId), any(UpdateChannelProfileRequest.class)))
                 .thenReturn(ResponseEntity.ok(envelope(200, 1000, true)));
 
-        assertTrue(resolver.updateChannelAvatar(streamerId, AVATAR_URL));
+        assertTrue(resolver.updateChannelProfile(streamerId, name, avatarUrl));
 
-        ArgumentCaptor<UpdateChannelAvatarRequest> request = ArgumentCaptor.forClass(UpdateChannelAvatarRequest.class);
-        verify(client).updateChannelAvatar(eq(streamerId), request.capture());
-        assertEquals(AVATAR_URL, request.getValue().getAvatarUrl());
+        ArgumentCaptor<UpdateChannelProfileRequest> request = ArgumentCaptor.forClass(UpdateChannelProfileRequest.class);
+        verify(client).updateChannelProfile(eq(streamerId), request.capture());
+        assertEquals(name, request.getValue().getName());
+        assertEquals(avatarUrl, request.getValue().getAvatarUrl());
         verifyNoMoreInteractions(client);
     }
 
@@ -64,27 +70,27 @@ class ChannelClientResolverTest {
     void mapsEachRemoteFailureAndDoesNotRetry(int httpStatus, ErrorCode expectedError) {
         FeignException remoteFailure = mock(FeignException.class);
         when(remoteFailure.status()).thenReturn(httpStatus);
-        when(client.updateChannelAvatar(eq(streamerId), any(UpdateChannelAvatarRequest.class)))
+        when(client.updateChannelProfile(eq(streamerId), any(UpdateChannelProfileRequest.class)))
                 .thenThrow(remoteFailure);
 
         AppException failure = assertThrows(AppException.class,
-                () -> resolver.updateChannelAvatar(streamerId, AVATAR_URL));
+                () -> resolver.updateChannelProfile(streamerId, "New name", AVATAR_URL));
 
         assertEquals(expectedError, failure.getErrorCode());
-        verify(client).updateChannelAvatar(eq(streamerId), any(UpdateChannelAvatarRequest.class));
+        verify(client).updateChannelProfile(eq(streamerId), any(UpdateChannelProfileRequest.class));
         verifyNoMoreInteractions(client);
     }
 
     @ParameterizedTest
     @MethodSource("unsuccessfulResponses")
     void rejectsEmptyMalformedOrUnsuccessfulResponses(ResponseEntity<ApiResponse<Boolean>> response) {
-        when(client.updateChannelAvatar(eq(streamerId), any(UpdateChannelAvatarRequest.class))).thenReturn(response);
+        when(client.updateChannelProfile(eq(streamerId), any(UpdateChannelProfileRequest.class))).thenReturn(response);
 
         AppException failure = assertThrows(AppException.class,
-                () -> resolver.updateChannelAvatar(streamerId, AVATAR_URL));
+                () -> resolver.updateChannelProfile(streamerId, "New name", AVATAR_URL));
 
         assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
-        verify(client).updateChannelAvatar(eq(streamerId), any(UpdateChannelAvatarRequest.class));
+        verify(client).updateChannelProfile(eq(streamerId), any(UpdateChannelProfileRequest.class));
         verifyNoMoreInteractions(client);
     }
 

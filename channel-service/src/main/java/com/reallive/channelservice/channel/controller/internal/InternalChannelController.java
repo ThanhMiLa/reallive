@@ -1,7 +1,7 @@
 package com.reallive.channelservice.channel.controller.internal;
 
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
-import com.reallive.channelservice.channel.dto.request.UpdateChannelAvatarRequest;
+import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.common.dto.ApiResponse;
 import jakarta.validation.Valid;
@@ -42,13 +42,13 @@ public class InternalChannelController {
     }
 
     @PatchMapping(value = "/by-streamer/{streamerId}/avatar", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<Boolean>> updateChannelAvatar(
-            @PathVariable UUID streamerId, @Valid @RequestBody UpdateChannelAvatarRequest request) {
-        boolean success = channelService.updateChannelAvatar(streamerId, request.getAvatarUrl());
+    public ResponseEntity<ApiResponse<Boolean>> updateChannelProfile(
+            @PathVariable UUID streamerId, @Valid @RequestBody UpdateChannelProfileRequest request) {
+        boolean success = channelService.updateChannelProfile(streamerId, request);
         return ResponseEntity.ok(ApiResponse.<Boolean>builder()
                 .status(200)
                 .code(1000)
-                .message("Channel avatar updated successfully")
+                .message("Channel profile updated successfully")
                 .result(success)
                 .timestamp(Instant.now().toString())
                 .build());
