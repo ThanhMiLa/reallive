@@ -25,8 +25,10 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -111,6 +113,7 @@ class ChannelPersistenceTest {
     @Test
     void updatesChannelAndSoftDeleteTimestampWithoutChangingIdentity() {
         ChannelEntity saved = channels.saveAndFlush(newChannel());
+        long visibleCount = channels.count();
         LocalDateTime createdAt = saved.getCreatedAt();
         LocalDateTime deletedAt = LocalDateTime.of(2026, 1, 2, 3, 4, 5);
         saved.setName("Updated channel");
@@ -118,13 +121,23 @@ class ChannelPersistenceTest {
         saved.setDeletedAt(deletedAt);
         channels.saveAndFlush(saved);
 
-        ChannelEntity reloaded = channels.findById(saved.getId()).orElseThrow();
-        assertEquals(saved.getStreamerId(), reloaded.getStreamerId());
-        assertEquals("Updated channel", reloaded.getName());
-        assertEquals(ChannelStatus.BANNED, reloaded.getStatus());
-        assertEquals(deletedAt, reloaded.getDeletedAt());
-        assertEquals(createdAt, reloaded.getCreatedAt());
-        assertFalse(reloaded.getUpdatedAt().isBefore(createdAt));
+        assertTrue(channels.findById(saved.getId()).isEmpty());
+        assertTrue(channels.findByStreamerId(saved.getStreamerId()).isEmpty());
+        assertTrue(channels.findBySlug(saved.getSlug()).isEmpty());
+        assertFalse(channels.existsById(saved.getId()));
+        assertFalse(channels.existsByStreamerId(saved.getStreamerId()));
+        assertFalse(channels.existsBySlug(saved.getSlug()));
+        assertTrue(channels.existsByStreamerIdIncludingDeleted(saved.getStreamerId()));
+        assertEquals(visibleCount - 1, channels.count());
+        assertFalse(channels.findAll().stream().anyMatch(channel -> channel.getId().equals(saved.getId())));
+
+        Map<String, Object> stored = jdbc.queryForMap("SELECT * FROM " + table("channels") + " WHERE id = ?", saved.getId());
+        assertEquals(saved.getStreamerId(), stored.get("streamer_id"));
+        assertEquals("Updated channel", stored.get("name"));
+        assertEquals("BANNED", stored.get("status"));
+        assertEquals(deletedAt, ((Timestamp) stored.get("deleted_at")).toLocalDateTime());
+        assertEquals(createdAt, ((Timestamp) stored.get("created_at")).toLocalDateTime());
+        assertFalse(((Timestamp) stored.get("updated_at")).toLocalDateTime().isBefore(createdAt));
     }
 
     @Test

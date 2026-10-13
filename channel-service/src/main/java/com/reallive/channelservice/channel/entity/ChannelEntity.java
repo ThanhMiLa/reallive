@@ -23,6 +23,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.hibernate.annotations.SQLRestriction;
 
 @Data
 @Builder
@@ -30,6 +31,7 @@ import lombok.experimental.FieldDefaults;
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Entity
+@SQLRestriction("deleted_at IS NULL")
 @Table(name = "channels",
         uniqueConstraints = {
             @UniqueConstraint(name = "uk_channels_streamer_id", columnNames = "streamer_id"),

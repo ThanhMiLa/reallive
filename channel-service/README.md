@@ -28,7 +28,7 @@ All channel and category persistence code belongs to the `channel` business modu
 
 `ChannelCategoryEntity` maps the composite `(channel_id, category_id)` key with `@EmbeddedId` and `@MapsId`, lazy parent relationships and a creation timestamp only. `ChannelCategoryId` is an embeddable identifier value type used by JPA and repository ID operations, not a fourth entity or table. There are three entities for the three tables. The association does not inherit `BaseEntity`, since the data model has no `updated_at` column for this table. There is no cascading parent deletion: remove category links explicitly before physically deleting a channel or category.
 
-`deleted_at` stores the channel's soft-delete timestamp. Repository lookups return persisted records, including banned and soft-deleted channels. Updating a user's profile will not automatically change channel profile fields.
+`deleted_at` stores the channel's soft-delete timestamp. `ChannelEntity` uses `@SQLRestriction("deleted_at IS NULL")`, so Hibernate-generated channel queries automatically exclude soft-deleted records, including ID/slug/streamer lookups, existence checks, lists/counts and the query that locks a channel for update. Non-deleted banned channels remain visible and business services still check their status. Native SQL bypasses this restriction; the creation ownership check intentionally includes deleted records because `streamer_id` remains unique. The annotation filters reads; it does not convert repository deletion calls into soft deletes. Updating a user's profile will not automatically change channel profile fields.
 
 ## Create channel
 
@@ -46,15 +46,53 @@ curl -X POST http://localhost:8081/channel/internal/api/channels \
 | `name` | Required, nonblank; leading/trailing whitespace is removed before enforcing the 150-character maximum. |
 | `avatarUrl` | Optional or `null`; when supplied, a nonempty HTTP/HTTPS URL with at most 500 characters. |
 
-Creation and repeated calls both return HTTP 200 with the standard envelope: `status: 200`, `code: 1000`, `message: "Channel created successfully"`, `timestamp`, and `result: true`. The result is a boolean acknowledgement; channel details are not returned.
+Creation returns HTTP 200 with the standard envelope: `status: 200`, `code: 1000`, `message: "Channel created successfully"`, `timestamp`, and `result: true`. The result is a boolean acknowledgement; channel details are not returned. A streamer with an existing channel, including a soft-deleted channel, receives HTTP 400 / code `1005` (`Channel already existed`).
 
-New channels use status `ACTIVE`, slug `channel-{streamerId}`, and null description, banner URL and deletion timestamp. Repeated calls acknowledge success without changing the existing channel's name, avatar, audit timestamps, banned status or soft-delete state. A banned or deleted channel is not restored by this endpoint.
+New channels use status `ACTIVE`, slug `channel-{streamerId}`, and null description, banner URL and deletion timestamp. Repeated calls leave the existing channel's name, avatar, audit timestamps, banned status and soft-delete state unchanged. A banned or deleted channel is not restored by this endpoint.
 
-The unique `streamer_id` constraint prevents duplicate channels. Each insertion runs in its own transaction. On an integrity conflict, the failed transaction rolls back before a fresh transaction looks up a channel created concurrently for the same streamer. Other storage failures return HTTP 503 / code `1003` (`Channel data unavailable`). Invalid fields, malformed JSON, missing bodies and invalid UUIDs return HTTP 400 / code `1004` (`Invalid channel request`). Both error responses contain `result: false`. Responses do not expose database details.
+The unique `streamer_id` constraint prevents duplicate channels. The creation precheck uses native `existsByStreamerIdIncludingDeleted` to preserve reserved streamer IDs even when the existing channel is hidden by the entity restriction. Insertion joins the local transaction; integrity conflicts and other storage failures return HTTP 503 / code `1003` (`Channel data unavailable`). Invalid fields, malformed JSON, missing bodies and invalid UUIDs return HTTP 400 / code `1004` (`Invalid channel request`). These error responses contain `result: false`. Responses do not expose database details.
 
 The channel transaction commits independently of a caller transaction. A future User Service rollback may therefore leave an orphan channel; cleanup is a separate future job.
 
 The implementation stays within `channel.controller.internal`, `channel.dto.request`, `channel.dto.validation`, and `channel.service.impl`, with the contract in `channel.service`. Shared response, validation error handling and security configuration remain in `common`.
+
+## Update channel
+
+`PATCH /channel/api/channels/me` updates the authenticated user's channel description, banner and assigned categories. Call it through API Gateway at port `8888`; Gateway verifies the access-token cookie before forwarding it. The controller requires the exact `CHANNEL_UPDATE` authority using `@PreAuthorize`. A role alone does not grant access. Assign this permission to the appropriate role in User Service and refresh/login to issue an access token containing it.
+
+```json
+{
+  "description": "Livestream games and chat",
+  "bannerUrl": "https://example.com/banner.png",
+  "categoryIds": ["550e8400-e29b-41d4-a716-446655440000"]
+}
+```
+
+All three fields are required, even though the method is PATCH. Jakarta/Hibernate Bean Validation rejects missing/null fields before the service is called. Description accepts empty text and at most 1,000 characters. Banner accepts an empty string or an HTTP/HTTPS URL with at most 500 characters. An empty description or banner string clears the stored value to `null`. Categories must be a nonempty list of non-null UUIDs; duplicate IDs are collapsed. The submitted list replaces the previous selection, keeping existing links and their creation timestamps when selected again.
+
+The service obtains the user UUID from the JWT subject, then uses Feign to call `GET /user/internal/api/streamers/by-user/{userId}/active`. A successful response must contain `result.streamerId`. User Service checks the current streamer record and its `ACTIVE` status; user IDs and streamer IDs are distinct. Client-supplied channel/streamer IDs cannot select a different channel.
+
+The resolved streamer must own an existing, active, non-deleted channel. Every requested category must exist and be `ACTIVE`. Missing channels are not created automatically. The service locks the channel row and commits profile/category changes together in one local transaction, so concurrent updates do not mix category selections. Stream-session categories are managed separately.
+
+HTTP 200 returns `ApiResponse<ChannelResponse>` with `id`, `streamerId`, `name`, `slug`, `description`, `avatarUrl`, `bannerUrl`, `status` and distinct `categoryIds` under `result`. Name, slug and avatar remain the current values.
+
+| Failure | HTTP | Code |
+| --- | --- | --- |
+| Missing/invalid authentication or user UUID in the principal | 401 | 1001 |
+| Missing `CHANNEL_UPDATE` authority | 403 | 1002 |
+| Invalid request fields or JSON | 400 | 1004 |
+| No streamer for the user | 404 | 1006 |
+| Streamer is not active | 403 | 1007 |
+| User Service timeout, error or invalid response | 503 | 1008 |
+| Channel missing or soft-deleted | 404 | 1009 |
+| Channel is not active | 403 | 1010 |
+| Requested category missing | 400 | 1011 |
+| Requested category inactive | 400 | 1012 |
+| Local persistence failure | 503 | 1003 |
+
+`USER_SERVICE_BASE_URL` defaults to `http://localhost:8080/user` in the development profile. Feign uses a 2-second connection timeout and 5-second read timeout. Internal lookup failure stops the update without changing channel data.
+
+`ChannelUpdateIntegrationTest` runs the real security, validation, service, database and Feign stack with a local User Service stub. It covers permission checks, authenticated ownership, request validation, category replacement, clearing fields, upstream failures/timeouts, rollback and concurrent updates.
 
 ## Development
 

@@ -4,6 +4,14 @@ server:
     context-path: /channel
 
 spring:
+  cloud:
+    openfeign:
+      client:
+        config:
+          user-service:
+            connectTimeout: 2000
+            readTimeout: 5000
+
   application:
     name: channel
 
@@ -26,3 +34,7 @@ auth:
   cookie:
     access-token:
       name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
+
+app:
+  service:
+    user: ${USER_SERVICE_BASE_URL:http://localhost:8080/user}

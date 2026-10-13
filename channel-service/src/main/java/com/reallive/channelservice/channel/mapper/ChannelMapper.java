@@ -1,0 +1,16 @@
+package com.reallive.channelservice.channel.mapper;
+
+import com.reallive.channelservice.channel.dto.response.ChannelResponse;
+import com.reallive.channelservice.channel.entity.ChannelEntity;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+
+import java.util.List;
+import java.util.UUID;
+
+@Mapper(componentModel = "spring")
+public interface ChannelMapper {
+
+    @Mapping(target = "categoryIds", source = "categoryIds")
+    ChannelResponse toResponse(ChannelEntity channel, List<UUID> categoryIds);
+}

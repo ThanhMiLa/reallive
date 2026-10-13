@@ -72,6 +72,9 @@ class ChannelCreationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
+    private JdbcTemplate jdbc;
+
+    @Autowired
     private ChannelService channelService;
 
     @Autowired
@@ -187,7 +190,8 @@ class ChannelCreationTest {
         original.setBannerUrl("https://example.com/banner.png");
         original.setDeletedAt(deleted ? LocalDateTime.of(2026, 1, 1, 12, 0) : null);
         channels.saveAndFlush(original);
-        original = channels.findByStreamerId(request.getStreamerId()).orElseThrow();
+        String storedChannelQuery = "SELECT * FROM \"" + SCHEMA + "\".channels WHERE id = ?";
+        Map<String, Object> originalRow = jdbc.queryForMap(storedChannelQuery, original.getId());
         request.setName("Replacement name");
         request.setAvatarUrl("https://example.com/replacement.png");
         clearInvocations(channels);
@@ -200,16 +204,8 @@ class ChannelCreationTest {
                 .andExpect(jsonPath("$.message").value("Channel already existed"))
                 .andExpect(jsonPath("$.result").value(false));
 
-        ChannelEntity afterRetry = channels.findByStreamerId(request.getStreamerId()).orElseThrow();
-        assertEquals(original.getId(), afterRetry.getId());
-        assertEquals(original.getName(), afterRetry.getName());
-        assertEquals(original.getAvatarUrl(), afterRetry.getAvatarUrl());
-        assertEquals(original.getStatus(), afterRetry.getStatus());
-        assertEquals(original.getCreatedAt(), afterRetry.getCreatedAt());
-        assertEquals(original.getUpdatedAt(), afterRetry.getUpdatedAt());
-        assertEquals(original.getDeletedAt(), afterRetry.getDeletedAt());
-        assertEquals(original.getDescription(), afterRetry.getDescription());
-        assertEquals(original.getBannerUrl(), afterRetry.getBannerUrl());
+        assertEquals(originalRow, jdbc.queryForMap(storedChannelQuery, original.getId()));
+        assertEquals(deleted, channels.findByStreamerId(request.getStreamerId()).isEmpty());
         AppException exception = assertThrows(AppException.class, () -> channelService.createChannel(request));
         assertEquals(ErrorCode.CHANNEL_ALREADY_EXISTED, exception.getErrorCode());
         verify(channels, never()).saveAndFlush(any(ChannelEntity.class));
@@ -325,7 +321,7 @@ class ChannelCreationTest {
     void lookupFailureReturns503WithoutAttemptingInsert() throws Exception {
         CreateChannelRequest request = request("Channel with unavailable storage", null);
         doThrow(new DataAccessResourceFailureException("private connection details"))
-                .when(channels).findByStreamerId(request.getStreamerId());
+                .when(channels).existsByStreamerIdIncludingDeleted(request.getStreamerId());
         clearInvocations(channels);
 
         mvc.perform(post(ENDPOINT).contextPath("/channel").contentType(MediaType.APPLICATION_JSON)

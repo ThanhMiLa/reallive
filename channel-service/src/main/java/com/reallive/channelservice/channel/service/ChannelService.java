@@ -1,14 +1,18 @@
 package com.reallive.channelservice.channel.service;
 
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
+import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
+import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.common.exception.AppException;
+
+import java.util.UUID;
 
 public interface ChannelService {
 
     /**
      * Creates an active channel with a deterministic slug for the supplied streamer.
      *
-     * <p>An existing channel for the streamer is rejected without changing its data.
+     * <p>An existing channel for the streamer, including a soft-deleted record, is rejected without changing its data.
      * Concurrent inserts are protected by database uniqueness constraints. Streamer existence
      * is not verified with User Service. Creation joins the current local transaction when present.</p>
      *
@@ -17,4 +21,20 @@ public interface ChannelService {
      * @throws AppException if a channel already exists or insertion violates a database constraint
      */
     boolean createChannel(CreateChannelRequest request);
+
+    /**
+     * Updates the active channel owned by the supplied user and replaces its assigned categories.
+     *
+     * <p>User Service must resolve an active streamer for the user before any local changes are made.
+     * The channel must be active and not deleted. Requested categories must exist and be active;
+     * duplicate category IDs are collapsed. Empty descriptions and banner URLs clear those values.
+     * Channel updates are serialized by a row lock and profile/category changes commit atomically.</p>
+     *
+     * @param userId the user ID extracted from the authenticated principal
+     * @param request the validated description, banner URL and nonempty category list
+     * @return the updated channel profile and distinct assigned category IDs
+     * @throws AppException if the streamer or channel is missing or inactive, User Service is
+     *                      unavailable, or a requested category is missing or inactive
+     */
+    ChannelResponse updateChannel(UUID userId, UpdateChannelRequest request);
 }

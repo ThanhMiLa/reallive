@@ -17,3 +17,7 @@ auth:
   cookie:
     access-token:
       name: access_token
+
+app:
+  service:
+    user: http://127.0.0.1:1/user
