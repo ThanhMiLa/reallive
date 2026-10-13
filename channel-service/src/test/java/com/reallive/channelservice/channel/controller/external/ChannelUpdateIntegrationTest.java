@@ -36,7 +36,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -78,6 +77,7 @@ import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -441,12 +441,20 @@ class ChannelUpdateIntegrationTest {
         verify(storage, never()).upload(anyString(), any(byte[].class), anyString());
     }
 
-    @Test
-    void rejectsThePreviousJsonRequestFormat() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"application/json", "application/x-www-form-urlencoded", "text/plain", "application/octet-stream"})
+    void unsupportedRequestFormatsReturnTheStandardEnvelopeWithoutUpdatingData(String contentType) throws Exception {
         mvc.perform(patch(ENDPOINT).contextPath("/channel").cookie(cookie("CHANNEL_UPDATE"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isUnsupportedMediaType());
+                        .contentType(contentType).content("{}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415))
+                .andExpect(jsonPath("$.code").value(1017))
+                .andExpect(jsonPath("$.message").value("Unsupported media type"))
+                .andExpect(jsonPath("$.result").value(nullValue()))
+                .andExpect(jsonPath("$.timestamp").isString());
         assertTrue(USER_SERVICE.requests().isEmpty());
+        verifyNoInteractions(storage);
+        assertUnchanged();
     }
 
     @Test

@@ -93,6 +93,7 @@ HTTP 200 returns `ApiResponse<ChannelResponse>` with `id`, `streamerId`, `name`,
 | Missing/invalid authentication or user UUID in the principal | 401 | 1001 |
 | Missing `CHANNEL_UPDATE` authority | 403 | 1002 |
 | Invalid form fields or malformed multipart request | 400 | 1004 |
+| Unsupported request Content-Type; update channel requires multipart/form-data | 415 | 1017 |
 | No streamer for the user | 404 | 1006 |
 | Streamer is not active | 403 | 1007 |
 | User Service timeout, error or invalid response | 503 | 1008 |

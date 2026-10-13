@@ -25,7 +25,8 @@ class GlobalExceptionHandlerTest {
     @CsvSource({"UNAUTHENTICATED,401,1001,Unauthorized", "ACCESS_DENIED,403,1002,Access Denied",
             "CHANNEL_DATA_UNAVAILABLE,503,1003,Channel data unavailable",
             "CHANNEL_REQUEST_INVALID,400,1004,Invalid channel request",
-            "CHANNEL_ALREADY_EXISTED,400,1005,Channel already existed"})
+            "CHANNEL_ALREADY_EXISTED,400,1005,Channel already existed",
+            "UNSUPPORTED_MEDIA_TYPE,415,1017,Unsupported media type"})
     void mapsAppExceptionToTheStandardHttpEnvelope(ErrorCode errorCode, int httpStatus, int code,
                                                    String message) throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new FailingController(errorCode))
