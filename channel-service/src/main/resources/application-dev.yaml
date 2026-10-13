@@ -4,6 +4,11 @@ server:
     context-path: /channel
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   cloud:
     openfeign:
       client:
@@ -38,3 +43,12 @@ auth:
 app:
   service:
     user: ${USER_SERVICE_BASE_URL:http://localhost:8080/user}
+
+storage:
+  r2:
+    bucket-name: ${BUCKET_NAME}
+    public-base-url: ${PUBLIC_BASE_URL}
+    endpoint: ${R2_ENDPOINT}
+    access-key-id: ${R2_ACCESS_KEY_ID}
+    secret-access-key: ${R2_SECRET_ACCESS_KEY}
+

@@ -19,7 +19,7 @@ import java.time.Instant;
 @RequestMapping("/internal/api/channels")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class ChannelController {
+public class InternalChannelController {
 
     ChannelService channelService;
 

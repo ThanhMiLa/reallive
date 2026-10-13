@@ -9,7 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.hibernate.validator.constraints.URL;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -26,9 +26,7 @@ public class UpdateChannelRequest {
     String description;
 
     @NotNull
-    @Size(max = 500)
-    @URL(regexp = "(?i)^(https?://.+)?$")
-    String bannerUrl;
+    MultipartFile bannerUrl;
 
     @NotEmpty
     List<@NotNull UUID> categoryIds;

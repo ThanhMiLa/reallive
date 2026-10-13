@@ -7,11 +7,23 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.time.Instant;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Object>> bannerTooLarge(MaxUploadSizeExceededException exception) {
+        return appException(new AppException(ErrorCode.BANNER_TOO_LARGE));
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ApiResponse<Object>> invalidMultipart(MultipartException exception) {
+        return appException(new AppException(ErrorCode.CHANNEL_REQUEST_INVALID));
+    }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class})
     public ResponseEntity<ApiResponse<Object>> invalidRequest(Exception exception) {

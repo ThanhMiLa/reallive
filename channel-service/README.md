@@ -60,15 +60,27 @@ The implementation stays within `channel.controller.internal`, `channel.dto.requ
 
 `PATCH /channel/api/channels/me` updates the authenticated user's channel description, banner and assigned categories. Call it through API Gateway at port `8888`; Gateway verifies the access-token cookie before forwarding it. The controller requires the exact `CHANNEL_UPDATE` authority using `@PreAuthorize`. A role alone does not grant access. Assign this permission to the appropriate role in User Service and refresh/login to issue an access token containing it.
 
-```json
-{
-  "description": "Livestream games and chat",
-  "bannerUrl": "https://example.com/banner.png",
-  "categoryIds": ["550e8400-e29b-41d4-a716-446655440000"]
-}
+The endpoint consumes `multipart/form-data`, bound through `@Valid @ModelAttribute UpdateChannelRequest`:
+
+| Field | Rules |
+| --- | --- |
+| `description` | Required text, at most 1,000 characters; an empty string clears the stored description. |
+| `bannerUrl` | Required file part; JPEG, PNG or WebP, at most 5 MiB and 16 million pixels. An empty file clears the banner. |
+| `categoryIds` | Required, nonempty UUID list; send repeated fields or indexed fields such as `categoryIds[0]`. Duplicate IDs are collapsed. |
+
+```shell
+curl -X PATCH http://localhost:8888/channel/api/channels/me \
+  -b cookies.txt \
+  -F 'description=Livestream games and chat' \
+  -F 'bannerUrl=@/path/to/banner.png' \
+  -F 'categoryIds=550e8400-e29b-41d4-a716-446655440000'
 ```
 
-All three fields are required, even though the method is PATCH. Jakarta/Hibernate Bean Validation rejects missing/null fields before the service is called. Description accepts empty text and at most 1,000 characters. Banner accepts an empty string or an HTTP/HTTPS URL with at most 500 characters. An empty description or banner string clears the stored value to `null`. Categories must be a nonempty list of non-null UUIDs; duplicate IDs are collapsed. The submitted list replaces the previous selection, keeping existing links and their creation timestamps when selected again.
+To clear the banner, send an empty file part, for example `-F 'bannerUrl=@/dev/null;filename=empty'`. Omitting the file or sending a URL as a text field is rejected. JSON requests are no longer supported. The response's `bannerUrl` remains a string URL.
+
+The file format is detected from image content; supplied filenames and MIME types do not select its format or storage key. Banners are uploaded to R2 under `channels/<channelId>/banners/<uuid>.<extension>`, and the database stores only the full public URL (at most 500 characters). A successful transaction replaces or clears that URL and then attempts to delete the previous banner managed for that channel. A rolled-back transaction attempts to delete the new upload while preserving the previous banner. Cleanup is best effort; R2 and database operations do not share a distributed transaction. URLs belonging to other channels or external providers are not deleted.
+
+The submitted category list replaces the previous selection, keeping existing links and their creation timestamps when selected again.
 
 The service obtains the user UUID from the JWT subject, then uses Feign to call `GET /user/internal/api/streamers/by-user/{userId}/active`. A successful response must contain `result.streamerId`. User Service checks the current streamer record and its `ACTIVE` status; user IDs and streamer IDs are distinct. Client-supplied channel/streamer IDs cannot select a different channel.
 
@@ -80,7 +92,7 @@ HTTP 200 returns `ApiResponse<ChannelResponse>` with `id`, `streamerId`, `name`,
 | --- | --- | --- |
 | Missing/invalid authentication or user UUID in the principal | 401 | 1001 |
 | Missing `CHANNEL_UPDATE` authority | 403 | 1002 |
-| Invalid request fields or JSON | 400 | 1004 |
+| Invalid form fields or malformed multipart request | 400 | 1004 |
 | No streamer for the user | 404 | 1006 |
 | Streamer is not active | 403 | 1007 |
 | User Service timeout, error or invalid response | 503 | 1008 |
@@ -89,14 +101,22 @@ HTTP 200 returns `ApiResponse<ChannelResponse>` with `id`, `streamerId`, `name`,
 | Requested category missing | 400 | 1011 |
 | Requested category inactive | 400 | 1012 |
 | Local persistence failure | 503 | 1003 |
+| Invalid banner image | 400 | 1013 |
+| File exceeds 5 MiB or multipart request exceeds 6 MiB | 413 | 1014 |
+| R2 upload failed | 502 | 1015 |
+| Generated banner URL exceeds the database limit | 503 | 1016 |
 
 `USER_SERVICE_BASE_URL` defaults to `http://localhost:8080/user` in the development profile. Feign uses a 2-second connection timeout and 5-second read timeout. Internal lookup failure stops the update without changing channel data.
 
-`ChannelUpdateIntegrationTest` runs the real security, validation, service, database and Feign stack with a local User Service stub. It covers permission checks, authenticated ownership, request validation, category replacement, clearing fields, upstream failures/timeouts, rollback and concurrent updates.
+R2 configuration and storage follow the same layout and class names as User Service: `common.configuration.R2Config`, `common.service.R2StorageService`, and `common.service.impl.R2StorageServiceImpl`. Banner validation and transaction coordination remain in the channel module.
+
+`ChannelUpdateIntegrationTest` runs the real security, multipart binding, validation, service, database and Feign stack with a local User Service stub and mocked R2 storage service. It includes real HTTP multipart PATCH requests and file-size rejection, plus permission/ownership checks, supported image formats, spoofed metadata, clearing fields, upstream/storage failures, transaction cleanup and concurrent updates. `R2StorageServiceImplTest` verifies S3 upload metadata/content and limits cleanup to owned banner keys using a mocked SDK client; tests do not upload to a real R2 bucket.
 
 ## Development
 
 The service listens at `http://localhost:8081/channel`, matching Gateway's `/channel/api/**` route. The repository's Docker Compose exposes channel PostgreSQL at `localhost:5433`, database `reallive_channel`, username `channel_service`.
+
+Configure `BUCKET_NAME`, `PUBLIC_BASE_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` as in User Service. Use the S3-compatible endpoint without the bucket suffix and a public bucket/custom-domain URL for `PUBLIC_BASE_URL`. Only the backend uploads to R2.
 
 Export `CHANNEL_DB_PASSWORD` or set it in the IDE. Optional `CHANNEL_DB_URL` and `CHANNEL_DB_USERNAME` override the development defaults. Spring Boot does not load the root `.env` file automatically.
 
