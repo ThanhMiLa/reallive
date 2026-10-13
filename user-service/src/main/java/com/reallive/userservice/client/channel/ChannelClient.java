@@ -5,8 +5,12 @@ import com.reallive.userservice.common.dto.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.UUID;
 
 
 @FeignClient(
@@ -17,4 +21,11 @@ public interface ChannelClient {
             value = "/internal/api/channels",
             produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<ApiResponse<Boolean>> createChannel(@RequestBody CreateChannelRequest request);
+
+    @PatchMapping(
+            value = "/internal/api/channels/by-streamer/{streamerId}/avatar",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<ApiResponse<Boolean>> updateChannelAvatar(@PathVariable("streamerId") UUID streamerId,
+                                                             @RequestBody UpdateChannelAvatarRequest request);
 }

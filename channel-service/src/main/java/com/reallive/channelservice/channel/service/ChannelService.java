@@ -23,6 +23,21 @@ public interface ChannelService {
     boolean createChannel(CreateChannelRequest request);
 
     /**
+     * Synchronizes the avatar URL of the supplied streamer's non-deleted channel.
+     *
+     * <p>Only the avatar URL and persistence audit timestamp are changed. Channel status does not
+     * restrict this internal synchronization. Updates are serialized by a row lock and join the
+     * current local transaction when present. No file is uploaded or deleted, and User Service
+     * is not called.</p>
+     *
+     * @param streamerId the streamer ID owning the channel, not the user ID
+     * @param avatarUrl the validated nonblank HTTP/HTTPS URL, at most 500 characters
+     * @return {@code true} when the avatar URL is saved
+     * @throws AppException if the channel is missing or soft-deleted
+     */
+    boolean updateChannelAvatar(UUID streamerId, String avatarUrl);
+
+    /**
      * Updates the supplied profile fields and categories of the active channel owned by the user.
      *
      * <p>User Service must resolve an active streamer for the user before any local changes are made.

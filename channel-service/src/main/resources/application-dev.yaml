@@ -18,7 +18,7 @@ spring:
             readTimeout: 5000
 
   application:
-    name: channel
+    name: channel-service
 
   datasource:
     url: ${CHANNEL_DB_URL:jdbc:postgresql://localhost:5433/reallive_channel}

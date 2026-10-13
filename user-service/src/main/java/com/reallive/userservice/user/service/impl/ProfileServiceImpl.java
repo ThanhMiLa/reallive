@@ -1,10 +1,13 @@
 package com.reallive.userservice.user.service.impl;
 
 import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.service.R2StorageService;
 import com.reallive.userservice.common.util.UserValidator;
+import com.reallive.userservice.streamer.entity.StreamerEntity;
+import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 import com.reallive.userservice.user.entity.ProfileEntity;
@@ -32,6 +35,8 @@ public class ProfileServiceImpl implements ProfileService {
     ProfileRepository profileRepository;
     R2StorageService r2StorageService;
     ProfileMapper profileMapper;
+    StreamerRepository streamerRepository;
+    ChannelClientResolver channelClientResolver;
 
     @Override
     @Transactional(readOnly = true)
@@ -78,6 +83,9 @@ public class ProfileServiceImpl implements ProfileService {
         registerAvatarCleanup(userId, objectKey, oldAvatarUrl);
         r2StorageService.upload(objectKey, avatar.content(), avatar.contentType());
         profile.setAvatarUrl(newAvatarUrl);
+
+        streamerRepository.findByUserId(userId)
+                .ifPresent(streamer -> channelClientResolver.updateChannelAvatar(streamer.getId(), newAvatarUrl));
     }
 
     /** R2 operations are compensated after the database transaction outcome is known. */

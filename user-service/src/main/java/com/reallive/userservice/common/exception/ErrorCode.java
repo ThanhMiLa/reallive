@@ -47,7 +47,9 @@ public enum ErrorCode {
     PAYMENT_SERVICE_UNAVAILABLE(1036, "Payment service unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
     CHANNEL_SERVICE_UNAVAILABLE(1037,"Channel service unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
     STREAMER_NOT_FOUND(1038, "Streamer not found", HttpStatus.NOT_FOUND),
-    STREAMER_NOT_ACTIVE(1039, "Streamer is not active", HttpStatus.FORBIDDEN);
+    STREAMER_NOT_ACTIVE(1039, "Streamer is not active", HttpStatus.FORBIDDEN),
+    CHANNEL_NOT_FOUND(1040, "Channel not found", HttpStatus.NOT_FOUND),
+    CHANNEL_REQUEST_INVALID(1041, "Invalid channel request", HttpStatus.BAD_REQUEST);
 
 
     private final int code;

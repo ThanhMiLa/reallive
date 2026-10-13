@@ -2,9 +2,12 @@ package com.reallive.userservice.user.service.impl;
 
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
+import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.service.R2StorageService;
+import com.reallive.userservice.streamer.entity.StreamerEntity;
+import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 import com.reallive.userservice.user.entity.ProfileEntity;
@@ -47,13 +50,18 @@ class ProfileServiceImplTest {
     private ProfileRepository profileRepository;
     private ProfileServiceImpl profileService;
     private R2StorageService storage;
+    private StreamerRepository streamerRepository;
+    private ChannelClientResolver channelClientResolver;
     private UserEntity user;
 
     @BeforeEach
     void setUp() {
         profileRepository = mock(ProfileRepository.class);
         storage = mock(R2StorageService.class);
-        profileService = new ProfileServiceImpl(profileRepository, storage, Mappers.getMapper(ProfileMapper.class));
+        streamerRepository = mock(StreamerRepository.class);
+        channelClientResolver = mock(ChannelClientResolver.class);
+        profileService = new ProfileServiceImpl(profileRepository, storage, Mappers.getMapper(ProfileMapper.class),
+                streamerRepository, channelClientResolver);
         user = UserEntity.builder()
                 .id(UUID.randomUUID())
                 .email("viewer@example.com")
@@ -104,7 +112,7 @@ class ProfileServiceImplTest {
         assertEquals(user.getEmail(), response.getEmail());
         assertEquals(user.getCreatedAt(), response.getCreatedAt());
         verify(profileRepository).save(profile);
-        verifyNoInteractions(storage);
+        verifyNoInteractions(storage, streamerRepository, channelClientResolver);
     }
 
     @Test
@@ -118,7 +126,7 @@ class ProfileServiceImplTest {
         assertEquals(LocalDate.of(2001, 2, 3), response.getDob());
         assertEquals("Viewer", response.getDisplayName());
         assertEquals(profile.getAvatarUrl(), response.getAvatarUrl());
-        verifyNoInteractions(storage);
+        verifyNoInteractions(storage, streamerRepository, channelClientResolver);
     }
 
     @Test
@@ -157,6 +165,41 @@ class ProfileServiceImplTest {
         completeTransaction(TransactionSynchronization.STATUS_COMMITTED);
         verify(storage).deleteManagedAvatar(oldUrl, user.getId());
         verify(storage, never()).deleteQuietly(anyString());
+        verify(streamerRepository).findByUserId(user.getId());
+        verifyNoInteractions(channelClientResolver);
+    }
+
+    @Test
+    void updateStreamerAvatarSynchronizesChannelUsingStreamerIdAndNewUrl() throws Exception {
+        ProfileEntity profile = profileForUpdate();
+        StreamerEntity streamer = StreamerEntity.builder().id(UUID.randomUUID()).user(user).build();
+        when(streamerRepository.findByUserId(user.getId())).thenReturn(Optional.of(streamer));
+        prepareAvatarTransaction();
+
+        UserProfileResponse response = profileService.updateMyProfile(user.getId(), avatarRequest());
+
+        verify(channelClientResolver).updateChannelAvatar(streamer.getId(), response.getAvatarUrl());
+        assertEquals(profile.getAvatarUrl(), response.getAvatarUrl());
+        verify(profileRepository).save(profile);
+    }
+
+    @Test
+    void channelSyncFailurePreventsProfileSaveAndCleansNewUploadAfterRollback() throws Exception {
+        ProfileEntity profile = profileForUpdate();
+        StreamerEntity streamer = StreamerEntity.builder().id(UUID.randomUUID()).user(user).build();
+        when(streamerRepository.findByUserId(user.getId())).thenReturn(Optional.of(streamer));
+        doThrow(new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE)).when(channelClientResolver)
+                .updateChannelAvatar(eq(streamer.getId()), anyString());
+        prepareAvatarTransaction();
+
+        AppException failure = assertThrows(AppException.class,
+                () -> profileService.updateMyProfile(user.getId(), avatarRequest()));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        verify(profileRepository, never()).save(any());
+        completeTransaction(TransactionSynchronization.STATUS_ROLLED_BACK);
+        verify(storage).deleteQuietly(profile.getAvatarUrl().substring("https://images.example.com/".length()));
+        verify(storage, never()).deleteManagedAvatar(any(), any());
     }
 
     @Test

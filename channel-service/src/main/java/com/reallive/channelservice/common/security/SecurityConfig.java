@@ -36,6 +36,10 @@ public class SecurityConfig {
             "/internal/api/channels"
     };
 
+    private static final String[] PUBLIC_ENDPOINTS_PATCH = {
+            "/internal/api/channels/by-streamer/*/avatar"
+    };
+
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, BearerTokenResolver bearerTokenResolver) throws Exception {
@@ -44,6 +48,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, PUBLIC_ENDPOINTS_GET).permitAll()
                         .requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS_POST).permitAll()
+                        .requestMatchers(HttpMethod.PATCH, PUBLIC_ENDPOINTS_PATCH).permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2

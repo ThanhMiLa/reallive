@@ -104,7 +104,17 @@ public class ChannelHttpTestServer implements AutoCloseable {
                 return;
             }
             if (requestMode == Mode.SUCCESS || requestMode == Mode.LOST_RESPONSE || requestMode == Mode.INVALID_JSON) {
-                channels.add(UUID.fromString(mapper.readTree(body).path("streamerId").asString()));
+                if ("PATCH".equals(exchange.getRequestMethod())) {
+                    String path = exchange.getRequestURI().getPath();
+                    String streamerId = path.substring("/channel/internal/api/channels/by-streamer/".length(),
+                            path.length() - "/avatar".length());
+                    if (!channels.contains(UUID.fromString(streamerId))) {
+                        send(exchange, 404, "{\"status\":404,\"code\":1009,\"message\":\"Channel not found\"}");
+                        return;
+                    }
+                } else {
+                    channels.add(UUID.fromString(mapper.readTree(body).path("streamerId").asString()));
+                }
             }
             switch (requestMode) {
                 case LOST_RESPONSE -> {

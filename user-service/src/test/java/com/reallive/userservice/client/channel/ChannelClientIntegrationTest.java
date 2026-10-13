@@ -1,5 +1,7 @@
 package com.reallive.userservice.client.channel;
 
+import com.reallive.userservice.common.exception.AppException;
+import com.reallive.userservice.common.exception.ErrorCode;
 import feign.FeignException;
 import feign.RetryableException;
 import org.junit.jupiter.api.AfterAll;
@@ -7,6 +9,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +46,9 @@ class ChannelClientIntegrationTest {
     private ApplicationContext context;
     @Autowired
     private ObjectMapper mapper;
+
+    @Autowired
+    private ChannelClientResolver resolver;
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -93,6 +100,69 @@ class ChannelClientIntegrationTest {
         assertEquals(Boolean.TRUE, response.getBody().getResult());
         assertTrue(CHANNEL.hasChannel(payload.getStreamerId()));
         assertEquals(1, CHANNEL.callCount());
+    }
+
+    @Test
+    void patchesAvatarJsonToTheStreamersInternalEndpoint() throws Exception {
+        CreateChannelRequest channel = request();
+        client.createChannel(channel);
+        CHANNEL.takeRequest();
+        String avatarUrl = "https://images.example.com/avatars/new.png";
+
+        var response = client.updateChannelAvatar(channel.getStreamerId(),
+                UpdateChannelAvatarRequest.builder().avatarUrl(avatarUrl).build());
+        var request = CHANNEL.takeRequest();
+
+        assertEquals("PATCH", request.method());
+        assertEquals("/channel/internal/api/channels/by-streamer/" + channel.getStreamerId() + "/avatar", request.path());
+        assertTrue(request.header("Content-Type").startsWith("application/json"));
+        assertNull(request.header("Cookie"));
+        assertNull(request.header("Authorization"));
+        assertEquals(avatarUrl, mapper.readTree(request.body()).path("avatarUrl").asString());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals(200, response.getBody().getStatus());
+        assertEquals(1000, response.getBody().getCode());
+        assertEquals(Boolean.TRUE, response.getBody().getResult());
+        assertEquals(2, CHANNEL.callCount());
+
+        assertTrue(resolver.updateChannelAvatar(channel.getStreamerId(), avatarUrl));
+        assertEquals(3, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "400,CHANNEL_REQUEST_INVALID",
+            "404,CHANNEL_NOT_FOUND",
+            "401,CHANNEL_SERVICE_UNAVAILABLE",
+            "403,CHANNEL_SERVICE_UNAVAILABLE",
+            "415,CHANNEL_SERVICE_UNAVAILABLE",
+            "500,CHANNEL_SERVICE_UNAVAILABLE",
+            "503,CHANNEL_SERVICE_UNAVAILABLE"
+    })
+    void avatarResolverMapsRealHttpFailuresWithoutRetry(int status, ErrorCode expectedError) {
+        CHANNEL.setErrorStatus(status);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.updateChannelAvatar(UUID.randomUUID(), "https://images.example.com/avatar.png"));
+
+        assertEquals(expectedError, failure.getErrorCode());
+        assertEquals(1, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ChannelHttpTestServer.Mode.class,
+            names = {"INVALID_JSON", "EMPTY_BODY", "FALSE_RESULT", "NULL_RESULT"})
+    void avatarResolverRejectsMalformedOrUnsuccessfulHttpResponses(ChannelHttpTestServer.Mode mode) {
+        CreateChannelRequest channel = request();
+        client.createChannel(channel);
+        CHANNEL.setMode(mode);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.updateChannelAvatar(channel.getStreamerId(), "https://images.example.com/avatar.png"));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertEquals(2, CHANNEL.callCount());
     }
 
     @ParameterizedTest

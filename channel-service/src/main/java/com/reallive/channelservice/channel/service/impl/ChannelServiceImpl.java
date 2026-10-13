@@ -101,6 +101,16 @@ public class ChannelServiceImpl implements ChannelService {
         return channelMapper.toResponse(channel, categoryIds);
     }
 
+    @Override
+    @Transactional
+    public boolean updateChannelAvatar(UUID streamerId, String avatarUrl) {
+        ChannelEntity channel = channelRepository.findByStreamerIdForUpdate(streamerId)
+                .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
+        channel.setAvatarUrl(avatarUrl);
+        channelRepository.save(channel);
+        return true;
+    }
+
     private void updateBanner(ChannelEntity channel, MultipartFile banner) {
         String oldBannerUrl = channel.getBannerUrl();
         BannerImage image = BannerValidator.validate(banner);
