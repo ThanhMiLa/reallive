@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RealLive - Browse Livestreams</title>
+<!-- Google Fonts: Outfit -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              cyan: '#00F0FF',
+              neon: '#00E701',
+              dark: '#080a10',
+              panel: '#0e111b',
+              card: '#141824',
+              hover: '#1b2032',
+              border: '#1f2639'
+            }
+          },
+          fontFamily: {
+            outfit: ['Outfit', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- BEGIN: Custom Stylesheet -->
+<style data-purpose="scrollbar-and-glow">
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #080a10;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1f2639;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00F0FF;
+    }
+
+    .neon-border-glow:hover {
+      border-color: rgba(0, 240, 255, 0.4);
+      box-shadow: 0 0 20px -5px rgba(0, 240, 255, 0.25);
+    }
+  </style>
+<!-- END: Custom Stylesheet -->
+</head>
+<body class="bg-[#080a10] text-gray-200 font-outfit min-h-screen flex flex-col antialiased selection:bg-brand-cyan selection:text-black">
+<!-- BEGIN: Header -->
+<header class="sticky top-0 z-50 h-16 bg-[#0c0f18]/95 backdrop-blur border-b border-brand-border flex items-center justify-between px-4 lg:px-6 select-none" data-purpose="main-navigation-bar">
+<!-- Left: Logo & Mobile Toggle -->
+<div class="flex items-center space-x-4">
+<button aria-label="Toggle Menu" class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors lg:hidden">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+<a class="flex items-center space-x-2 group" href="#">
+<div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#00F0FF] to-[#0099FF] flex items-center justify-center shadow-lg shadow-[#00F0FF]/20 group-hover:scale-105 transition-transform">
+<svg class="w-5 h-5 text-black" fill="currentColor" viewbox="0 0 24 24">
+<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6H4zm6 2.5l6 3.5-6 3.5v-7z"></path>
+</svg>
+</div>
+<span class="text-xl font-extrabold tracking-wider text-white">REAL<span class="text-brand-cyan drop-shadow-[0_0_10px_rgba(0,240,255,0.4)]">LIVE</span></span>
+</a>
+</div>
+<!-- Center: Search Input -->
+<div class="flex-1 max-w-xl mx-4 hidden md:block">
+<div class="relative w-full">
+<input class="w-full bg-[#131722] text-sm text-gray-200 rounded-lg pl-10 pr-4 py-2 border border-brand-border focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan focus:outline-none transition-all placeholder-gray-500" placeholder="Search streams, categories, or streamers..." type="text"/>
+<svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</div>
+</div>
+<!-- Right: Actions & User Avatar -->
+<div class="flex items-center space-x-3">
+<!-- Get Tokens Button -->
+<button class="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-[#00E701] text-black font-semibold text-xs md:text-sm px-3.5 py-1.5 rounded-lg shadow-md shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all">
+<svg class="w-4 h-4 text-black" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" fill-rule="evenodd"></path>
+</svg>
+<span>Get Tokens</span>
+</button>
+<!-- Notification Bell -->
+<button aria-label="Notifications" class="relative p-2 text-gray-400 hover:text-white hover:bg-brand-hover rounded-lg transition-colors">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-cyan rounded-full ring-2 ring-[#0c0f18]"></span>
+</button>
+<!-- Profile Avatar -->
+<div class="relative cursor-pointer group">
+<img alt="User Profile" class="w-9 h-9 rounded-full ring-2 ring-brand-cyan/60 group-hover:ring-brand-cyan transition" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfdo0T6U4lesXI4DRd28XTWaf0jp5Tsp6d1AxWLey6BXwHdVJbAaF2aSVQMI7DtXhQtndDAoaANe5df1J-OcX7at0O8KIfqNEttPX8AOh9PloiZDEf3JMd4eYQ85Ri94rRD_JaJWjha_hnj8qezNaGPiOexTCG0V3-TNQhXYXbyNSExkRuV5uwgsBJqOqVUuaKE2N7wKgL73U6UmB_5NgJmVjm9tpNAUYhTPBQbvuSLS1ksdDQqdbtpw"/>
+<span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-brand-neon rounded-full ring-2 ring-[#080a10]"></span>
+</div>
+</div>
+</header>
+<!-- END: Header -->
+<!-- BEGIN: Main Page Layout -->
+<div class="flex flex-1 overflow-hidden" data-purpose="page-body-container">
+<!-- BEGIN: Left Sidebar -->
+<aside class="w-64 bg-[#0c0f18] border-r border-brand-border flex-shrink-0 flex flex-col justify-between hidden md:flex" data-purpose="navigation-sidebar">
+<div class="overflow-y-auto px-3 py-4 space-y-6">
+<!-- Primary Navigation Links -->
+<nav class="space-y-1">
+<a class="flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors" href="#">
+<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Home</span>
+</a>
+<!-- Active Browse Item -->
+<a class="flex items-center space-x-3 px-3 py-2 text-sm font-semibold rounded-lg bg-brand-hover text-brand-cyan border-l-2 border-brand-cyan transition-colors" href="#">
+<svg class="w-5 h-5 text-brand-cyan" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Browse</span>
+</a>
+<a class="flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors" href="#">
+<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Following</span>
+</a>
+<a class="flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors" href="#">
+<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Donate</span>
+</a>
+</nav>
+<!-- Section: Following Streamers -->
+<div>
+<div class="px-3 pb-2 text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center justify-between">
+<span>Following</span>
+<span class="text-[10px] bg-brand-card px-1.5 py-0.5 rounded text-gray-400">1</span>
+</div>
+<div class="space-y-1">
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+<div class="relative flex-shrink-0">
+<img alt="BenjaminTran" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDuLRNQoH-CJ36Ccq2DA9XwhEWV9xkPty5TFuF5Z7kjJsquItJEGwBQA6-rJbMgRwtqERUPNH7J9wIBCNk-74JBkUCr2FoM4mMjVSS8oSwLu57lFiS3Uy1Dw70T8E0q3nIiLqEBMSJ9QJ8JkABVUeFZB9wH1Vaib_9LDzziC5sBhYIsRhKx9C3EhOjK2TYvqsALmzsPlin5NtGsd1yxlK1aTOatjqZQA1lc5oTCRV87KXXd6QEPSJaEg"/>
+<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">BenjaminTran</p>
+<p class="text-xs text-gray-500 truncate">Just Chatting</p>
+</div>
+</a>
+</div>
+</div>
+<!-- Section: Recommended Streamers (No viewer counts per RealLive requirement) -->
+<div>
+<div class="px-3 pb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+<span>Recommended</span>
+</div>
+<div class="space-y-1">
+<!-- Channel 1 -->
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+<div class="relative flex-shrink-0">
+<img alt="bladeito" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_blic0m_ya1_UuMG28dst7O1m-IpT0bt5PKll1pEZ2p1CIKKeTNjmVRCGq5bRtZjFL4ZHg50rQVs2RlId5zlpNB-4_vJf7n9FouSw9ubrsdYKeiaK8ADShtiJXQQgxLfHoWc9jFrFNisYJIFjhxUonBWRefLfs4GkOJC6H5m3xyAZUkkvUuJGC9Mv8o-g11_dOcmBuZfOIKR9_kgmtqCxARd_Ol5UUYdK4Pg2KlWGdJIiV4g82zq6KA"/>
+<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">bladeito</p>
+<p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+</div>
+</a>
+<!-- Channel 2 -->
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+<div class="relative flex-shrink-0">
+<img alt="oskartommy" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABV1qaCcInB1IQfEPYAiBIiAGmsg8QqoUyOQUDpwSVLRDuvlPQCXacB_8tfjre5nY_W0xgiJ4vJzEWh3EgrXEBZ3rGiuzADjX0rjA5-QmXSE4G2KJoj4N4-x5MlHOmjt1TN7_MvgVXBXJcIkdZS2NUOgzgEb7KAAlgn1bU8rDEh2HkBKOLEPDjAgPaUqhnTze2siVDiQf419a3uNgtSZnp8wJOIX_EKXLoNo0FPRXOJ1avrew8AZMBXQ"/>
+<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">oskartommy</p>
+<p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+</div>
+</a>
+<!-- Channel 3 -->
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+<div class="relative flex-shrink-0">
+<img alt="SealStats" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCt12kSh384YN8TwiVg7eb4b4Jcsg9kaT-HUsVi_hGacs2YmYgUCLvErZvTmDERepGCd__Ti1PRWY0HE7Rp0tb8iLnRhG9BzDOHrvmU8A8r736gwvmMp7922OnTdnhUJMutnMO2smN627L7tBGjURvroKrSeIvMKJl_-1XYVeSLigbXeIH1aXt6w0Of7L_82_u63zXhD8KSYzYLPrZelSPT000BmTb_z017iORTJE9L-_DPkaj5zBxhvg"/>
+<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">SealStats</p>
+<p class="text-xs text-gray-500 truncate">Slots &amp; Casino</p>
+</div>
+</a>
+<!-- Channel 4 -->
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+<div class="relative flex-shrink-0">
+<img alt="CSkyf" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_hyIATx2c6DYzG3y--xuQzMfIEd3ojP3zD5_0AgkDe5k0kS91ChL85HwGwTB0UOd_bxDP2cNFKa8JIUIIiGTDOsHIrtvg8ANvUkwtHc4D1oLYrHMAHyT4K3AFsSm0nJyqZwXCdcZLQA6BsIDIFVTugaHlY_ZkL0_p9JgYE3-0itS4De7L4GyX_doUClhWrDY_5VlLPTg8OqMWI5H5WtN4h0Uu5APh896rhp3daopa-2yh50Je34UQDw"/>
+<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">CSkyf</p>
+<p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+</div>
+</a>
+<!-- Channel 5 -->
+<a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+<div class="relative flex-shrink-0">
+<img alt="2SekundovyMato" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZnQGrJ75UwoU-Dlw41Xfbs_0H0uWSndEkhd9xGh9X0h6SKcSrn4Qa76PdTGhT31s3T3IARJcsa1ZZ3Me-U24CpJcZdgEuGo3dYJ_up1rmlOilwX64WHt4qMq7hC1kEyipwlayvJ_YblYpuLli9qDKEhWDPsmxj9uQ4UQnNwMDg6H8rufxOE--mN3sHqZE4YLuDTYs0W6KTu_v2d1OxxSnIMjdBkjMcjmz6WywaY6cOnGONR8m_I79lA"/>
+<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+</div>
+<div class="flex-1 min-w-0">
+<p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">2SekundovyMato</p>
+<p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+</div>
+</a>
+</div>
+</div>
+</div>
+<!-- Sidebar Footer Note -->
+<div class="p-3 border-t border-brand-border text-[11px] text-gray-500 text-center">
+        RealLive Gaming © 2025
+      </div>
+</aside>
+<!-- END: Left Sidebar -->
+<!-- BEGIN: Main Browse Content Area -->
+<main class="flex-1 overflow-y-auto px-4 lg:px-8 py-6" data-purpose="browse-content">
+<!-- Browse Header & Navigation Tabs -->
+<section class="mb-6" data-purpose="browse-header-section">
+<h1 class="text-3xl lg:text-4xl font-extrabold text-white tracking-tight mb-4">Browse</h1>
+<!-- Tabs Bar -->
+<div class="flex items-center space-x-8 border-b border-brand-border">
+<button class="pb-3 text-base font-bold text-brand-cyan border-b-2 border-brand-cyan flex items-center space-x-2 transition-all">
+<span>Livestreams</span>
+</button>
+<button class="pb-3 text-base font-medium text-gray-400 hover:text-gray-200 transition-colors">
+<span>Categories</span>
+</button>
+</div>
+</section>
+<!-- Filter and Sort Controls Bar -->
+<section class="flex flex-wrap items-center justify-between gap-4 mb-6" data-purpose="browse-filter-bar">
+<!-- Left: Filter by Language -->
+<div class="flex items-center space-x-3">
+<span class="text-sm text-gray-400 font-medium">Filter by:</span>
+<div class="relative inline-block text-left">
+<button class="inline-flex items-center justify-between bg-brand-panel hover:bg-brand-hover text-gray-200 px-4 py-2 text-sm font-semibold rounded-lg border border-brand-border hover:border-gray-600 transition-colors gap-2" type="button">
+<span>Languages</span>
+<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+</div>
+<!-- Right: Sort by Dropdown -->
+<div class="flex items-center space-x-3">
+<span class="text-sm text-gray-400 font-medium">Sort by:</span>
+<div class="relative inline-block text-left">
+<button class="inline-flex items-center justify-between bg-brand-panel hover:bg-brand-hover text-gray-200 px-4 py-2 text-sm font-semibold rounded-lg border border-brand-border hover:border-gray-600 transition-colors gap-2" type="button">
+<span>Recommended</span>
+<svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+</div>
+</div>
+</section>
+<!-- BEGIN: Livestreams Grid -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5" data-purpose="livestreams-grid">
+<!-- Stream Card 1 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="VITALITY vs MOUZ" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeTm7zYaMim5EsrRRYe7c4nduZNKewZT7GvvhZU7PNk1LaqEMU9nHstbKqgRwm1c6k9tpqXbW2znzMB-NPqHttERw36KslqszTNcyVbMiBnwA3KZoks7Fg0rbg8eNXs0ahXspbt8LVu6xV0EysoIFXhnZf6zPSgvnXMXIm0cYSMutVX4WrmZ6yuB2mdI-BLYoc_ObUClfZsMOjsd7dDEQM9vTjT6pPeO0OT77s-KVI5oo_MKyvhyBXfw"/>
+<!-- Live Viewer Badge -->
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>1.6K</span>
+</div>
+</div>
+<!-- Channel & Stream Info -->
+<div class="flex items-start space-x-3 mt-3">
+<img alt="bladeito" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB05hj5VK3znnlL_CXTw_PIDzLQOfE8RgJ0kDF8HDweI9dQq6MbUyJOi9W2p_S_7AV6Xx4RC6SV49rDzNGcm-YsRx9yw-PFY_cOTDyD3kNrYfVwABxpxdLJd9Oil8Z44X1932GjhcQJHy0A3H6axmrrg7kMfUdiOGEZDX2U0mJmgH8wncZGZLhFxy_bZi9uOCr3EURT_LiZq8BdiI1J9WQFmxpj4VEze3-ML1zyGHViSXYWTAqzAddhdA"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">🔴 VITALITY [1] vs [0] MOUZ - CS2 Finals</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">bladeito</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Counter-Strike 2</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">Czech</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 2 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="Vitality BO5 Match" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCdXCBpIC-jlS6JDF-zbacpglSnVYKmYxIRSD2qlZ5XrCr563WEJjL8f5ov6e0cDyLAhv1IaKeRPjBnCo0ACSJEdfYfx_AmNYtq9EJNh1Mydl-6vOQLeKdkVQuA0nYXRBaWw7g68kUbxOEy8S294w9bfpJ5Y80caK97Fx1WuvOrihcOJq81hrTt_oDCvPWdsYxQZyCOxIcE0kA3h2-GjRbC5Zj8AYcTY0w1pCqC2AXkn_c0l2H9XdNc0w"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>328</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="oskartommy" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNPgbBJQ2lI6Zm8l2rTjdzY9ovQedqak9de0Sszr1g2BcpMORNbFcwVsljkNbNJZ1d0Cy8zVRgIbi_rZ0Sxrtolnvb5rRerGWRGy-FfEOFFbKv9vfmg7Fsq3QZdtHmCTmQNJz2BfXCnYz1TgVgYM_gFyewjhZRdNFYcOxv1Jy4c6JwYvMCZ7TaWwSuMzDboGeRYS1JnGFdxUdNw7WPpvk5ODhw7S3zApDfaxNGbHlLS86uNy9KyteMJg"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">Vitality (1:0) MOUZ - BO5 Watchparty!</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">oskartommy</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Counter-Strike 2</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">Czech</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 3 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="CSkyf Final Match" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCc8xtSfdvtRo1nRENWg5hAHnW5tqXCuHuS8CamGEFktLxCm2fn_gmUdcgUPHAqy1GoXKwWmSfRWGF4mjofXaZsGTpKQ2Ni2hYdsfNk1Kb1hGhayQd8PDZ4PTY29-wAwynYYkeKul7D29vjqBl3PEteZUnjjlmPVdFKAfUWhRnwd791orXRLRD-t2wnl56QQotcLrpVa2Jk0p9gnqMUt_xHT4kEb6i_hKLZcEjA-0fcJZ7IlPsH12fQw"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>1.1K</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="CSkyf" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPdcxarZi1flmEHqp3WGGwNqSnMzepfMD6LiCLo0FQhRzvwHL29snfBHPmdC5R-tmsUDN6x--HI0EJ0Y9wjKPgeXFWNz4jH23DVgsIMEWLcEhGlp_jVUQ0s_YYPsrmlWFhSxMzHzKE4DTiIZ5f9sX4BsHCbSJOIA0TOaJpyuHU-aH2usbQiKgz2KM-19rnQlAVc8LsCmw6tdrJyYTt2ZRqnNpvoFF7Vv7LmHcSVj1cJ_8y0MEZvomtAA"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">Finále: Vitality vs Mouz 1:1 mapy cast</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">CSkyf</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Counter-Strike 2</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">Czech</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 4 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="ULTRA GALAKTICKY" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEEl1U-lE81qkUFF3D0n5TBPc51kanmJpD0zsJ6Oqk6vyBN5mfVtAfb4oJBLJR5n5SwHnipB-z-Y_6k3q7XMI3OSb5IzFmOUy0WZP6wF3ocpfL-PAshAIMMZIahimYuHIccnq6Hw3cgKWxSTE-FElMof3PFNzLxzmG1J5Sb1yqvUOM5Z7ydQCm36GBIrzjroXarPWvzzZS5SrAZ3-hbsSLGWMUbvHIRoIZbQbhUY2QW-J355CvF7vWXA"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>1.3K</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="2SekundovyMato" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbokKR0uY61PB4Og4Cf4Hwaw73O9cYJw8Zx34UFv4jUaaZhHoJMM0hNYKf-XxmIxbaNTyCLaygZ1bWDJueDh7ykE5COqqnbYwFkO878zXpfc6WBFnAvJn1cwz4Esaobrrl-flCZp7SQAHyKWZicsI9Km45OnVlgEiC1LTW-beD2Bb7VID54IEN8Pa-r-xWCVSH13pWmk8HOVCqnox3mevxolYbL8URbO-4qz3kTMwVBMKE3ZsgP1DtEA"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">ULTRA GALAKTICKY GAMEPLAY ROAD TO GLOBAL</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">2SekundovyMato</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Counter-Strike 2</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">Slovak</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 5 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="GER-CAST" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuALI6Rzh2vV7YPBmtjXZ2QBlrdfoQczvHOVFO11G_EabszLb0gEqwWECYRqhinFm_zu8S0yY6jOeAEuhKCeolQXRvdB49Ir1qCBCWzuKISd4o6zxOkyfXUFPZzegAO2SKVZUSnjw1lnytg-PFxY7-7puEeZtzR6wzTHywfmMbSPSUxrsPLuTe6TLBBRcTEzNEDIC5h6GtaN_9nKxRwmmL-wZEL6AV0j2XkadPr6hSTcB1_QCNhyoEAWww"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>175</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="Albi1985" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuByXUnzraQdTYj48Zd9MhcYgJw88dXaSHcaLAlYhaLh5hnD2n8MtuNPxOH4FFMaqS-_SkgqCf9_gmYy_OUW3-cqLAc_1VICsEvqL6x-Q6Rsfq1m5jtoKjjgXjo8oUrcFqaj7vRS8zXtq4Z58KDTp9ksq-CrbIzY5yOs26-eOmKJB3-u6ksITJkCf34Dy7qOXJpiaXCsydhKAHQK5OotH6bgIlvVU-aPV6d_oy-WaKbXpk7pM3-dlks0QA"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">GER-CAST | $25k AyeZe Tournament High Roll</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">Albi1985</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Return Of The King</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">German</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 6 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="Nedele voe" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0W4OXgkIE1LFwhqrkSgvNaJf6Cxsu2e0MSwdIBU4GOJPsJ8pcshjdEPV74QgWYFUe5lxm5NQsbc20SNHXzR7l92h-7ipIuwU_kimagVJAdLYWza1OFix6MUVj86keN8W8u1JkAeTk7G8XPdBo4N0sM4wvXFaTD5fe7d3yweJcuBM97sCvNBr0ciUEeqbQW2Qv-vMvammnYGRLdbi8mFCXC1_e3aMHN2INXW8HnSLkRAVhJTwvIR7m5g"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>1.9K</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="FATTYPILLOW" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBDbsdq7QPWmgpzZly3Sfxc1RJ83HyWVVgB6xQU8KY7WRqMN-Hzu5N3Ozd_OqVR377J7eDN4GyhhwpxU8BV9GXgEi4dIjqxIYM8_bLyHmogGngUWHrh3vrw5zpTw5AwEK7YC8LvIfDLY0kVj69bHyK6QWkcbjnvaPCjGkeiYF1CKwm9Q-ZlpztgXx4oDgrbvFQZPS2oxbxu3y3aX0Nfu0C5p0T-ZXjsgNnFzXFZAVEUhlZMFbtzzeNr4A"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">Neděle voe | !donate !subs Chill Gameplay Party</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">FATTYPILLOW</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Games + Demos</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">Czech</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 7 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="ARC Raiders Stream" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhw4Hnu_vOg7SPKfyDby9Dxi3kKOlp2m208PGSDjVSFJ_GD5m2MNWu058oUy20n4epQel1tzj1apSH-jPaK8Dz0TJja9NPkomancHenqzLRuCcUO_UXQHWlvyj71rp9JVAMhIcLHNhVlOMjIgPDXLkOGqCnhGA2fuocCQGCkH2TCqXNXIGgERpS0Id2pEmi2uRlIJQMu3fbEYb9sNqOJsZC14koQN6t8pp0VQj-vMlF97axusnqK_jkg"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>1K</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="Miken" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBnXidd343zEOjO8D0H4aSJbXZzYDspOBdIiNO6PzQ_fZS0QnuD45TbJgaNs9maa7iFQiwKkQq_XmlMBV3PfDik1Yq0RnRsfmUc-iekWHdv4jZMTk8yWBL_3H1GCkOGihnw1mjvVyZyb5MIDnGs5ZI2wP2kA8vdfRQ2Sz2diOeHrj9AGZ5UcKg8e5aqOAqwCZw5Q8lCAgHqVHk927C2x71DLUJPNipB8DZtMwBzVThw9PRue95RShDeog"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">MORTAL SHELL 2 &amp; ARC RAIDERS FIRST LOOK</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">Miken</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">ARC Raiders</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">Czech</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Stream Card 8 -->
+<article class="group flex flex-col cursor-pointer" data-purpose="stream-card">
+<div class="relative aspect-video rounded-xl overflow-hidden bg-brand-card border border-brand-border neon-border-glow transition-all duration-300">
+<img alt="Nodwin CS2" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJ0pQ75GP1GOle8BaCsiq8rrMiQMrkzoe3NYFXmf2I4WtjOccENNehiWWXenPZ_e6IT-NbXxhZ6S-RQSPLRzmyhMGCO9b_UVqaCA3pF0JRlDj6TlN0z7So4_FNE_V6m9wOI3Tc7j3bgD3Rvqf9LqP03zuoN8B9ohGtJrLvRT51wazkjKGH7yTFkxCNyuxKEzqW3J8SkbeFeZgEjAMMEUZQIK0w7S6uBr_8XCzzUSKx3JGBC-eSutJCAw"/>
+<div class="absolute top-2.5 left-2.5 flex items-center space-x-1.5 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-xs font-bold text-white">
+<span class="w-2 h-2 rounded-full bg-brand-neon animate-pulse"></span>
+<span>109</span>
+</div>
+</div>
+<div class="flex items-start space-x-3 mt-3">
+<img alt="Nodwin_CS2" class="w-10 h-10 rounded-full border border-brand-border object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBgbZrYte0apWDj4R2o94ZXn_e2gQYhUU7r590nmGEYaksTgrsGjp49E9mMtesjcRA1JT5YovG99k7I4WtjVEXV67u7u1INgbQliUwWm7ijRlJgrbt1AxgElMFHEg8LEZkQ2uUi4pq82zPg94zw0WCyYPaFyvcVMl0Inb7rRxBekRHi2mgC9CPon1fsJrPQMcCiVlpa3rc5W1tAbfF3T9G27bAYwL0Bu6pq_QOdtlsyGmtDFxEK60CSA"/>
+<div class="min-w-0 flex-1">
+<h2 class="text-sm font-bold text-white group-hover:text-brand-cyan transition-colors truncate">6666 VS MORROW | Close Qualifier Stage</h2>
+<p class="text-xs text-gray-400 mt-0.5 truncate">Nodwin_CS2</p>
+<div class="flex flex-wrap gap-1.5 mt-2">
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-300 px-2 py-0.5 rounded-full border border-brand-border">Counter-Strike 2</span>
+<span class="text-[11px] font-semibold bg-brand-panel hover:bg-brand-hover text-gray-400 px-2 py-0.5 rounded-full border border-brand-border">English</span>
+</div>
+</div>
+</div>
+</article>
+</section>
+<!-- END: Livestreams Grid -->
+</main>
+<!-- END: Main Browse Content Area -->
+</div>
+<!-- END: Main Page Layout -->
+</body></html>

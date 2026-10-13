@@ -1,0 +1,585 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>RealLive - Browse Livestreams</title>
+    <!-- Google Fonts: Outfit -->
+    <link href="https://fonts.googleapis.com" rel="preconnect">
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            cyan: '#00F0FF',
+                            neon: '#00E701',
+                            dark: '#080a10',
+                            panel: '#0e111b',
+                            card: '#141824',
+                            hover: '#1b2032',
+                            border: '#1f2639'
+                        }
+                    },
+                    fontFamily: {
+                        outfit: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- BEGIN: Custom Stylesheet -->
+    <style data-purpose="scrollbar-and-glow">
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #080a10;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f2639;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00F0FF;
+        }
+
+        .neon-border-glow:hover {
+            border-color: rgba(0, 240, 255, 0.4);
+            box-shadow: 0 0 20px -5px rgba(0, 240, 255, 0.25);
+        }
+    </style>
+    <!-- END: Custom Stylesheet -->
+    <meta content="web_dashboard" name="shell-type"></head>
+<body class="bg-[#080a10] text-gray-200 font-outfit min-h-screen flex flex-col antialiased selection:bg-brand-cyan selection:text-black">
+<!-- BEGIN: Header -->
+<header class="sticky top-0 z-50 h-16 bg-[#0c0f18]/95 backdrop-blur border-b border-brand-border flex items-center justify-between px-4 lg:px-6 select-none" data-purpose="main-navigation-bar">
+    <!-- Left: Logo & Mobile Toggle -->
+    <div class="flex items-center space-x-4">
+        <button aria-label="Toggle Menu" class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors lg:hidden">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+        </button>
+        <a class="flex items-center space-x-2 group" href="#">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#00F0FF] to-[#0099FF] flex items-center justify-center shadow-lg shadow-[#00F0FF]/20 group-hover:scale-105 transition-transform">
+                <svg class="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v12h16V6H4zm6 2.5l6 3.5-6 3.5v-7z"></path>
+                </svg>
+            </div>
+            <span class="text-xl font-extrabold tracking-wider text-white">REAL<span class="text-brand-cyan drop-shadow-[0_0_10px_rgba(0,240,255,0.4)]">LIVE</span></span>
+        </a>
+    </div>
+    <!-- Center: Search Input -->
+    <div class="flex-1 max-w-xl mx-4 hidden md:block">
+        <div class="relative w-full">
+            <input class="w-full bg-[#131722] text-sm text-gray-200 rounded-lg pl-10 pr-4 py-2 border border-brand-border focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan focus:outline-none transition-all placeholder-gray-500" placeholder="Search streams, categories, or streamers..." type="text">
+            <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+        </div>
+    </div>
+    <!-- Right: Actions & User Avatar -->
+    <div class="flex items-center space-x-3">
+        <!-- Get Tokens Button -->
+        <button class="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-[#00E701] text-black font-semibold text-xs md:text-sm px-3.5 py-1.5 rounded-lg shadow-md shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all">
+            <svg class="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 20 20">
+                <path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" fill-rule="evenodd"></path>
+            </svg>
+            <span class="">Get Tokens</span>
+        </button>
+        <!-- Notification Bell -->
+        <button aria-label="Notifications" class="relative p-2 text-gray-400 hover:text-white hover:bg-brand-hover rounded-lg transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+            <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-cyan rounded-full ring-2 ring-[#0c0f18]"></span>
+        </button>
+        <!-- Profile Avatar -->
+        <div class="relative cursor-pointer group">
+            <img alt="User Profile" class="w-9 h-9 rounded-full ring-2 ring-brand-cyan/60 group-hover:ring-brand-cyan transition" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCfdo0T6U4lesXI4DRd28XTWaf0jp5Tsp6d1AxWLey6BXwHdVJbAaF2aSVQMI7DtXhQtndDAoaANe5df1J-OcX7at0O8KIfqNEttPX8AOh9PloiZDEf3JMd4eYQ85Ri94rRD_JaJWjha_hnj8qezNaGPiOexTCG0V3-TNQhXYXbyNSExkRuV5uwgsBJqOqVUuaKE2N7wKgL73U6UmB_5NgJmVjm9tpNAUYhTPBQbvuSLS1ksdDQqdbtpw">
+            <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-brand-neon rounded-full ring-2 ring-[#080a10]"></span>
+        </div>
+    </div>
+</header>
+<!-- END: Header -->
+<!-- BEGIN: Main Page Layout -->
+<div class="flex flex-1 overflow-hidden" data-purpose="page-body-container">
+    <!-- BEGIN: Left Sidebar -->
+    <aside class="w-64 bg-[#0c0f18] border-r border-brand-border flex-shrink-0 flex flex-col justify-between hidden md:flex" data-purpose="navigation-sidebar">
+        <div class="overflow-y-auto px-3 py-4 space-y-6">
+            <!-- Primary Navigation Links -->
+            <nav class="space-y-1">
+                <a class="flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors" href="#">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    <span class="">Home</span>
+                </a>
+                <!-- Active Browse Item -->
+                <a class="flex items-center space-x-3 px-3 py-2 text-sm font-semibold rounded-lg bg-brand-hover text-brand-cyan border-l-2 border-brand-cyan transition-colors" href="#">
+                    <svg class="w-5 h-5 text-brand-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    <span class="">Browse</span>
+                </a>
+                <a class="flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors" href="#">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    <span class="">Following</span>
+                </a>
+                <a class="flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-brand-hover transition-colors" href="#">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                    <span class="">Donate</span>
+                </a>
+            </nav>
+            <!-- Section: Following Streamers -->
+            <div>
+                <div class="px-3 pb-2 text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center justify-between">
+                    <span class="">Following</span>
+                    <span class="text-[10px] bg-brand-card px-1.5 py-0.5 rounded text-gray-400">1</span>
+                </div>
+                <div class="space-y-1">
+                    <a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="BenjaminTran" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCDuLRNQoH-CJ36Ccq2DA9XwhEWV9xkPty5TFuF5Z7kjJsquItJEGwBQA6-rJbMgRwtqERUPNH7J9wIBCNk-74JBkUCr2FoM4mMjVSS8oSwLu57lFiS3Uy1Dw70T8E0q3nIiLqEBMSJ9QJ8JkABVUeFZB9wH1Vaib_9LDzziC5sBhYIsRhKx9C3EhOjK2TYvqsALmzsPlin5NtGsd1yxlK1aTOatjqZQA1lc5oTCRV87KXXd6QEPSJaEg">
+                            <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">BenjaminTran</p>
+                            <p class="text-xs text-gray-500 truncate">Just Chatting</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+            <!-- Section: Recommended Streamers (No viewer counts per RealLive requirement) -->
+            <div>
+                <div class="px-3 pb-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+                    <span class="">Recommended</span>
+                </div>
+                <div class="space-y-1">
+                    <!-- Channel 1 -->
+                    <a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="bladeito" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_blic0m_ya1_UuMG28dst7O1m-IpT0bt5PKll1pEZ2p1CIKKeTNjmVRCGq5bRtZjFL4ZHg50rQVs2RlId5zlpNB-4_vJf7n9FouSw9ubrsdYKeiaK8ADShtiJXQQgxLfHoWc9jFrFNisYJIFjhxUonBWRefLfs4GkOJC6H5m3xyAZUkkvUuJGC9Mv8o-g11_dOcmBuZfOIKR9_kgmtqCxARd_Ol5UUYdK4Pg2KlWGdJIiV4g82zq6KA">
+                            <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">bladeito</p>
+                            <p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+                        </div>
+                    </a>
+                    <!-- Channel 2 -->
+                    <a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="oskartommy" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABV1qaCcInB1IQfEPYAiBIiAGmsg8QqoUyOQUDpwSVLRDuvlPQCXacB_8tfjre5nY_W0xgiJ4vJzEWh3EgrXEBZ3rGiuzADjX0rjA5-QmXSE4G2KJoj4N4-x5MlHOmjt1TN7_MvgVXBXJcIkdZS2NUOgzgEb7KAAlgn1bU8rDEh2HkBKOLEPDjAgPaUqhnTze2siVDiQf419a3uNgtSZnp8wJOIX_EKXLoNo0FPRXOJ1avrew8AZMBXQ">
+                            <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">oskartommy</p>
+                            <p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+                        </div>
+                    </a>
+                    <!-- Channel 3 -->
+                    <a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="SealStats" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCt12kSh384YN8TwiVg7eb4b4Jcsg9kaT-HUsVi_hGacs2YmYgUCLvErZvTmDERepGCd__Ti1PRWY0HE7Rp0tb8iLnRhG9BzDOHrvmU8A8r736gwvmMp7922OnTdnhUJMutnMO2smN627L7tBGjURvroKrSeIvMKJl_-1XYVeSLigbXeIH1aXt6w0Of7L_82_u63zXhD8KSYzYLPrZelSPT000BmTb_z017iORTJE9L-_DPkaj5zBxhvg">
+                            <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">SealStats</p>
+                            <p class="text-xs text-gray-500 truncate">Slots &amp; Casino</p>
+                        </div>
+                    </a>
+                    <!-- Channel 4 -->
+                    <a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="CSkyf" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_hyIATx2c6DYzG3y--xuQzMfIEd3ojP3zD5_0AgkDe5k0kS91ChL85HwGwTB0UOd_bxDP2cNFKa8JIUIIiGTDOsHIrtvg8ANvUkwtHc4D1oLYrHMAHyT4K3AFsSm0nJyqZwXCdcZLQA6BsIDIFVTugaHlY_ZkL0_p9JgYE3-0itS4De7L4GyX_doUClhWrDY_5VlLPTg8OqMWI5H5WtN4h0Uu5APh896rhp3daopa-2yh50Je34UQDw">
+                            <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">CSkyf</p>
+                            <p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+                        </div>
+                    </a>
+                    <!-- Channel 5 -->
+                    <a class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-brand-hover transition-colors group" href="#">
+                        <div class="relative flex-shrink-0">
+                            <img alt="2SekundovyMato" class="w-8 h-8 rounded-full border border-gray-700 object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZnQGrJ75UwoU-Dlw41Xfbs_0H0uWSndEkhd9xGh9X0h6SKcSrn4Qa76PdTGhT31s3T3IARJcsa1ZZ3Me-U24CpJcZdgEuGo3dYJ_up1rmlOilwX64WHt4qMq7hC1kEyipwlayvJ_YblYpuLli9qDKEhWDPsmxj9uQ4UQnNwMDg6H8rufxOE--mN3sHqZE4YLuDTYs0W6KTu_v2d1OxxSnIMjdBkjMcjmz6WywaY6cOnGONR8m_I79lA">
+                            <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-brand-neon rounded-full ring-2 ring-[#0c0f18]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-200 group-hover:text-brand-cyan truncate">2SekundovyMato</p>
+                            <p class="text-xs text-gray-500 truncate">Counter-Strike 2</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <!-- Sidebar Footer Note -->
+        <div class="p-3 border-t border-brand-border text-[11px] text-gray-500 text-center">
+            RealLive Gaming © 2025
+        </div>
+    </aside>
+    <!-- END: Left Sidebar -->
+    <!-- BEGIN: Main Browse Content Area -->
+    <main class="flex-1 overflow-y-auto px-4 lg:px-8 py-6" data-purpose="browse-content"><div class="flex flex-col w-full">
+        <!-- Subtle Ambient Glow Canvas -->
+        <div class="relative w-full">
+            <div class="pointer-events-none absolute -top-12 -left-16 w-96 h-96 bg-primary-container/5 rounded-full blur-3xl"></div>
+            <div class="pointer-events-none absolute top-40 right-10 w-80 h-80 bg-secondary-container/10 rounded-full blur-3xl"></div>
+            <!-- Section Header & Filter Controls -->
+            <div class="flex flex-col gap-y-4 pb-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="font-label-sm text-label-sm uppercase tracking-widest text-primary-fixed-dim block mb-1">Explore Broadcasters</span>
+                        <h1 class="font-display-hero text-display-hero text-on-surface tracking-tight">Browse</h1>
+                    </div>
+                    <!-- Live Global Metrics Counter -->
+                    <div class="hidden xl:flex items-center gap-x-6 px-4 py-2 bg-surface-container-low rounded-xl">
+                        <div class="flex items-center gap-x-2">
+                            <span class="w-2 h-2 rounded-full bg-primary-container shadow-[0_0_8px_rgba(0,240,255,0.8)] animate-pulse"></span>
+                            <span class="font-label-md text-label-md text-on-surface-variant">Live Streams:</span>
+                            <span class="font-label-lg text-label-lg text-on-surface">18,492</span>
+                        </div>
+                        <div class="w-px h-4 bg-surface-container-highest"></div>
+                        <div class="flex items-center gap-x-2">
+                            <span class="material-symbols-outlined text-primary-fixed-dim text-sm">group</span>
+                            <span class="font-label-md text-label-md text-on-surface-variant">Total Viewers:</span>
+                            <span class="font-label-lg text-label-lg text-primary-fixed">1.24M</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Navigation Tabs & Sort Controls -->
+                <div class="flex flex-wrap items-center justify-between gap-4 pt-1">
+                    <div class="flex items-center gap-x-2 sm:gap-x-4">
+                        <!-- Livestreams Tab -->
+                        <a class="px-3.5 py-1.5 rounded-lg font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-all" href="#">
+                            Livestreams
+                        </a>
+                        <!-- Categories Tab (Active) -->
+                        <a class="relative px-3.5 py-1.5 font-headline-sm text-headline-sm text-primary-fixed font-bold flex items-center gap-2 group" href="#">
+                            <span class="">Categories</span>
+                            <span class="absolute bottom-0 left-3.5 right-3.5 h-[3px] bg-primary-container shadow-[0_0_12px_#00F0FF] rounded-full"></span>
+                        </a>
+                        <!-- Clips Tab -->
+
+                    </div>
+                    <!-- Filter / Quick Sort Pills -->
+                    <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                        <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-container/15 text-primary-fixed font-label-md text-label-md transition-all">
+                            <span class="material-symbols-outlined text-sm">trending_up</span>
+                            <span class="">Popular</span>
+                        </button>
+                        <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-all">
+                            <span class="material-symbols-outlined text-sm">sort</span>
+                            <span class="">Viewers (High to Low)</span>
+                        </button>
+                        <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-all">
+                            <span class="material-symbols-outlined text-sm">filter_alt</span>
+                            <span class="">Genres</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Category Posters Grid: 8 Columns on 2XL, responsive steps -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 pb-12">
+                <!-- 1. Just Chatting -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Vibrant studio microphone in a cozy ambient purple and deep indigo neon illuminated streaming room with soft bokeh orbs and neon sign reflections, professional cinematic 4k photo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDg4oUPztiLYqNlCDPbNOFk3XV9y1E2f_J-sJdJl8E2jPPtx6u1_lEOBlnsdyDkRtum2tZkC3XIAuYZtZWucscZM2_d7UUWhjw-TxGwM0LFcEQE3bBvGqFgDyWG5IIScocbKcZdK4dUCFDB4-M24_vrwo37lV765fwIF_jNk0ZGDHV_PKgkNihXAiLU2bPTNjR6LmA7U3AXJdtslsbdcaFSv6UPSc1UFzZRFBcJNPYmAxteehDZwPYBSQ">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">372.5K</span>
+                        </div>
+                        <div class="absolute bottom-2 left-2 right-2 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span class="font-label-sm text-label-sm text-primary-fixed bg-surface-container-high/90 px-2 py-1 rounded">View Streams</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Just Chatting</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">IRL</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Casual</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 2. Grand Theft Auto V -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Sunlit West Coast metropolis skyline with modern skyscrapers, palm trees, muscle cars speeding down asphalt roads with cinematic warm sunset glow, dynamic video game action concept" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlcC6R6pxE9I7yRGdopM7vWterM4BRSAOdxG0hd8eFErmxbvnkDAoFITDYBWTSqwg2hhBPPIJ9cy4-bn59GNEuLb4-hmP8DzKOdNj1TfvZmvPQOASzrg804631tQhzVkwq967yl_VpYzliuQYLQpFCiBhzLp7HKmucflvf4kN6AoNiIn_3Cjfx2GsEGKlZpgwVFncc7XsCqsY_906RSJ43eavBAPGtWxPIRnyYQ7xqx6nJXUBYAd07SQ">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">145.6K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Grand Theft Auto V</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Shooter</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Action</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 3. IRL -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Overhead hand gently resting on lush green sunny meadow grass during summer afternoon with vibrant yellow wildflowers and soft natural daylight, peaceful outdoor IRL travel vibes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-r4BXKJOZsBBIjAg1Z18N22tKlNzkysWKJlppwjccNuVw56oY1yGBYXc0M3UfUqISFWJYRogwaJbDrip3Wk3twJJj7weVCBhgkrapWI3S5ktBug6-1m1Rf-JrlwpjfTQ05R-mXlV9GoD8vheuPVq4MgsqkR45D8wdUGspBR-nt--I7YomfOiNaYrxbXfFnPIxYeCEvDnZ5k4aKcIkPo5jY-Qmh8Tl_Ctgy-4rp7eQTHlrmxSMRhAdTQ">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">88.9K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">IRL</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Adventure</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 4. Counter-Strike 2 -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Tactical special forces operative wearing combat gas mask and balaclava amidst dramatic golden orange smoke flares and dust, holding a tactical weapon, competitive esports arena atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxBga9KCMS86QbeFXvPafNEHYLe6Kknix3qFaqjat4XY0pe2F1EWJHRKnCG8SybGiZ6UduZoUpvVvcyOSLWl8eqaTY0cmq4W_QNszioWOdZ61UXoNotdZiQSM2jgb4g4iIt9MOylJr19m3OPA1Y7DQGuUVe1jNpU3UaAMIJ2ym6n8IpGl74tZ8cFepmrJAn2fByN-6VlBkkEKtVDb8UPRcE6-vTbMlRGmdIwMG9Retl6SrsUyTLoc6aA">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">57.1K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Counter-Strike 2</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Shooter</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">FPS</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 5. Slots & Casino -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="High stakes luxury slot machine reels displaying glowing triple lucky sevens with gold coins spilling, neon laser lights and sparkling reflections in a futuristic casino hall" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIJXaraanbygtsTCi6pki0UaiP5oKpt1NMmEzxI4jZw0OpZ3DJeZZ1GUcQ551SUuTyNGzfcNWssmqa1TpYLDb_j4sySv0NTOUfiJN_nLSACkT7Mg7GyNcgLfYG1-w4QB9YdZPbPtTVULuQ9sPVjFCxbGRuD0xYcXMidzDjvi9wrgBocvtje0S0IxZSw8Kv1i4zUlSkpBUV-mF2prA1We-WsgxpqFno-wyaKM7oR3wdbUJJdu-PTvlyUQ">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">47.3K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Slots &amp; Casino</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Gambling</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 6. League of Legends -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Stylized anime fantasy sorcerer champion wielding brilliant cyan lightning magic and arcane energy runes in a mythical battle arena under cosmic starry sky, vibrant fantasy illustration" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD2jxIdxUJpHU34AwH924HyQZzq4n0UyF9bQ310IkXgti-eNSKZmcm6NxiuDe6E6U8y_afghMpp_iB1SPhjEakmqPOQBSjJ0Lnbag_Qkb2C0duq89ptGCSJeqGORT1bn2LfC8iIc7y6OkYj_OC4s4rLeWAGECJO5RA1OS0x7GU7ehlzNBPZn_mPL89Y_cm5Zx3SDhdhTbxuu3Sd93zH3t4MR_GsFGqFbZxBb8Np0TPsG4SHO8Md6_sb4A">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">32.9K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">League of Legends</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">MOBA</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Action</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 7. EA Sports FC 25 -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Dynamic professional soccer player celebrating on emerald pitch under grand stadium floodlights with packed roaring arena crowd, confetti falling, hyper-realistic sports photograph" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXuz32DchdRDOdIDf8c-Vd7NkmudzSLyy3fSp2c1Wisa8fq4SaGvjkqoPvXD_SP-NUfmbjZoKLy9yrTRxSKDHJGOa42nBOMHjPNuM4od-mKHrMq476L5ye0UeWJ9f0d5vA5Ld-KzFM2kTSkk0FZ2s-DhUOueN_zxb4GoBbcZDpeliHnVjEppCJefY5oonKFyqUXk01MlVam7uJ9kBAHKCrK7fvX1V8MksbwAO9f22QNy6kFxJhErIYtA">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">27.2K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">EA Sports FC 25</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Sport</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 8. Dota 2 -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Menacing armored demon warrior commander holding burning brimstone blade surrounded by molten lava and glowing dark red magical embers in an ancient ruined citadel" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiTtkyeUQf_zk2zKh2KiXUdp-UYWs8WIhvIy1WX7ErClwh-bU1SdQkJH3VQBd5qz6ufLrOfxQilHTuydoRofy1mpyrAofO3PuFZqh_427r2Zy7GawrSW70A9pqwKUGp9NK-hcSJq-QHJkpPtattWHbKgFgdHKaWwzchzUPHGOdzb1Bq8-fjeAlGHsQNcrohXjfgAeudjt4-hdCJ5d97Sfxd6YAuCYuvwaK56V4ZiIyfRzprw5L9BiLIQ">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">18.7K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Dota 2</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">MOBA</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Action</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 9. PUBG Mobile -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Battle royale combat survivors in level 3 military helmets and backpacks running across an arid desert outpost during a dramatic airstrike explosion, battleground action" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAH56vRr-O_PcZVWyBpV33i0t2aOhDrO_1zpFQepg0Fz88OcPxX4h1_kitlZCmPm1-ezTmeVqcGdZ6QJCbdAggITIvdaA7iW3gFp1OTYZUlr0RQByb36GmezW4cLjGMsjgF7QSnI3EJu53UpNfSipAB4yshoT_vbrsR6oPmQ3Yav2zfwfYL_iomXSOuwPaXwg5FrfP9dMDK0lTzsooNzDreqx0VgGtVnPh6x0LA7zu8QeSJVvuJk8QrSA">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">13.1K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">PUBG Mobile</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Shooter</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">FPS</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 10. Fortnite -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Stylized heroic comic style warrior hero leaping from a flying bus over a colorful vibrant neon island with purple clouds and giant trees, dynamic cartoon art style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6iXb5yZWJI26xw12cbsts1hy0c9uVU8VigU9YCV-TQQP_ZErMq5GGQysCzPOhcAH1gXKAEEbw9FJWf1QCWY0HJGIIzfJ1GtHC5nh0ITIvhRPXQbVqZPwaK2pliaOLzSPhYPMpldFsoZn37L3TrL5T6V7PR-NGL_7A0zR6nKv6wScRCupLl8zstx04w1Mp7_SBEsKHdC1Coz1_8HiSDXw7sC_y8t2XCVmZ17gbhKxRZQHzI232KeoX0A">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">12.7K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Fortnite</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Shooter</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 11. VALORANT -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Sleek tactical cybernetic agent casting vibrant crimson and glowing wind currents inside a minimalist futuristic high-tech concrete arena, sharp neon contrast" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB0gMMzRkzyM454oaxWHV_MiInlgqT0ejcCmRDHPtEbB-VC0rTZGULUohaYIa86Ik-PJaRZfcgAQ_mtkj57sPw3O60nHlW-hLNe_80zPb-OsPr_rfy00de4qSl44fKtg6Me1Ylmqf-FrwNJUy5FqlNGARLf0Ifycf0GRQo5LlmFMiIyexLIqk-5H7P4VWOGtkc_iR5WGflBIgd9KCniea-L4RrpDOMneFhy3QxAo8poPMMv2PfXPlA3bw">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">12.6K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">VALORANT</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Shooter</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">FPS</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 12. Minecraft -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Scenic voxel cube landscape with lush green pixel hills, crystal blue waterfall cascading into lake, cubic clouds and iconic pixel sword hero standing on hill at sunrise" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC-xmba897hsG5ZH-ZM3HjxVagjtPBCVqJLXzahPbzdIoQvEowOFt24EHZtIbs49rfR1OtArUqR9kpUONezfaVz0V7lNJgJjr8PPXMAMjp9yLhux_T9T7fmWLAOuS3LmLrHi17KM5UMSuDmZ_-wyawbKXIfe7slK_Tq84JLF_ah25tStD4y-YDCfrIY7Cc3Nn_zrN0WK8OSrnpj-usXAfLnel-4LMuPZ7R4y4_UqRzy13MophkHyeFDzQ">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">12.4K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Minecraft</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Adventure</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 13. Garena Free Fire -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Futuristic cybernetic commando holding glowing assault rifle with electric blue cyber armor sprinting through a burning futuristic city street, high octane mobile shooter" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGVB_G3lMbTwLSUM-NHWsphqN0z_ktRcFv8hW_YJGl6pk4OLIsxmP1fABp6kmEx1D5eA3DxTXlaK-B7ayQWIoPuvEMRdaDHSZhaHE7yCZjI8id7iGgJsuBSXauMPXRaK5tgwGK4pbGpdHxPJ5argFGd0F_Xg0ZCjZiOT41wO7bqHrQR_W0WtehIDnw0r3m8t5lZtAw4GJ95UCtV4l8MZsmNDuchA5GA0msPn1NC3p37Z39aD9l7RXa4g">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">12.2K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Garena Free Fire</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Mobile Game</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 14. NBA 2K25 -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Athletic superstar basketball player soaring mid-air for a thunderous slam dunk above polished hardwood arena court, lens flare lights and flashbulbs in background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDszfus_fcTXt5EwvrUfKBgKMTOMzSRY5rrKR1s5kAZc-xaXbO0BtxiiQDvaOc1znSoJjKxxgIlfgfez7YQ4_UN3GXu_2S_bLZrtotgbNOyBa_F_L8gvT0PO7mCohtSGicuutR6Rn8N33bXPYAinCC6ach2ft2R4wUhqAnhnVK1OLGsgSGmxQv1vdS0B39BKRJ9NDIApmaqOO7EiWdMosSAZj6XRI63rxe21n08rcnLl761WENopC63ow">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">12.2K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">NBA 2K25</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Sport</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 15. PUBG: BATTLEGROUNDS -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Silhouetted squad of soldiers walking through wheat field with yellow smoke grenade signaling supply crate drop from transport plane against dramatic overcast stormy clouds" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHKSWsiT80B8IDrA6F6lj7sV01yzXk_yfOpze9rGNeD4YHCOUvb-BRabw6aiD6m65yC5TaUsKjdBitJLu6GIFiWWTJD5qwBEq_SccL77pfp3PApBhXLrqCpVu9Hh9xFEQw0p0ZSm_q7_VBLZtrjo5q15UExNChgzDWiXQIC_hfgihfTYhY9sOQyhLcx3kWluJ5ocrtTMe7oJQeA5N7rUxPER23Ib57tIq-5RtUxhvI4PQcLbe8BDiO1g">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">10.6K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">PUBG: Battleground</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Shooter</span>
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">FPS</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 16. Red Dead Redemption II -->
+                <div class="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
+                    <div class="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-surface-container shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.25)] transition-all">
+                        <img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Gunslinger outlaw in leather coat and stetson hat holding revolver against stark high-contrast blood red sunset western canyon horizon with flying crows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDcL_NxZ-rNwAazOExHmK1X7gr_MU1i9u6gnhN5lnsV-GRZmGjhfm43To4HteK8rQbf8xjK46lK_KNI9gWh8ff0wkSuzhzjXRB0FbGvh-bsuVF0yawh-mw1PKcDz05xzfWI0hHemHzkA9T0wiihasRQO4DarGH2ZXUgQVgD9e2s5YQnAPxR78NXLsEjy2ECHh0CD5D75jZlzFs9qWc-Q64cwf_0PU7vRmHixP2zs-03qjtpAK95FqNBOg">
+                        <div class="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-black/40"></div>
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-container-lowest/85 backdrop-blur-md">
+                            <span class="w-1.5 h-1.5 rounded-full bg-primary-container shadow-[0_0_6px_#00F0FF]"></span>
+                            <span class="font-label-sm text-label-sm text-on-surface">10.1K</span>
+                        </div>
+                    </div>
+                    <div class="pt-2.5 flex flex-col gap-1 min-w-0">
+                        <h2 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-primary-fixed truncate">Red Dead Redemp...</h2>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">Action</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Infinite Scroll / Load More Footer Indicator -->
+            <div class="flex flex-col items-center justify-center py-6 gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-primary-container animate-ping"></span>
+                    <span class="font-label-md text-label-md text-on-surface-variant">Showing 16 of 2,420 categories</span>
+                </div>
+                <button class="px-6 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-primary-fixed font-label-lg text-label-lg transition-all shadow-md active:scale-95">
+                    Load More Categories
+                </button>
+            </div>
+        </div>
+    </div></main>
+    <!-- END: Main Browse Content Area -->
+</div>
+<!-- END: Main Page Layout -->
+
+
+</body></html>
