@@ -45,7 +45,9 @@ public enum ErrorCode {
     NEW_PASSWORD_SAME_AS_CURRENT(1034, "New password cannot be the same as current password", HttpStatus.BAD_REQUEST),
     PASSWORD_NOT_SET(1035, "User account does not have a local password set", HttpStatus.BAD_REQUEST),
     PAYMENT_SERVICE_UNAVAILABLE(1036, "Payment service unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
-    CHANNEL_SERVICE_UNAVAILABLE(1037,"Channel service unavailable", HttpStatus.INTERNAL_SERVER_ERROR);
+    CHANNEL_SERVICE_UNAVAILABLE(1037,"Channel service unavailable", HttpStatus.INTERNAL_SERVER_ERROR),
+    STREAMER_NOT_FOUND(1038, "Streamer not found", HttpStatus.NOT_FOUND),
+    STREAMER_NOT_ACTIVE(1039, "Streamer is not active", HttpStatus.FORBIDDEN);
 
 
     private final int code;

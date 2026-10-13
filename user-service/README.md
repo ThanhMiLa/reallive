@@ -199,6 +199,34 @@ Registration does not replace the current JWT. The client can use the existing a
 
 Run `./mvnw -Pbecome-streamer-coverage clean verify` to enforce 100% line and branch coverage for `StreamerRegistrationController` and `StreamerRegistrationServiceImpl`. The HTML report is `target/site/jacoco/index.html`; coverage of the rest of User Service is outside this feature-specific check.
 
+## Internal active streamer lookup
+
+`GET /user/internal/api/streamers/by-user/{userId}/active` is called directly by trusted backend services, including Channel Service. The configured gateway route `/user/api/**` does not expose this internal path. Only this GET path is permitted without an access cookie; access to backend ports relies on the private-network restrictions described below.
+
+`userId` must be a UUID. `StreamerService` reads the corresponding record from `streamers` by `user_id` and returns its ID only when its current database status is `ACTIVE`. The read-only lookup does not create records, modify status, or check channel existence. Channel Service supplies the user ID from its authenticated principal and checks channel ownership separately.
+
+HTTP 200 returns `ApiResponse<ActiveStreamerResponse>` with a `result` object containing only `streamerId`:
+
+```json
+{
+  "status": 200,
+  "code": 1000,
+  "message": "Active streamer found successfully",
+  "result": {
+    "streamerId": "b2b7a443-9bf2-4662-9f2b-8e0194d9418c"
+  },
+  "timestamp": "2026-10-13T03:00:00Z"
+}
+```
+
+| Failure | HTTP | Code |
+|---|---|---|
+| Malformed user UUID | 400 | 4000 |
+| No streamer for the supplied user | 404 | 1038 |
+| Streamer is `PENDING`, `SUSPENDED`, or `BANNED` | 403 | 1039 |
+
+`StreamerControllerIntegrationTest` covers the real security filter, controller, service and database, including UUID mapping, missing records, every non-active status, status changes between requests and preservation of authentication requirements on other endpoints.
+
 ## Streamer persistence
 
 V4 preserves the historical profiles migration with checksum `-843705742`. Databases that previously applied `V4__create_profiles_table.sql` must resolve that same migration; the streamer table uses V6 so the applied V4 version is not reused.

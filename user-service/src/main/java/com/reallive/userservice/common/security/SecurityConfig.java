@@ -25,6 +25,10 @@ public class SecurityConfig {
 
     };
 
+    private static final String[] INTERNAL_ENDPOINTS_GET = {
+            "/internal/api/streamers/by-user/*/active"
+    };
+
     private static final String[] PUBLIC_ENDPOINTS_POST = {
             "/api/auth/login",
             "/api/auth/register",
@@ -45,6 +49,7 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, INTERNAL_ENDPOINTS_GET).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_ENDPOINTS_GET).permitAll()
                         .requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS_POST).permitAll()
                         .anyRequest().authenticated()

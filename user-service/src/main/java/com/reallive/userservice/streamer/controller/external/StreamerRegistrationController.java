@@ -1,4 +1,4 @@
-package com.reallive.userservice.streamer.controller;
+package com.reallive.userservice.streamer.controller.external;
 
 import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.util.AuthenticationUserId;
