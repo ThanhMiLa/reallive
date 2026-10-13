@@ -14,7 +14,7 @@
 
 ## II - Channel
 - Create channel ✅
-- Update Channel
+- Update Channel ✅
 - Follow / Unfollow Channel
 - View Follower
 - Assign Channel Moderator
