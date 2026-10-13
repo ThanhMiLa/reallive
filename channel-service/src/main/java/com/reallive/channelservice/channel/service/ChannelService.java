@@ -23,18 +23,19 @@ public interface ChannelService {
     boolean createChannel(CreateChannelRequest request);
 
     /**
-     * Updates the active channel owned by the supplied user and replaces its assigned categories.
+     * Updates the supplied profile fields and categories of the active channel owned by the user.
      *
      * <p>User Service must resolve an active streamer for the user before any local changes are made.
-     * The channel must be active and not deleted. Requested categories must exist and be active;
-     * duplicate category IDs are collapsed. Empty descriptions and empty banner files clear those values.
-     * Nonempty banner files must be JPEG, PNG or WebP images within the size and pixel limits;
+     * The channel must be active and not deleted. Null request fields preserve their current values.
+     * A supplied category list must be nonempty and its categories must exist and be active;
+     * duplicate category IDs are collapsed. Supplied descriptions must not be blank and supplied
+     * banner files must not be empty. Banner files must be JPEG, PNG or WebP images within the size and pixel limits;
      * uploads are stored in R2 and only their public URL is persisted. Channel updates are serialized
      * by a row lock and profile/category changes commit atomically. Cleanup of the previous managed
      * banner after commit, or the new upload after rollback, is best effort.</p>
      *
      * @param userId the user ID extracted from the authenticated principal
-     * @param request the validated description, required banner file and nonempty category list
+     * @param request the validated optional description, banner file and category list
      * @return the updated channel profile and distinct assigned category IDs
      * @throws AppException if the streamer or channel is missing or inactive, User Service is
      *                      unavailable, a requested category is missing or inactive, or banner validation,

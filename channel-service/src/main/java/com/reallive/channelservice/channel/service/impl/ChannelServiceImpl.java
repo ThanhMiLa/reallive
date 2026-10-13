@@ -78,25 +78,31 @@ public class ChannelServiceImpl implements ChannelService {
     public ChannelResponse updateChannel(UUID userId, UpdateChannelRequest request) {
         UUID streamerId = activeStreamerResolver.getActiveStreamerIdByUserId(userId);
         ChannelEntity channel = findEditableChannel(streamerId);
-        Set<UUID> categoryIds = new LinkedHashSet<>(request.getCategoryIds());
-        List<CategoryEntity> categories = findActiveCategories(categoryIds);
+        Set<UUID> requestedCategoryIds = request.getCategoryIds() == null
+                ? null : new LinkedHashSet<>(request.getCategoryIds());
+        List<CategoryEntity> categories = requestedCategoryIds == null
+                ? List.of() : findActiveCategories(requestedCategoryIds);
 
-        channel.setDescription(request.getDescription().isEmpty() ? null : request.getDescription());
-        updateBanner(channel, request.getBannerUrl());
-        updateCategories(channel, categories, categoryIds);
+        if (request.getDescription() != null) {
+            channel.setDescription(request.getDescription());
+        }
+        if (request.getBannerUrl() != null) {
+            updateBanner(channel, request.getBannerUrl());
+        }
+        if (requestedCategoryIds != null) {
+            updateCategories(channel, categories, requestedCategoryIds);
+        }
         channelRepository.save(channel);
 
-        return channelMapper.toResponse(channel, List.copyOf(categoryIds));
+        List<UUID> categoryIds = requestedCategoryIds == null
+                ? channelCategoryRepository.findAllById_ChannelId(channel.getId()).stream()
+                        .map(association -> association.getId().getCategoryId()).toList()
+                : List.copyOf(requestedCategoryIds);
+        return channelMapper.toResponse(channel, categoryIds);
     }
 
     private void updateBanner(ChannelEntity channel, MultipartFile banner) {
         String oldBannerUrl = channel.getBannerUrl();
-        if (banner.isEmpty()) {
-            registerBannerCleanup(channel.getId(), null, oldBannerUrl);
-            channel.setBannerUrl(null);
-            return;
-        }
-
         BannerImage image = BannerValidator.validate(banner);
         String objectKey = "channels/" + channel.getId() + "/banners/" + UUID.randomUUID() + "." + image.extension();
         String newBannerUrl = r2StorageService.getPublicUrl(objectKey);

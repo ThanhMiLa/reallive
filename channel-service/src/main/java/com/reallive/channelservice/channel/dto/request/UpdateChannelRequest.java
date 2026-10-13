@@ -1,7 +1,8 @@
 package com.reallive.channelservice.channel.dto.request;
 
-import jakarta.validation.constraints.NotEmpty;
+import com.reallive.channelservice.channel.dto.validation.NotEmptyFile;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -21,13 +22,13 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UpdateChannelRequest {
 
-    @NotNull
-    @Size(max = 1000)
+    @Size(min = 1, max = 1000)
+    @Pattern(regexp = "(?sU).*\\S.*")
     String description;
 
-    @NotNull
+    @NotEmptyFile
     MultipartFile bannerUrl;
 
-    @NotEmpty
+    @Size(min = 1)
     List<@NotNull UUID> categoryIds;
 }

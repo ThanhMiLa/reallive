@@ -78,10 +78,8 @@ import java.util.stream.Stream;
 import javax.imageio.ImageIO;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -92,6 +90,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -197,17 +196,74 @@ class ChannelUpdateIntegrationTest {
     }
 
     @Test
-    void emptyDescriptionAndEmptyFileClearDescriptionAndBanner() throws Exception {
-        mvc.perform(form(request("", emptyBanner(), retainedCategory.getId())).cookie(cookie("CHANNEL_UPDATE")))
+    void descriptionOnlyPreservesBannerAndExistingCategoriesWithoutRevalidatingThem() throws Exception {
+        retainedCategory.setStatus(CategoryStatus.INACTIVE);
+        categories.saveAndFlush(retainedCategory);
+        var existingLinks = jdbc.queryForList("SELECT * FROM channel_categories WHERE channel_id = ? ORDER BY category_id", channel.getId());
+
+        mvc.perform(form(UpdateChannelRequest.builder().description("Description only").build())
+                        .cookie(cookie("CHANNEL_UPDATE")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.description").value(nullValue()))
-                .andExpect(jsonPath("$.result.bannerUrl").value(nullValue()));
+                .andExpect(jsonPath("$.result.description").value("Description only"))
+                .andExpect(jsonPath("$.result.bannerUrl").value(channel.getBannerUrl()))
+                .andExpect(jsonPath("$.result.categoryIds", containsInAnyOrder(
+                        retainedCategory.getId().toString(), removedCategory.getId().toString())));
 
         ChannelEntity saved = channels.findById(channel.getId()).orElseThrow();
-        assertNull(saved.getDescription());
-        assertNull(saved.getBannerUrl());
-        verify(storage, never()).upload(anyString(), any(byte[].class), anyString());
+        assertEquals("Description only", saved.getDescription());
+        assertEquals(channel.getBannerUrl(), saved.getBannerUrl());
+        assertEquals(existingLinks, jdbc.queryForList("SELECT * FROM channel_categories WHERE channel_id = ? ORDER BY category_id", channel.getId()));
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void bannerOnlyPreservesDescriptionAndCategories() throws Exception {
+        mvc.perform(form(UpdateChannelRequest.builder().bannerUrl(banner()).build()).cookie(cookie("CHANNEL_UPDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.description").value(channel.getDescription()))
+                .andExpect(jsonPath("$.result.bannerUrl").value(startsWith("https://images.example.com/channels/" + channel.getId() + "/banners/")))
+                .andExpect(jsonPath("$.result.categoryIds", containsInAnyOrder(
+                        retainedCategory.getId().toString(), removedCategory.getId().toString())));
+
+        ChannelEntity saved = channels.findById(channel.getId()).orElseThrow();
+        assertEquals(channel.getDescription(), saved.getDescription());
+        assertTrue(saved.getBannerUrl().startsWith("https://images.example.com/channels/" + channel.getId() + "/banners/"));
+        assertEquals(Set.of(retainedCategory.getId(), removedCategory.getId()), assignedIds());
+        verify(storage).upload(anyString(), any(byte[].class), eq("image/png"));
         verify(storage).deleteManagedBanner(channel.getBannerUrl(), channel.getId());
+    }
+
+    @Test
+    void categoriesOnlyPreservesDescriptionAndBanner() throws Exception {
+        mvc.perform(form(UpdateChannelRequest.builder().categoryIds(List.of(addedCategory.getId())).build())
+                        .cookie(cookie("CHANNEL_UPDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.description").value(channel.getDescription()))
+                .andExpect(jsonPath("$.result.bannerUrl").value(channel.getBannerUrl()))
+                .andExpect(jsonPath("$.result.categoryIds", containsInAnyOrder(addedCategory.getId().toString())));
+
+        ChannelEntity saved = channels.findById(channel.getId()).orElseThrow();
+        assertEquals(channel.getDescription(), saved.getDescription());
+        assertEquals(channel.getBannerUrl(), saved.getBannerUrl());
+        assertEquals(Set.of(addedCategory.getId()), assignedIds());
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void omittedFieldsLeaveProfileAndCategoryTimestampsUnchanged() throws Exception {
+        var existingChannel = jdbc.queryForMap("SELECT * FROM channels WHERE id = ?", channel.getId());
+        var existingLinks = jdbc.queryForList("SELECT * FROM channel_categories WHERE channel_id = ? ORDER BY category_id", channel.getId());
+
+        mvc.perform(form(UpdateChannelRequest.builder().build()).cookie(cookie("CHANNEL_UPDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.description").value(channel.getDescription()))
+                .andExpect(jsonPath("$.result.bannerUrl").value(channel.getBannerUrl()))
+                .andExpect(jsonPath("$.result.categoryIds", containsInAnyOrder(
+                        retainedCategory.getId().toString(), removedCategory.getId().toString())));
+
+        assertEquals(existingChannel, jdbc.queryForMap("SELECT * FROM channels WHERE id = ?", channel.getId()));
+        assertEquals(existingLinks, jdbc.queryForList("SELECT * FROM channel_categories WHERE channel_id = ? ORDER BY category_id", channel.getId()));
+        verifyNoInteractions(storage);
     }
 
     @Test
@@ -241,6 +297,7 @@ class ChannelUpdateIntegrationTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
         assertTrue(USER_SERVICE.requests().isEmpty());
         assertUnchanged();
+        verifyNoInteractions(storage);
     }
 
     @ParameterizedTest
@@ -459,11 +516,11 @@ class ChannelUpdateIntegrationTest {
 
         try (var executor = Executors.newFixedThreadPool(2)) {
             var first = executor.submit(() -> service.updateChannel(userId,
-                    request("First", emptyBanner(), retainedCategory.getId())));
+                    request("First", null, retainedCategory.getId())));
             try {
                 assertTrue(firstLocked.await(5, TimeUnit.SECONDS));
                 var second = executor.submit(() -> service.updateChannel(userId,
-                        request("Second", emptyBanner(), addedCategory.getId())));
+                        request("Second", null, addedCategory.getId())));
                 assertTrue(secondAttempt.await(5, TimeUnit.SECONDS));
                 assertThrows(TimeoutException.class, () -> second.get(200, TimeUnit.MILLISECONDS));
                 releaseFirst.countDown();
@@ -522,11 +579,17 @@ class ChannelUpdateIntegrationTest {
     }
 
     private MockMultipartHttpServletRequestBuilder form(UpdateChannelRequest request) throws IOException {
-        var builder = multipart(HttpMethod.PATCH, ENDPOINT).contextPath("/channel")
-                .file(new MockMultipartFile("bannerUrl", request.getBannerUrl().getOriginalFilename(),
-                        request.getBannerUrl().getContentType(), request.getBannerUrl().getBytes()))
-                .param("description", request.getDescription());
-        request.getCategoryIds().forEach(id -> builder.param("categoryIds", id.toString()));
+        var builder = multipart(HttpMethod.PATCH, ENDPOINT).contextPath("/channel");
+        if (request.getBannerUrl() != null) {
+            builder.file(new MockMultipartFile("bannerUrl", request.getBannerUrl().getOriginalFilename(),
+                    request.getBannerUrl().getContentType(), request.getBannerUrl().getBytes()));
+        }
+        if (request.getDescription() != null) {
+            builder.param("description", request.getDescription());
+        }
+        if (request.getCategoryIds() != null) {
+            request.getCategoryIds().forEach(id -> builder.param("categoryIds", id.toString()));
+        }
         return builder;
     }
 
@@ -560,14 +623,16 @@ class ChannelUpdateIntegrationTest {
     private static Stream<MockMultipartHttpServletRequestBuilder> invalidRequests() {
         String categoryId = UUID.randomUUID().toString();
         return Stream.of(
-                multipart(HttpMethod.PATCH, ENDPOINT),
-                multipart(HttpMethod.PATCH, ENDPOINT).file(emptyBanner()).param("categoryIds", categoryId),
-                multipart(HttpMethod.PATCH, ENDPOINT).param("description", "").param("categoryIds", categoryId),
-                multipart(HttpMethod.PATCH, ENDPOINT).file(emptyBanner()).param("description", ""),
-                multipart(HttpMethod.PATCH, ENDPOINT).file(emptyBanner()).param("description", "").param("categoryIds", ""),
-                multipart(HttpMethod.PATCH, ENDPOINT).file(emptyBanner()).param("description", "").param("categoryIds", "invalid"),
-                multipart(HttpMethod.PATCH, ENDPOINT).file(emptyBanner()).param("description", "a".repeat(1001)).param("categoryIds", categoryId),
-                multipart(HttpMethod.PATCH, ENDPOINT).param("description", "").param("bannerUrl", "https://example.com/banner.png").param("categoryIds", categoryId)
+                multipart(HttpMethod.PATCH, ENDPOINT).param("description", ""),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("description", " \t\n"),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("description", "a".repeat(1001)),
+                multipart(HttpMethod.PATCH, ENDPOINT).file(emptyBanner()),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("categoryIds", ""),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("categoryIds", "invalid"),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("categoryIds", "null"),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("categoryIds", categoryId, ""),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("categoryIds[1]", categoryId),
+                multipart(HttpMethod.PATCH, ENDPOINT).param("bannerUrl", "https://example.com/banner.png")
         ).map(builder -> builder.contextPath("/channel"));
     }
 }

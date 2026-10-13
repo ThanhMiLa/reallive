@@ -64,9 +64,9 @@ The endpoint consumes `multipart/form-data`, bound through `@Valid @ModelAttribu
 
 | Field | Rules |
 | --- | --- |
-| `description` | Required text, at most 1,000 characters; an empty string clears the stored description. |
-| `bannerUrl` | Required file part; JPEG, PNG or WebP, at most 5 MiB and 16 million pixels. An empty file clears the banner. |
-| `categoryIds` | Required, nonempty UUID list; send repeated fields or indexed fields such as `categoryIds[0]`. Duplicate IDs are collapsed. |
+| `description` | Optional; when supplied, must contain non-whitespace text and be at most 1,000 characters. |
+| `bannerUrl` | Optional file part; when supplied, must be nonempty JPEG, PNG or WebP, at most 5 MiB and 16 million pixels. |
+| `categoryIds` | Optional; when supplied, must contain at least one valid UUID and no null/empty elements. Send repeated fields or indexed fields such as `categoryIds[0]`. Duplicate IDs are collapsed. |
 
 ```shell
 curl -X PATCH http://localhost:8888/channel/api/channels/me \
@@ -76,11 +76,11 @@ curl -X PATCH http://localhost:8888/channel/api/channels/me \
   -F 'categoryIds=550e8400-e29b-41d4-a716-446655440000'
 ```
 
-To clear the banner, send an empty file part, for example `-F 'bannerUrl=@/dev/null;filename=empty'`. Omitting the file or sending a URL as a text field is rejected. JSON requests are no longer supported. The response's `bannerUrl` remains a string URL.
+Omit a field to preserve its current value: omitted fields bind to null. Empty descriptions, empty banner files and empty category lists are rejected, so empty values cannot clear existing data. Sending `null` as text is not equivalent to omitting a field. Sending a banner URL as a text field is rejected. JSON requests are not supported. The response's `bannerUrl` remains a string URL. Omitting all fields leaves the channel unchanged after the usual permission and ownership checks.
 
-The file format is detected from image content; supplied filenames and MIME types do not select its format or storage key. Banners are uploaded to R2 under `channels/<channelId>/banners/<uuid>.<extension>`, and the database stores only the full public URL (at most 500 characters). A successful transaction replaces or clears that URL and then attempts to delete the previous banner managed for that channel. A rolled-back transaction attempts to delete the new upload while preserving the previous banner. Cleanup is best effort; R2 and database operations do not share a distributed transaction. URLs belonging to other channels or external providers are not deleted.
+The file format is detected from image content; supplied filenames and MIME types do not select its format or storage key. Banners are uploaded to R2 under `channels/<channelId>/banners/<uuid>.<extension>`, and the database stores only the full public URL (at most 500 characters). When a banner is supplied, a successful transaction replaces that URL and then attempts to delete the previous banner managed for that channel. A rolled-back transaction attempts to delete the new upload while preserving the previous banner. An omitted banner triggers no storage operations. Cleanup is best effort; R2 and database operations do not share a distributed transaction. URLs belonging to other channels or external providers are not deleted.
 
-The submitted category list replaces the previous selection, keeping existing links and their creation timestamps when selected again.
+The submitted category list replaces the previous selection, keeping existing links and their creation timestamps when selected again. An omitted category list preserves all current links without revalidating their category status, and the response still includes their IDs.
 
 The service obtains the user UUID from the JWT subject, then uses Feign to call `GET /user/internal/api/streamers/by-user/{userId}/active`. A successful response must contain `result.streamerId`. User Service checks the current streamer record and its `ACTIVE` status; user IDs and streamer IDs are distinct. Client-supplied channel/streamer IDs cannot select a different channel.
 
@@ -110,7 +110,7 @@ HTTP 200 returns `ApiResponse<ChannelResponse>` with `id`, `streamerId`, `name`,
 
 R2 configuration and storage follow the same layout and class names as User Service: `common.configuration.R2Config`, `common.service.R2StorageService`, and `common.service.impl.R2StorageServiceImpl`. Banner validation and transaction coordination remain in the channel module.
 
-`ChannelUpdateIntegrationTest` runs the real security, multipart binding, validation, service, database and Feign stack with a local User Service stub and mocked R2 storage service. It includes real HTTP multipart PATCH requests and file-size rejection, plus permission/ownership checks, supported image formats, spoofed metadata, clearing fields, upstream/storage failures, transaction cleanup and concurrent updates. `R2StorageServiceImplTest` verifies S3 upload metadata/content and limits cleanup to owned banner keys using a mocked SDK client; tests do not upload to a real R2 bucket.
+`ChannelUpdateIntegrationTest` runs the real security, multipart binding, validation, service, database and Feign stack with a local User Service stub and mocked R2 storage service. It includes real HTTP multipart PATCH requests and file-size rejection, plus permission/ownership checks, partial updates, omitted fields, empty-value rejection, supported image formats, spoofed metadata, upstream/storage failures, transaction cleanup and concurrent updates. `R2StorageServiceImplTest` verifies S3 upload metadata/content and limits cleanup to owned banner keys using a mocked SDK client; tests do not upload to a real R2 bucket.
 
 ## Development
 
