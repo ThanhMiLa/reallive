@@ -1,11 +1,11 @@
 package com.reallive.channelservice.channel.controller.internal;
 
-import com.reallive.channelservice.channel.client.streamer.ActiveStreamerResolver;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.service.ChannelService;
+import com.reallive.channelservice.client.streamer.ActiveStreamerResolver;
 import com.reallive.channelservice.common.service.R2StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

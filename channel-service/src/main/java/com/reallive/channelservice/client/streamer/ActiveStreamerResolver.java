@@ -1,4 +1,4 @@
-package com.reallive.channelservice.channel.client.streamer;
+package com.reallive.channelservice.client.streamer;
 
 import com.reallive.channelservice.common.dto.ApiResponse;
 import com.reallive.channelservice.common.exception.AppException;

@@ -1,4 +1,4 @@
-package com.reallive.channelservice.channel.client.streamer;
+package com.reallive.channelservice.client.streamer;
 
 import com.sun.net.httpserver.HttpServer;
 

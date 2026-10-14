@@ -6,7 +6,6 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.channelservice.common.service.R2StorageService;
-import com.reallive.channelservice.channel.client.streamer.StreamerHttpTestServer;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
@@ -18,6 +17,7 @@ import com.reallive.channelservice.channel.repository.CategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelCategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.service.ChannelService;
+import com.reallive.channelservice.client.streamer.StreamerHttpTestServer;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
 

@@ -1,6 +1,5 @@
 package com.reallive.channelservice.channel.service.impl;
 
-import com.reallive.channelservice.channel.client.streamer.ActiveStreamerResolver;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -18,6 +17,7 @@ import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.channel.util.BannerValidator.BannerImage;
 import com.reallive.channelservice.channel.util.BannerValidator;
+import com.reallive.channelservice.client.streamer.ActiveStreamerResolver;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
 import com.reallive.channelservice.common.service.R2StorageService;
