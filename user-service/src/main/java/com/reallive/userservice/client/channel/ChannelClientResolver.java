@@ -9,7 +9,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -18,20 +21,8 @@ import java.util.UUID;
 public class ChannelClientResolver {
 
     ChannelClient channelClient;
+    ObjectMapper objectMapper;
 
-    /**
-     * Updates the supplied channel profile fields and validates Channel Service's success response.
-     *
-     * <p>Null fields preserve their current channel values. Supplied values must not be empty
-     * or blank; validation is performed by Channel Service.</p>
-     *
-     * @param streamerId the streamer ID owning the channel
-     * @param name the new channel name, or {@code null} to preserve it
-     * @param avatarUrl the new profile avatar URL, or {@code null} to preserve it
-     * @return {@code true} when Channel Service confirms the update
-     * @throws AppException if the request is invalid, the channel is missing, or Channel Service
-     *                      is unavailable or returns an unsuccessful response
-     */
     public boolean updateChannelProfile(UUID streamerId, String name, String avatarUrl) {
         UpdateChannelProfileRequest request = UpdateChannelProfileRequest.builder()
                 .name(name)
@@ -54,5 +45,54 @@ public class ChannelClientResolver {
             throw new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
         }
         return true;
+    }
+
+
+    public boolean validateCategories(Set<UUID> categoryIds) {
+        ValidateCategoriesRequest request = ValidateCategoriesRequest.builder()
+                .categoryIds(categoryIds)
+                .build();
+        ResponseEntity<ApiResponse<Boolean>> response;
+        try {
+            response = channelClient.validateCategories(request);
+        } catch (FeignException exception) {
+            throw handleValidateCategoriesError(exception);
+        }
+        ApiResponse<Boolean> body = response == null ? null : response.getBody();
+        if (response == null || !response.getStatusCode().is2xxSuccessful()
+                || body == null || body.getStatus() != 200 || body.getCode() != 1000
+                || !Boolean.TRUE.equals(body.getResult())) {
+            throw new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
+        }
+        return true;
+    }
+
+    private AppException handleValidateCategoriesError(FeignException exception) {
+        if (exception.status() == 400) {
+            String content = exception.contentUTF8();
+            if (content != null && !content.isBlank() && objectMapper != null) {
+                try {
+                    JsonNode node = objectMapper.readTree(content);
+                    int code = node.path("code").asInt(-1);
+                    if (code == 1011 || code == 1042) {
+                        return new AppException(ErrorCode.CATEGORY_NOT_FOUND);
+                    }
+                    if (code == 1012 || code == 1043) {
+                        return new AppException(ErrorCode.CATEGORY_NOT_ACTIVE);
+                    }
+                    String message = node.path("message").asText("");
+                    if ("Category is not active".equalsIgnoreCase(message)) {
+                        return new AppException(ErrorCode.CATEGORY_NOT_ACTIVE);
+                    }
+                    if ("Category not found".equalsIgnoreCase(message)) {
+                        return new AppException(ErrorCode.CATEGORY_NOT_FOUND);
+                    }
+                } catch (Exception ignored) {
+                    // Fall back to default bad request mapping
+                }
+            }
+            return new AppException(ErrorCode.CATEGORY_NOT_FOUND);
+        }
+        return new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
     }
 }

@@ -230,6 +230,67 @@ class ChannelClientIntegrationTest {
         assertEquals(0, CHANNEL.callCount());
     }
 
+    @Test
+    void postsCategoryValidationToInternalUrlAndDecodesBoolean() throws Exception {
+        UUID cat1 = UUID.randomUUID();
+        UUID cat2 = UUID.randomUUID();
+        ValidateCategoriesRequest payload = ValidateCategoriesRequest.builder()
+                .categoryIds(java.util.Set.of(cat1, cat2))
+                .build();
+
+        var response = client.validateCategories(payload);
+        var request = CHANNEL.takeRequest();
+        var json = mapper.readTree(request.body());
+
+        assertEquals("POST", request.method());
+        assertEquals("/channel/internal/api/categories/validate", request.path());
+        assertTrue(request.header("Content-Type").startsWith("application/json"));
+        assertNull(request.header("Cookie"));
+        assertNull(request.header("Authorization"));
+        assertTrue(json.path("categoryIds").isArray());
+        assertEquals(2, json.path("categoryIds").size());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals(1000, response.getBody().getCode());
+        assertEquals(Boolean.TRUE, response.getBody().getResult());
+        assertEquals(1, CHANNEL.callCount());
+
+        assertTrue(resolver.validateCategories(java.util.Set.of(cat1, cat2)));
+        assertEquals(2, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "400,CATEGORY_NOT_FOUND",
+            "401,CHANNEL_SERVICE_UNAVAILABLE",
+            "403,CHANNEL_SERVICE_UNAVAILABLE",
+            "404,CHANNEL_SERVICE_UNAVAILABLE",
+            "500,CHANNEL_SERVICE_UNAVAILABLE",
+            "503,CHANNEL_SERVICE_UNAVAILABLE"
+    })
+    void validateCategoriesResolverMapsRealHttpFailures(int status, ErrorCode expectedError) {
+        CHANNEL.setErrorStatus(status);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(java.util.Set.of(UUID.randomUUID())));
+
+        assertEquals(expectedError, failure.getErrorCode());
+        assertEquals(1, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ChannelHttpTestServer.Mode.class,
+            names = {"INVALID_JSON", "EMPTY_BODY", "FALSE_RESULT", "NULL_RESULT"})
+    void validateCategoriesResolverRejectsMalformedOrUnsuccessfulHttpResponses(ChannelHttpTestServer.Mode mode) {
+        CHANNEL.setMode(mode);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(java.util.Set.of(UUID.randomUUID())));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertEquals(1, CHANNEL.callCount());
+    }
+
     private CreateChannelRequest request() {
         return CreateChannelRequest.builder().streamerId(UUID.randomUUID()).name("Channel").build();
     }

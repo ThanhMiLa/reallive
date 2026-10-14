@@ -28,4 +28,9 @@ public interface ChannelClient {
             produces = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<ApiResponse<Boolean>> updateChannelProfile(@PathVariable("streamerId") UUID streamerId,
                                                               @RequestBody UpdateChannelProfileRequest request);
+
+    @PostMapping(
+            value = "/internal/api/categories/validate",
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<ApiResponse<Boolean>> validateCategories(@RequestBody ValidateCategoriesRequest request);
 }

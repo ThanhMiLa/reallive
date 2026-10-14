@@ -49,7 +49,9 @@ public enum ErrorCode {
     STREAMER_NOT_FOUND(1038, "Streamer not found", HttpStatus.NOT_FOUND),
     STREAMER_NOT_ACTIVE(1039, "Streamer is not active", HttpStatus.FORBIDDEN),
     CHANNEL_NOT_FOUND(1040, "Channel not found", HttpStatus.NOT_FOUND),
-    CHANNEL_REQUEST_INVALID(1041, "Invalid channel request", HttpStatus.BAD_REQUEST);
+    CHANNEL_REQUEST_INVALID(1041, "Invalid channel request", HttpStatus.BAD_REQUEST),
+    CATEGORY_NOT_FOUND(1042, "Category not found", HttpStatus.BAD_REQUEST),
+    CATEGORY_NOT_ACTIVE(1043, "Category is not active", HttpStatus.BAD_REQUEST);
 
 
     private final int code;

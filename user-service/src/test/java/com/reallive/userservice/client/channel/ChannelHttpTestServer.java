@@ -40,6 +40,7 @@ public class ChannelHttpTestServer implements AutoCloseable {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.setExecutor(executor);
             server.createContext("/channel/internal/api/channels", this::handle);
+            server.createContext("/channel/internal/api/categories", this::handleCategories);
             server.start();
         } catch (IOException exception) {
             executor.shutdownNow();
@@ -133,6 +134,48 @@ public class ChannelHttpTestServer implements AutoCloseable {
         } finally {
             exchange.close();
         }
+    }
+
+    private void handleCategories(HttpExchange exchange) throws IOException {
+        Mode requestMode = mode;
+        CountDownLatch requestRelease = releaseResponse;
+        calls.incrementAndGet();
+        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        requests.add(new CapturedRequest(exchange.getRequestMethod(), exchange.getRequestURI().getPath(),
+                Map.copyOf(exchange.getRequestHeaders()), body));
+        try {
+            if (requestMode == Mode.HTTP_ERROR) {
+                String errorBody;
+                if (errorStatus == 400) {
+                    errorBody = "{\"status\":400,\"code\":1011,\"message\":\"Category not found\",\"result\":null}";
+                } else {
+                    errorBody = "{\"status\":" + errorStatus + ",\"code\":1003,\"message\":\"Channel data unavailable\",\"result\":false}";
+                }
+                send(exchange, errorStatus, errorBody);
+                return;
+            }
+            if (requestMode == Mode.LOST_RESPONSE) {
+                try {
+                    requestRelease.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            switch (requestMode) {
+                case INVALID_JSON -> send(exchange, 200, "{invalid-json");
+                case EMPTY_BODY -> exchange.sendResponseHeaders(200, -1);
+                case FALSE_RESULT -> send(exchange, 200, categoryEnvelope("false"));
+                case NULL_RESULT -> send(exchange, 200, categoryEnvelope("null"));
+                default -> send(exchange, 200, categoryEnvelope("true"));
+            }
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private String categoryEnvelope(String result) {
+        return "{\"status\":200,\"code\":1000,\"message\":\"Categories are valid and active\",\"result\":"
+                + result + ",\"timestamp\":\"2026-01-01T00:00:00Z\"}";
     }
 
     private String envelope(String result) {

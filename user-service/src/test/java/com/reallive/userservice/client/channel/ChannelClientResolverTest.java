@@ -5,12 +5,16 @@ import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import feign.FeignException;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.ResponseEntity;
+import tools.jackson.databind.ObjectMapper;
 
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -27,7 +31,8 @@ import static org.mockito.Mockito.when;
 class ChannelClientResolverTest {
 
     private final ChannelClient client = mock(ChannelClient.class);
-    private final ChannelClientResolver resolver = new ChannelClientResolver(client);
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final ChannelClientResolver resolver = new ChannelClientResolver(client, mapper);
     private UUID streamerId;
     private static final String AVATAR_URL = "https://images.example.com/avatars/new.png";
 
@@ -91,6 +96,101 @@ class ChannelClientResolverTest {
 
         assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
         verify(client).updateChannelProfile(eq(streamerId), any(UpdateChannelProfileRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void validateCategoriesReturnsConfirmedSuccess() {
+        Set<UUID> categoryIds = Set.of(UUID.randomUUID(), UUID.randomUUID());
+        when(client.validateCategories(any(ValidateCategoriesRequest.class)))
+                .thenReturn(ResponseEntity.ok(envelope(200, 1000, true)));
+
+        assertTrue(resolver.validateCategories(categoryIds));
+
+        ArgumentCaptor<ValidateCategoriesRequest> captor = ArgumentCaptor.forClass(ValidateCategoriesRequest.class);
+        verify(client).validateCategories(captor.capture());
+        assertEquals(categoryIds, captor.getValue().getCategoryIds());
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void validateCategoriesMaps400With1011ToCategoryNotFound() {
+        FeignException remoteFailure = mock(FeignException.class);
+        when(remoteFailure.status()).thenReturn(400);
+        when(remoteFailure.contentUTF8()).thenReturn("{\"status\":400,\"code\":1011,\"message\":\"Category not found\"}");
+        when(client.validateCategories(any(ValidateCategoriesRequest.class))).thenThrow(remoteFailure);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
+
+        assertEquals(ErrorCode.CATEGORY_NOT_FOUND, failure.getErrorCode());
+        verify(client).validateCategories(any(ValidateCategoriesRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void validateCategoriesMaps400With1012ToCategoryNotActive() {
+        FeignException remoteFailure = mock(FeignException.class);
+        when(remoteFailure.status()).thenReturn(400);
+        when(remoteFailure.contentUTF8()).thenReturn("{\"status\":400,\"code\":1012,\"message\":\"Category is not active\"}");
+        when(client.validateCategories(any(ValidateCategoriesRequest.class))).thenThrow(remoteFailure);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
+
+        assertEquals(ErrorCode.CATEGORY_NOT_ACTIVE, failure.getErrorCode());
+        verify(client).validateCategories(any(ValidateCategoriesRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "{}", "invalid-json"})
+    void validateCategoriesMaps400FallbackToCategoryNotFound(String body) {
+        FeignException remoteFailure = mock(FeignException.class);
+        when(remoteFailure.status()).thenReturn(400);
+        when(remoteFailure.contentUTF8()).thenReturn(body);
+        when(client.validateCategories(any(ValidateCategoriesRequest.class))).thenThrow(remoteFailure);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
+
+        assertEquals(ErrorCode.CATEGORY_NOT_FOUND, failure.getErrorCode());
+        verify(client).validateCategories(any(ValidateCategoriesRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "401,CHANNEL_SERVICE_UNAVAILABLE",
+            "403,CHANNEL_SERVICE_UNAVAILABLE",
+            "404,CHANNEL_SERVICE_UNAVAILABLE",
+            "500,CHANNEL_SERVICE_UNAVAILABLE",
+            "503,CHANNEL_SERVICE_UNAVAILABLE",
+            "-1,CHANNEL_SERVICE_UNAVAILABLE"
+    })
+    void validateCategoriesMapsOtherHttpErrorsToChannelServiceUnavailable(int status, ErrorCode expectedError) {
+        FeignException remoteFailure = mock(FeignException.class);
+        when(remoteFailure.status()).thenReturn(status);
+        when(client.validateCategories(any(ValidateCategoriesRequest.class))).thenThrow(remoteFailure);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
+
+        assertEquals(expectedError, failure.getErrorCode());
+        verify(client).validateCategories(any(ValidateCategoriesRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @MethodSource("unsuccessfulResponses")
+    void validateCategoriesRejectsEmptyMalformedOrUnsuccessfulResponses(ResponseEntity<ApiResponse<Boolean>> response) {
+        when(client.validateCategories(any(ValidateCategoriesRequest.class))).thenReturn(response);
+
+        AppException failure = assertThrows(AppException.class,
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        verify(client).validateCategories(any(ValidateCategoriesRequest.class));
         verifyNoMoreInteractions(client);
     }
 
