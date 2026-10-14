@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -90,5 +91,85 @@ class CategoryServiceTest {
         assertEquals("https://example.com/val.png", resp2.getThumbnailUrl());
 
         verify(categoryRepository).findAllByStatus(CategoryStatus.ACTIVE);
+    }
+
+    @Test
+    void validateCategoriesReturnsTrueWhenAllCategoriesExistAndActive() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+
+        CategoryEntity entity1 = CategoryEntity.builder()
+                .id(id1)
+                .name("League of Legends")
+                .slug("league-of-legends")
+                .status(CategoryStatus.ACTIVE)
+                .build();
+
+        CategoryEntity entity2 = CategoryEntity.builder()
+                .id(id2)
+                .name("Valorant")
+                .slug("valorant")
+                .status(CategoryStatus.ACTIVE)
+                .build();
+
+        when(categoryRepository.findAllById(Set.of(id1, id2))).thenReturn(List.of(entity1, entity2));
+
+        boolean result = categoryService.validateCategories(Set.of(id1, id2));
+
+        assertTrue(result);
+        verify(categoryRepository).findAllById(Set.of(id1, id2));
+    }
+
+    @Test
+    void validateCategoriesThrowsCategoryNotFoundWhenSomeCategoriesDoNotExist() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+
+        CategoryEntity entity1 = CategoryEntity.builder()
+                .id(id1)
+                .name("League of Legends")
+                .slug("league-of-legends")
+                .status(CategoryStatus.ACTIVE)
+                .build();
+
+        when(categoryRepository.findAllById(Set.of(id1, id2))).thenReturn(List.of(entity1));
+
+        com.reallive.channelservice.common.exception.AppException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        com.reallive.channelservice.common.exception.AppException.class,
+                        () -> categoryService.validateCategories(Set.of(id1, id2)));
+
+        assertEquals(com.reallive.channelservice.common.exception.ErrorCode.CATEGORY_NOT_FOUND, exception.getErrorCode());
+        verify(categoryRepository).findAllById(Set.of(id1, id2));
+    }
+
+    @Test
+    void validateCategoriesThrowsCategoryNotActiveWhenAnyCategoryIsInactive() {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+
+        CategoryEntity entity1 = CategoryEntity.builder()
+                .id(id1)
+                .name("League of Legends")
+                .slug("league-of-legends")
+                .status(CategoryStatus.ACTIVE)
+                .build();
+
+        CategoryEntity entity2 = CategoryEntity.builder()
+                .id(id2)
+                .name("Just Chatting")
+                .slug("just-chatting")
+                .status(CategoryStatus.INACTIVE)
+                .build();
+
+        when(categoryRepository.findAllById(Set.of(id1, id2))).thenReturn(List.of(entity1, entity2));
+
+        com.reallive.channelservice.common.exception.AppException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        com.reallive.channelservice.common.exception.AppException.class,
+                        () -> categoryService.validateCategories(Set.of(id1, id2)));
+
+        assertEquals(com.reallive.channelservice.common.exception.ErrorCode.CATEGORY_NOT_ACTIVE, exception.getErrorCode());
+        verify(categoryRepository).findAllById(Set.of(id1, id2));
     }
 }
