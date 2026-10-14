@@ -4,16 +4,25 @@ import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import feign.FeignException;
+import feign.Request;
+import feign.Response;
+import feign.RetryableException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.ResponseEntity;
 import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -28,6 +37,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ChannelClientResolverTest {
 
     private final ChannelClient client = mock(ChannelClient.class);
@@ -39,6 +49,71 @@ class ChannelClientResolverTest {
     @BeforeEach
     void setUp() {
         streamerId = UUID.randomUUID();
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = AVATAR_URL)
+    void createChannelSendsRequestAndReturnsConfirmedSuccess(String avatarUrl) {
+        CreateChannelRequest request = CreateChannelRequest.builder()
+                .streamerId(streamerId).name("Test streamer").avatarUrl(avatarUrl).build();
+        when(client.createChannel(request)).thenReturn(ResponseEntity.ok(envelope(200, 1000, true)));
+
+        assertTrue(resolver.createChannel(request));
+
+        verify(client).createChannel(request);
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 401, 403, 404, 409, 415, 500, 503})
+    void createChannelLogsAndTranslatesHttpFailuresWithoutRetry(int status, CapturedOutput output) {
+        Request httpRequest = Request.create(Request.HttpMethod.POST, "http://localhost/channel/internal/api/channels",
+                Map.of(), null, StandardCharsets.UTF_8, null);
+        FeignException remoteFailure = FeignException.errorStatus("ChannelClient#createChannel", Response.builder()
+                .request(httpRequest).status(status).reason("Channel failure").headers(Map.of())
+                .body("{\"code\":1004,\"message\":\"Invalid channel request\"}", StandardCharsets.UTF_8).build());
+        when(client.createChannel(any())).thenThrow(remoteFailure);
+
+        AppException failure = assertThrows(AppException.class, () -> resolver.createChannel(createChannelRequest()));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertTrue(output.getOut().contains("HTTP status " + status));
+        assertTrue(output.getOut().contains("Invalid channel request"));
+        assertTrue(output.getOut().contains("feign.FeignException"));
+        verify(client).createChannel(any(CreateChannelRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Connection refused", "Read timed out"})
+    void createChannelLogsAndTranslatesConnectionFailuresWithoutRetry(String message, CapturedOutput output) {
+        Request httpRequest = Request.create(Request.HttpMethod.POST, "http://localhost/channel/internal/api/channels",
+                Map.of(), null, StandardCharsets.UTF_8, null);
+        when(client.createChannel(any())).thenThrow(new RetryableException(-1, message,
+                Request.HttpMethod.POST, (Long) null, httpRequest));
+
+        AppException failure = assertThrows(AppException.class, () -> resolver.createChannel(createChannelRequest()));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertTrue(output.getOut().contains("HTTP status -1"));
+        assertTrue(output.getOut().contains(message));
+        verify(client).createChannel(any(CreateChannelRequest.class));
+        verifyNoMoreInteractions(client);
+    }
+
+    @ParameterizedTest
+    @MethodSource("unsuccessfulResponses")
+    void createChannelRejectsEmptyMalformedOrUnsuccessfulResponses(
+            ResponseEntity<ApiResponse<Boolean>> response, CapturedOutput output) {
+        when(client.createChannel(any())).thenReturn(response);
+
+        AppException failure = assertThrows(AppException.class, () -> resolver.createChannel(createChannelRequest()));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertTrue(output.getOut().contains("empty or unsuccessful response"));
+        verify(client).createChannel(any(CreateChannelRequest.class));
+        verifyNoMoreInteractions(client);
     }
 
     @ParameterizedTest
@@ -205,6 +280,10 @@ class ChannelClientResolverTest {
                 ResponseEntity.ok(envelope(200, 1000, null)),
                 ResponseEntity.ok(envelope(200, 1000, false)),
                 ResponseEntity.ok(new ApiResponse<>()));
+    }
+
+    private CreateChannelRequest createChannelRequest() {
+        return CreateChannelRequest.builder().streamerId(streamerId).name("Test streamer").build();
     }
 
     private static ApiResponse<Boolean> envelope(int status, int code, Boolean result) {

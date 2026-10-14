@@ -4,7 +4,7 @@ import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
-import com.reallive.userservice.client.channel.ChannelClient;
+import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.client.channel.CreateChannelRequest;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
@@ -16,11 +16,9 @@ import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.streamer.service.StreamerRegistrationService;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.repository.ProfileRepository;
-import feign.FeignException;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,12 +30,11 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-@Slf4j
 public class StreamerRegistrationServiceImpl implements StreamerRegistrationService {
     UserRepository userRepository;
     RoleRepository roleRepository;
     StreamerRepository streamerRepository;
-    ChannelClient channelClient;
+    ChannelClientResolver channelClientResolver;
     ProfileRepository profileRepository;
 
     @Override
@@ -60,7 +57,7 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
                 .build();
         StreamerEntity streamer = streamerRepository.save(streamerEntity);
 
-        createChannel(streamer);
+        channelClientResolver.createChannel(mapToCreateChannelRequest(streamer));
 
         return BecomeStreamerResponse.builder()
                 .streamerId(streamer.getId())
@@ -79,21 +76,6 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
         if (user.getRoles().stream().anyMatch(role -> "STREAMER".equals(role.getName()))
                 || streamerRepository.existsByUserId(user.getId())) {
             throw new AppException(ErrorCode.ALREADY_STREAMER);
-        }
-    }
-
-    private void createChannel(StreamerEntity streamerEntity) {
-        CreateChannelRequest request = mapToCreateChannelRequest(streamerEntity);
-        try {
-            var response = channelClient.createChannel(request).getBody();
-            if (response == null || !Boolean.TRUE.equals(response.getResult())) {
-                log.error("Channel creation returned an empty or unsuccessful response for streamer {}", streamerEntity.getId());
-                throw new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
-            }
-        } catch (FeignException exception) {
-            log.error("Channel creation failed for streamer {} (HTTP status {})",
-                    streamerEntity.getId(), exception.status(), exception);
-            throw new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
         }
     }
 

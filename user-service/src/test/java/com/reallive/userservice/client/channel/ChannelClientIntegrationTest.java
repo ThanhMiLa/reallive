@@ -146,6 +146,65 @@ class ChannelClientIntegrationTest {
     }
 
     @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "https://images.example.com/avatar.png")
+    void createChannelResolverConfirmsRealHttpSuccess(String avatarUrl) throws Exception {
+        CreateChannelRequest payload = request();
+        payload.setAvatarUrl(avatarUrl);
+
+        assertTrue(resolver.createChannel(payload));
+
+        var captured = CHANNEL.takeRequest();
+        var json = mapper.readTree(captured.body());
+        assertEquals("POST", captured.method());
+        assertEquals("/channel/internal/api/channels", captured.path());
+        assertEquals(payload.getStreamerId().toString(), json.path("streamerId").asString());
+        assertEquals(payload.getName(), json.path("name").asString());
+        if (avatarUrl == null) {
+            assertTrue(json.path("avatarUrl").isNull() || json.path("avatarUrl").isMissingNode());
+        } else {
+            assertEquals(avatarUrl, json.path("avatarUrl").asString());
+        }
+        assertTrue(CHANNEL.hasChannel(payload.getStreamerId()));
+        assertEquals(1, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 401, 403, 404, 409, 500, 503})
+    void createChannelResolverTranslatesRealHttpFailuresWithoutRetry(int status) {
+        CHANNEL.setErrorStatus(status);
+
+        AppException failure = assertThrows(AppException.class, () -> resolver.createChannel(request()));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertEquals(1, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ChannelHttpTestServer.Mode.class,
+            names = {"INVALID_JSON", "EMPTY_BODY", "FALSE_RESULT", "NULL_RESULT"})
+    void createChannelResolverRejectsMalformedOrUnsuccessfulHttpResponses(ChannelHttpTestServer.Mode mode) {
+        CHANNEL.setMode(mode);
+
+        AppException failure = assertThrows(AppException.class, () -> resolver.createChannel(request()));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertEquals(1, CHANNEL.callCount());
+    }
+
+    @Test
+    void createChannelResolverTranslatesTimeoutAfterRemoteSaveWithoutRetry() {
+        CreateChannelRequest payload = request();
+        CHANNEL.setMode(ChannelHttpTestServer.Mode.LOST_RESPONSE);
+
+        AppException failure = assertThrows(AppException.class, () -> resolver.createChannel(payload));
+
+        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
+        assertTrue(CHANNEL.hasChannel(payload.getStreamerId()));
+        assertEquals(1, CHANNEL.callCount());
+    }
+
+    @ParameterizedTest
     @CsvSource({
             "400,CHANNEL_REQUEST_INVALID",
             "404,CHANNEL_NOT_FOUND",

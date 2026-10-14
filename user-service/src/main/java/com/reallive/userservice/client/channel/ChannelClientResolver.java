@@ -7,6 +7,7 @@ import feign.FeignException;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -18,10 +19,31 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+@Slf4j
 public class ChannelClientResolver {
 
     ChannelClient channelClient;
     ObjectMapper objectMapper;
+
+    public boolean createChannel(CreateChannelRequest request) {
+        ResponseEntity<ApiResponse<Boolean>> response;
+        try {
+            response = channelClient.createChannel(request);
+        } catch (FeignException exception) {
+            log.error("Channel creation failed for streamer {} (HTTP status {})",
+                    request.getStreamerId(), exception.status(), exception);
+            throw new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
+        }
+        ApiResponse<Boolean> body = response == null ? null : response.getBody();
+        if (response == null || !response.getStatusCode().is2xxSuccessful()
+                || body == null || body.getStatus() != 200 || body.getCode() != 1000
+                || !Boolean.TRUE.equals(body.getResult())) {
+            log.error("Channel creation returned an empty or unsuccessful response for streamer {}",
+                    request.getStreamerId());
+            throw new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
+        }
+        return true;
+    }
 
     public boolean updateChannelProfile(UUID streamerId, String name, String avatarUrl) {
         UpdateChannelProfileRequest request = UpdateChannelProfileRequest.builder()

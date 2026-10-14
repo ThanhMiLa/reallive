@@ -5,9 +5,8 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
-import com.reallive.userservice.client.channel.ChannelClient;
+import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.client.channel.CreateChannelRequest;
-import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.streamer.entity.StreamerEntity;
@@ -15,26 +14,14 @@ import com.reallive.userservice.streamer.entity.StreamerStatus;
 import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.repository.ProfileRepository;
-import feign.FeignException;
-import feign.Request;
-import feign.Response;
-import feign.RetryableException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.NullSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.http.ResponseEntity;
 
-import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -44,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
@@ -54,13 +40,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(OutputCaptureExtension.class)
 class StreamerRegistrationServiceImplTest {
 
     private final UserRepository users = mock(UserRepository.class);
     private final RoleRepository roles = mock(RoleRepository.class);
     private final StreamerRepository streamers = mock(StreamerRepository.class);
-    private final ChannelClient channel = mock(ChannelClient.class);
+    private final ChannelClientResolver channel = mock(ChannelClientResolver.class);
     private final ProfileRepository profiles = mock(ProfileRepository.class);
     private final StreamerRegistrationServiceImpl service = new StreamerRegistrationServiceImpl(users, roles, streamers, channel, profiles);
     private final RoleEntity streamerRole = role("STREAMER");
@@ -79,7 +64,7 @@ class StreamerRegistrationServiceImplTest {
         });
         when(profiles.findByUserId(user.getId())).thenReturn(Optional.of(ProfileEntity.builder()
                 .user(user).displayName("Test streamer").avatarUrl("https://images.example.com/avatar.png").build()));
-        when(channel.createChannel(any())).thenReturn(ResponseEntity.ok(ApiResponse.<Boolean>builder().result(true).build()));
+        when(channel.createChannel(any())).thenReturn(true);
     }
 
     @Test
@@ -114,53 +99,13 @@ class StreamerRegistrationServiceImplTest {
         assertEquals("https://images.example.com/avatar.png", channelRequest.getValue().getAvatarUrl());
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {400, 401, 404, 503})
-    void logsOriginalHttpFailureBeforeReturningChannelServiceError(int status, CapturedOutput output) {
-        Request request = Request.create(Request.HttpMethod.POST, "http://localhost/channel/internal/api/channels",
-                Map.of(), null, StandardCharsets.UTF_8, null);
-        FeignException failure = FeignException.errorStatus("ChannelClient#createChannel", Response.builder()
-                .request(request).status(status).reason("Channel failure").headers(Map.of())
-                .body("{\"code\":1004,\"message\":\"Invalid channel request\"}", StandardCharsets.UTF_8).build());
+    @Test
+    void propagatesResolverFailureWithoutReplacingIt() {
+        AppException failure = new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE);
         when(channel.createChannel(any())).thenThrow(failure);
 
-        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE,
-                assertThrows(AppException.class, () -> service.becomeStreamer(user.getId())).getErrorCode());
-        assertTrue(output.getOut().contains("HTTP status " + status));
-        assertTrue(output.getOut().contains("Invalid channel request"));
-        assertTrue(output.getOut().contains("feign.FeignException"));
-    }
-
-    @Test
-    void logsConnectionFailureBeforeReturningChannelServiceError(CapturedOutput output) {
-        Request request = Request.create(Request.HttpMethod.POST, "http://localhost/channel/internal/api/channels",
-                Map.of(), null, StandardCharsets.UTF_8, null);
-        when(channel.createChannel(any())).thenThrow(new RetryableException(-1, "Connection refused",
-                Request.HttpMethod.POST, (Long) null, request));
-
-        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE,
-                assertThrows(AppException.class, () -> service.becomeStreamer(user.getId())).getErrorCode());
-        assertTrue(output.getOut().contains("HTTP status -1"));
-        assertTrue(output.getOut().contains("Connection refused"));
-    }
-
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(booleans = false)
-    void missingOrFalseResultRejectsRegistration(Boolean result, CapturedOutput output) {
-        when(channel.createChannel(any())).thenReturn(ResponseEntity.ok(ApiResponse.<Boolean>builder().result(result).build()));
-
-        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE,
-                assertThrows(AppException.class, () -> service.becomeStreamer(user.getId())).getErrorCode());
-        assertTrue(output.getOut().contains("empty or unsuccessful response"));
-    }
-
-    @Test
-    void emptyResponseBodyRejectsRegistration() {
-        when(channel.createChannel(any())).thenReturn(ResponseEntity.ok().build());
-
-        assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE,
-                assertThrows(AppException.class, () -> service.becomeStreamer(user.getId())).getErrorCode());
+        assertSame(failure, assertThrows(AppException.class, () -> service.becomeStreamer(user.getId())));
+        verify(channel).createChannel(any(CreateChannelRequest.class));
     }
 
     @Test
