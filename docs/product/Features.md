@@ -10,7 +10,7 @@
 - Update Profile ✅
 - View Profile ✅
 - Verify Email ✅
-- Set Category Preferences
+- Set Category Preferences ✅
 
 ## II - Channel
 - Create channel ✅
@@ -75,7 +75,7 @@
 ## IX - Discovery / Search
 - Live Stream List
 - Channel List
-- Category List
+- Category List ✅
 - Following Feed
 - Recommended Streams
 
