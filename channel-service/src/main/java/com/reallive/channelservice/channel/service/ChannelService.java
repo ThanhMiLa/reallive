@@ -1,5 +1,6 @@
 package com.reallive.channelservice.channel.service;
 
+import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -13,18 +14,23 @@ import java.util.UUID;
 public interface ChannelService {
 
     /**
-     * Retrieves a page of active, non-deleted channels for public discovery.
+     * Retrieves a filtered page of active, non-deleted channels for public discovery.
      *
-     * <p>Channels are ordered by creation time descending, then ID descending for ties.
+     * <p>An optional category filter matches membership in any selected active category. Missing or
+     * inactive categories contribute no matches; an omitted or empty category set disables category filtering.
+     * An optional keyword matches a literal substring of the name,
+     * description or slug, ignoring case. Category and keyword filters are combined with AND.
+     * Blank keywords disable text filtering. Channels are ordered by the requested follower-count
+     * direction (descending by default), then creation time and ID descending for ties.
      * Follower totals are read from the stored channel counter without counting follower records.
      * No authentication or remote service call is required, and no data is changed.</p>
      *
-     * @param page the zero-based page number; the page offset must not exceed {@link Integer#MAX_VALUE}
-     * @param size the requested page size, from 1 through 100
+     * @param request the validated optional set of category UUIDs, keyword of at most 255 characters after stripping,
+     *                follower sort direction, zero-based page and page size from 1 through 100
      * @return the channel summaries and pagination totals; content is empty when the page has no results
-     * @throws AppException if pagination values are outside the supported bounds
+     * @throws AppException if the page offset exceeds {@link Integer#MAX_VALUE}
      */
-    PageResponse<ChannelListResponse> getChannels(int page, int size);
+    PageResponse<ChannelListResponse> getChannels(ChannelListRequest request);
 
     /**
      * Creates an active channel with a deterministic slug for the supplied streamer.

@@ -38,9 +38,24 @@ Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channe
 
 `GET /channel/api/channels?page=0&size=20` returns a public page of active, non-deleted channels. Call through Gateway at `http://localhost:8888/channel/api/channels`; an access token is not required. Only this exact GET path is public; channel writes and child paths retain their authentication requirements. Supplied token cookies are still validated under the existing security policy.
 
-`page` is zero-based and defaults to `0`. `size` defaults to `20` and must be between `1` and `100`. The offset (`page * size`) must fit a signed 32-bit integer. Invalid or non-integer pagination parameters return HTTP 400 / code `1004`; database access failures return HTTP 503 / code `1003`. Empty or out-of-range pages return HTTP 200 with an empty `content` list and pagination totals.
+| Query parameter | Default | Rules |
+| --- | --- | --- |
+| `categoryIds` | No filter | Optional set of category UUIDs. Accepts one UUID, comma-separated UUIDs or repeated parameters. Matches membership in any selected active category. Duplicate IDs are ignored; missing or inactive categories contribute no matches. An omitted or empty set disables category filtering. |
+| `keyword` | No filter | Optional literal substring of `name`, `description` or `slug`, ignoring case and preserving accents. Leading/trailing whitespace is stripped; blank text disables the filter. At most 255 characters after stripping. `%`, `_`, `!` and backslash are treated literally. |
+| `sortDirection` | `DESC` | Follower-count direction: `ASC` or `DESC`. |
+| `page` | `0` | Zero-based page number, at least zero. |
+| `size` | `20` | Page size from `1` through `100`. |
 
-Channels are ordered by `created_at DESC, id DESC`. The channel model currently has no visibility field; all active, non-deleted channels are eligible for public discovery. Stream/VOD visibility is independent. Concurrent additions or removals can shift offset-based page boundaries.
+Category and keyword filters combine with AND; selected categories combine with OR, as do keyword matches on the three searchable fields. Without filters, all active, non-deleted channels are eligible. The offset (`page * size`) must fit a signed 32-bit integer. Invalid UUIDs or empty elements within a nonempty category set, unsupported sort directions, overlong keywords, invalid pagination and explicitly empty `page`, `size` or `sortDirection` parameters return HTTP 400 / code `1004`. Database access failures return HTTP 503 / code `1003`. Empty or out-of-range pages return HTTP 200 with an empty `content` list and totals calculated using the same filters.
+
+Channels are ordered by `follower_count DESC` by default, or `ASC` when requested, followed by `created_at DESC, id DESC` for ties. The channel model currently has no visibility field; all active, non-deleted channels are eligible for public discovery. Stream/VOD visibility is independent. Concurrent follower changes, additions or removals can shift offset-based page boundaries.
+
+```shell
+curl 'http://localhost:8888/channel/api/channels?keyword=gaming&sortDirection=ASC&page=0&size=10'
+curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000&keyword=gaming&sortDirection=DESC'
+curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000,550e8400-e29b-41d4-a716-446655440001'
+curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000&categoryIds=550e8400-e29b-41d4-a716-446655440001'
+```
 
 ```json
 {
@@ -65,9 +80,9 @@ Channels are ordered by `created_at DESC, id DESC`. The channel model currently 
 }
 ```
 
-Each item contains exactly these four fields. Image URLs preserve their stored values, including null. The repository selects only the four required columns through `ChannelSummaryProjection` in `channel.repository.projection`. The service uses `ChannelMapper` (MapStruct) to convert each projection into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. The query does not join or count `channel_followers` or load channel categories, and calls no other service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
+Each item contains exactly these four fields. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership and keyword predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. The query does not join or count `channel_followers` or load category entities, and calls no other service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
 
-`ChannelListIntegrationTest` exercises the real HTTP/security/service/persistence stack with Flyway migrations, public access, filtering, default and custom pagination, tied timestamps, stored follower totals, null images and invalid inputs. Gateway tests cover anonymous routing and protection of other channel operations.
+`ChannelListIntegrationTest` exercises the real HTTP/security/service/persistence stack with Flyway migrations, public access, category/keyword filters in isolation and combination, literal wildcard handling, follower sorting in both directions, default/custom pagination, tied timestamps, stored follower totals, null images and invalid inputs. Gateway tests cover anonymous routing and protection of other channel operations.
 
 ## Create channel
 
@@ -178,6 +193,6 @@ Tests use H2 in PostgreSQL compatibility mode, apply the actual Flyway migration
   -Dchannel.test.database-username=channel_test clean verify
 ```
 
-Supply `channel.test.database-password` if required. Use a dedicated test database and a user with schema creation permission. Each database test class creates and drops its own randomly named schema. The channel-service workflow runs the full suite with PostgreSQL 17.
+Supply `channel.test.database-password` if required. Use a dedicated test database and a user with schema creation permission. Persistence and channel creation tests create and drop their own randomly named schemas. `ChannelListIntegrationTest` also accepts these database properties; it applies migrations in the supplied test database's default schema and rolls back test rows after each test. The channel-service workflow runs the full suite with PostgreSQL 17.
 
 Common tests cover response serialization, application error propagation, HTTP error envelopes, JWT claim parsing, cookie selection and scope-to-authority mapping. MockMvc tests run the real security filter chain and method authorization with the development context path and a custom access-cookie name, including 401/403 responses and authenticated database failures returning 503. `BaseEntity` audit timestamps are exercised by the persistence tests.

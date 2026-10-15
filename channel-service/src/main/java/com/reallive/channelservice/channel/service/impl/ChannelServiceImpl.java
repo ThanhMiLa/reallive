@@ -1,5 +1,6 @@
 package com.reallive.channelservice.channel.service.impl;
 
+import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -15,6 +16,7 @@ import com.reallive.channelservice.channel.mapper.ChannelMapper;
 import com.reallive.channelservice.channel.repository.CategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelCategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
+import com.reallive.channelservice.channel.repository.specification.ChannelSpecifications;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.channel.util.BannerValidator.BannerImage;
 import com.reallive.channelservice.channel.util.BannerValidator;
@@ -32,6 +34,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -59,12 +63,23 @@ public class ChannelServiceImpl implements ChannelService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<ChannelListResponse> getChannels(int page, int size) {
-        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE) {
+    public PageResponse<ChannelListResponse> getChannels(ChannelListRequest request) {
+        if ((long) request.getPage() * request.getSize() > Integer.MAX_VALUE) {
             throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         }
+
+        // Build Sorted
+        Sort sort = Sort.by(new Sort.Order(request.getSortDirection(), "followerCount"),
+                Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+
+        // Build Specification
+        Specification<ChannelEntity> specification = ChannelSpecifications.isActive()
+                .and(ChannelSpecifications.inActiveCategories(request.getCategoryIds()))
+                .and(ChannelSpecifications.matchesKeyword(request.getKeyword()));
+
+        //Query db base sorted, specification and map to dto response
         Page<ChannelListResponse> channels = channelRepository
-                .findChannelSummariesByStatus(ChannelStatus.ACTIVE, PageRequest.of(page, size))
+                .findAll(specification, PageRequest.of(request.getPage(), request.getSize(), sort))
                 .map(channelMapper::toListResponse);
 
         return PageResponse.<ChannelListResponse>builder()

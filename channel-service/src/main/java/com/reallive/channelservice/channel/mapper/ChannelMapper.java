@@ -3,7 +3,6 @@ package com.reallive.channelservice.channel.mapper;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
-import com.reallive.channelservice.channel.repository.projection.ChannelSummaryProjection;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -14,7 +13,7 @@ import java.util.UUID;
 public interface ChannelMapper {
 
     @Mapping(target = "numberOfFollower", source = "followerCount")
-    ChannelListResponse toListResponse(ChannelSummaryProjection projection);
+    ChannelListResponse toListResponse(ChannelEntity channel);
 
     @Mapping(target = "categoryIds", source = "categoryIds")
     ChannelResponse toResponse(ChannelEntity channel, List<UUID> categoryIds);
