@@ -15,6 +15,8 @@ com.reallive.channelservice/
     ├── entity/enums/CategoryStatus.java
     ├── entity/ChannelCategoryEntity.java
     ├── entity/ChannelCategoryId.java
+    ├── entity/ChannelFollowerEntity.java
+    ├── entity/ChannelFollowerId.java
     ├── repository/ChannelRepository.java
     ├── repository/CategoryRepository.java
     └── repository/ChannelCategoryRepository.java
@@ -26,7 +28,9 @@ Flyway migration `V1__create_channels_and_categories_tables.sql` implements Data
 
 All channel and category persistence code belongs to the `channel` business module; shared audit fields belong to `common.entity`.
 
-`ChannelCategoryEntity` maps the composite `(channel_id, category_id)` key with `@EmbeddedId` and `@MapsId`, lazy parent relationships and a creation timestamp only. `ChannelCategoryId` is an embeddable identifier value type used by JPA and repository ID operations, not a fourth entity or table. There are three entities for the three tables. The association does not inherit `BaseEntity`, since the data model has no `updated_at` column for this table. There is no cascading parent deletion: remove category links explicitly before physically deleting a channel or category.
+`ChannelCategoryEntity` maps the composite `(channel_id, category_id)` key with `@EmbeddedId` and `@MapsId`, lazy parent relationships and a creation timestamp only. `ChannelCategoryId` is an embeddable identifier value type used by JPA and repository ID operations. The association does not inherit `BaseEntity`, since the data model has no `updated_at` column for this table. There is no cascading parent deletion: remove category links explicitly before physically deleting a channel or category.
+
+Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channels.follower_count` as a nonnegative `BIGINT NOT NULL DEFAULT 0`, initializing existing channels to zero, and creates the follower table from Data Model section 2.1.4. `ChannelFollowerEntity` maps `(channel_id, user_id)` through `ChannelFollowerId`, a lazy channel relationship and an automatically generated `followed_at` timestamp. The user UUID is external to Channel Service and has no cross-service foreign key. The composite primary key supports channel lookups; a separate `user_id` index supports user lookups. Follower records must be removed explicitly before physically deleting a channel. This persistence foundation does not automatically adjust the counter when follower rows change; follow/unfollow operations and a reconciliation job are separate work.
 
 `deleted_at` stores the channel's soft-delete timestamp. `ChannelEntity` uses `@SQLRestriction("deleted_at IS NULL")`, so Hibernate-generated channel queries automatically exclude soft-deleted records, including ID/slug/streamer lookups, existence checks, lists/counts and the query that locks a channel for update. Non-deleted banned channels remain visible and business services still check their status. Native SQL bypasses this restriction; the creation ownership check intentionally includes deleted records because `streamer_id` remains unique. The annotation filters reads; it does not convert repository deletion calls into soft deletes. Updating a user's profile will not automatically change channel profile fields.
 

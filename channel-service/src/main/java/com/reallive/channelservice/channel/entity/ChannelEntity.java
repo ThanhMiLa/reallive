@@ -67,6 +67,9 @@ public class ChannelEntity extends BaseEntity {
     @Column(name = "banner_url", length = 500)
     String bannerUrl;
 
+    @Column(name = "follower_count", nullable = false)
+    long followerCount;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     ChannelStatus status;

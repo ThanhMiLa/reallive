@@ -5,7 +5,10 @@ import com.reallive.channelservice.channel.entity.enums.CategoryStatus;
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryId;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
+import com.reallive.channelservice.channel.entity.ChannelFollowerEntity;
+import com.reallive.channelservice.channel.entity.ChannelFollowerId;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
+import jakarta.persistence.EntityManager;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -61,6 +64,9 @@ class ChannelPersistenceTest {
     @Autowired
     private Flyway flyway;
 
+    @Autowired
+    private EntityManager entityManager;
+
     @DynamicPropertySource
     static void databaseProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> System.getProperty("channel.test.database-url",
@@ -80,10 +86,36 @@ class ChannelPersistenceTest {
     @Test
     void migrationCreatesAllTablesAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("1", flyway.info().current().getVersion().toString());
+        assertEquals("2", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        for (String name : List.of("channels", "categories", "channel_categories")) {
+        for (String name : List.of("channels", "categories", "channel_categories", "channel_followers")) {
             assertNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM " + table(name), Integer.class));
+        }
+    }
+
+    @Test
+    void followerMigrationUpgradesExistingChannelsWithZeroCount() {
+        String schema = "channel_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway initial = Flyway.configure().dataSource(jdbc.getDataSource())
+                .schemas(schema).defaultSchema(schema).target("1").load();
+        try {
+            initial.migrate();
+            UUID channelId = UUID.randomUUID();
+            String channelsTable = "\"" + schema + "\".channels";
+            jdbc.update("INSERT INTO " + channelsTable
+                    + " (id, streamer_id, name, slug, status) VALUES (?, ?, ?, ?, ?)",
+                    channelId, UUID.randomUUID(), "Existing channel", "existing-channel", "ACTIVE");
+
+            Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
+                    .schemas(schema).defaultSchema(schema).load();
+            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            upgraded.validate();
+            assertEquals(0L, jdbc.queryForObject("SELECT follower_count FROM " + channelsTable
+                    + " WHERE id = ?", Long.class, channelId));
+            assertEquals("Existing channel", jdbc.queryForObject("SELECT name FROM " + channelsTable
+                    + " WHERE id = ?", String.class, channelId));
+        } finally {
+            jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
         }
     }
 
@@ -103,6 +135,7 @@ class ChannelPersistenceTest {
         assertEquals(channel.getAvatarUrl(), reloaded.getAvatarUrl());
         assertEquals(channel.getBannerUrl(), reloaded.getBannerUrl());
         assertEquals(ChannelStatus.ACTIVE, reloaded.getStatus());
+        assertEquals(0L, reloaded.getFollowerCount());
         assertNotNull(reloaded.getCreatedAt());
         assertNotNull(reloaded.getUpdatedAt());
         assertEquals(saved.getId(), channels.findBySlug(saved.getSlug()).orElseThrow().getId());
@@ -200,11 +233,76 @@ class ChannelPersistenceTest {
         assertNotNull(channel.getId());
         assertNotNull(channel.getCreatedAt());
         assertNotNull(channel.getUpdatedAt());
+        assertEquals(0L, channel.getFollowerCount());
         assertNotNull(category.getId());
         assertNotNull(category.getCreatedAt());
         assertNotNull(category.getUpdatedAt());
         assertNotNull(channelCategories.findById(new ChannelCategoryId(channel.getId(), category.getId()))
                 .orElseThrow().getCreatedAt());
+    }
+
+    @Test
+    void persistsFollowerCountsBeyondIntegerRangeAndRejectsInvalidCounts() {
+        ChannelEntity channel = newChannel();
+        channel.setFollowerCount(3_000_000_000L);
+        channels.saveAndFlush(channel);
+
+        assertEquals(3_000_000_000L, channels.findById(channel.getId()).orElseThrow().getFollowerCount());
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("UPDATE " + table("channels")
+                + " SET follower_count = -1 WHERE id = ?", channel.getId()));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("UPDATE " + table("channels")
+                + " SET follower_count = NULL WHERE id = ?", channel.getId()));
+    }
+
+    @Test
+    @Transactional
+    void persistsFollowerWithCompositeKeyExternalUserAndFollowTimestamp() {
+        ChannelEntity channel = channels.saveAndFlush(newChannel());
+        UUID userId = UUID.randomUUID();
+        ChannelFollowerId id = new ChannelFollowerId(channel.getId(), userId);
+        ChannelFollowerEntity follower = ChannelFollowerEntity.builder().id(id).channel(channel).build();
+        entityManager.persist(follower);
+        entityManager.flush();
+        entityManager.clear();
+
+        ChannelFollowerEntity reloaded = entityManager.find(ChannelFollowerEntity.class, id);
+        assertNotNull(reloaded);
+        assertEquals(userId, reloaded.getId().getUserId());
+        assertEquals(channel.getId(), reloaded.getChannel().getId());
+        assertNotNull(reloaded.getFollowedAt());
+
+        entityManager.remove(reloaded);
+        entityManager.flush();
+        entityManager.clear();
+        assertTrue(channels.existsById(channel.getId()));
+    }
+
+    @Test
+    void followerConstraintsPreventDuplicateFollowsAndMissingChannels() {
+        ChannelEntity firstChannel = channels.saveAndFlush(newChannel());
+        ChannelEntity secondChannel = channels.saveAndFlush(newChannel());
+        UUID userId = UUID.randomUUID();
+        insertFollower(firstChannel.getId(), userId);
+        insertFollower(firstChannel.getId(), UUID.randomUUID());
+        insertFollower(secondChannel.getId(), userId);
+
+        assertNotNull(jdbc.queryForObject("SELECT followed_at FROM " + table("channel_followers")
+                + " WHERE channel_id = ? AND user_id = ?", Timestamp.class, firstChannel.getId(), userId));
+        assertThrows(DataIntegrityViolationException.class, () -> insertFollower(firstChannel.getId(), userId));
+        assertThrows(DataIntegrityViolationException.class, () -> insertFollower(UUID.randomUUID(), userId));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("DELETE FROM " + table("channels")
+                + " WHERE id = ?", firstChannel.getId()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2})
+    void databaseRejectsNullRequiredFollowerColumns(int columnIndex) {
+        ChannelEntity channel = channels.saveAndFlush(newChannel());
+        Object[] columns = {channel.getId(), UUID.randomUUID(), LocalDateTime.now()};
+        columns[columnIndex] = null;
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("INSERT INTO " + table("channel_followers")
+                + " (channel_id, user_id, followed_at) VALUES (?, ?, ?)", columns));
     }
 
     @ParameterizedTest
@@ -328,6 +426,11 @@ class ChannelPersistenceTest {
     private void insertLink(UUID channelId, UUID categoryId) {
         jdbc.update("INSERT INTO " + table("channel_categories") + " (channel_id, category_id) VALUES (?, ?)",
                 channelId, categoryId);
+    }
+
+    private void insertFollower(UUID channelId, UUID userId) {
+        jdbc.update("INSERT INTO " + table("channel_followers") + " (channel_id, user_id) VALUES (?, ?)",
+                channelId, userId);
     }
 
     private String table(String name) {

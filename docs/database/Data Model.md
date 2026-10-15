@@ -132,11 +132,15 @@ Composite Constraint:
 | description | VARCHAR(1000) | - | - | Channel description |
 | avatar_url | VARCHAR(500) | - | - | Channel avatar URL |
 | banner_url | VARCHAR(500) | - | - | Channel banner URL |
+| follower_count | BIGINT | NOT NULL, DEFAULT 0 | - | Stored total follower count |
 | status | VARCHAR(30) | NOT NULL | INDEX | `ACTIVE, BANNED` |
 | created_at | TIMESTAMP | NOT NULL | - | Created time |
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
 | deleted_at | TIMESTAMP | - | INDEX | Soft delete time |
 
+
+Constraints:
+- `follower_count >= 0`
 
 #### 2.1.2 categories
 | Column | Type | Constraints | Index | Description |
