@@ -4,6 +4,7 @@ import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
+import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryId;
@@ -18,6 +19,7 @@ import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.channel.util.BannerValidator.BannerImage;
 import com.reallive.channelservice.channel.util.BannerValidator;
 import com.reallive.channelservice.client.streamer.ActiveStreamerResolver;
+import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
 import com.reallive.channelservice.common.service.R2StorageService;
@@ -28,6 +30,8 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -52,6 +56,25 @@ public class ChannelServiceImpl implements ChannelService {
     ActiveStreamerResolver activeStreamerResolver;
     ChannelMapper channelMapper;
     R2StorageService r2StorageService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<ChannelListResponse> getChannels(int page, int size) {
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE) {
+            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
+        }
+        Page<ChannelListResponse> channels = channelRepository
+                .findChannelSummariesByStatus(ChannelStatus.ACTIVE, PageRequest.of(page, size))
+                .map(channelMapper::toListResponse);
+
+        return PageResponse.<ChannelListResponse>builder()
+                .content(channels.getContent())
+                .page(channels.getNumber())
+                .size(channels.getSize())
+                .totalElements(channels.getTotalElements())
+                .totalPages(channels.getTotalPages())
+                .build();
+    }
 
     @Override
     @Transactional

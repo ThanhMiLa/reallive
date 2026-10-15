@@ -113,6 +113,22 @@ class GatewayAuthenticationTest {
     }
 
     @Test
+    void publicChannelListWithPaginationReachesBackendWithoutTokens() {
+        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isOk();
+        assertEquals(1, BACKEND_CALLS.get());
+        assertEquals("/channel/api/channels", LAST_REQUEST.get().path());
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void publicChannelListDoesNotMakeWritesOrChildPathsPublic() {
+        request(HttpMethod.POST, "/channel/api/channels").exchange().expectStatus().isUnauthorized();
+        request(HttpMethod.PATCH, "/channel/api/channels/me").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/channel/api/channels/me").exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @Test
     void webhookWithoutCookiesBypassesCsrfAndPreservesSignatureInputs() {
         String body = "[ {\"event\":\"delivered\",\"reason\":\"Tiếng Việt\"} ]\r\n";
         client.post().uri("/notification/api/webhooks/sendgrid")

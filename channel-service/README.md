@@ -34,6 +34,41 @@ Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channe
 
 `deleted_at` stores the channel's soft-delete timestamp. `ChannelEntity` uses `@SQLRestriction("deleted_at IS NULL")`, so Hibernate-generated channel queries automatically exclude soft-deleted records, including ID/slug/streamer lookups, existence checks, lists/counts and the query that locks a channel for update. Non-deleted banned channels remain visible and business services still check their status. Native SQL bypasses this restriction; the creation ownership check intentionally includes deleted records because `streamer_id` remains unique. The annotation filters reads; it does not convert repository deletion calls into soft deletes. Updating a user's profile will not automatically change channel profile fields.
 
+## List channels
+
+`GET /channel/api/channels?page=0&size=20` returns a public page of active, non-deleted channels. Call through Gateway at `http://localhost:8888/channel/api/channels`; an access token is not required. Only this exact GET path is public; channel writes and child paths retain their authentication requirements. Supplied token cookies are still validated under the existing security policy.
+
+`page` is zero-based and defaults to `0`. `size` defaults to `20` and must be between `1` and `100`. The offset (`page * size`) must fit a signed 32-bit integer. Invalid or non-integer pagination parameters return HTTP 400 / code `1004`; database access failures return HTTP 503 / code `1003`. Empty or out-of-range pages return HTTP 200 with an empty `content` list and pagination totals.
+
+Channels are ordered by `created_at DESC, id DESC`. The channel model currently has no visibility field; all active, non-deleted channels are eligible for public discovery. Stream/VOD visibility is independent. Concurrent additions or removals can shift offset-based page boundaries.
+
+```json
+{
+  "status": 200,
+  "code": 1000,
+  "message": "Channels retrieved successfully",
+  "result": {
+    "content": [
+      {
+        "name": "My channel",
+        "bannerUrl": "https://example.com/banner.png",
+        "avatarUrl": "https://example.com/avatar.png",
+        "numberOfFollower": 1200
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1
+  },
+  "timestamp": "2026-10-15T03:00:00Z"
+}
+```
+
+Each item contains exactly these four fields. Image URLs preserve their stored values, including null. The repository selects only the four required columns through `ChannelSummaryProjection` in `channel.repository.projection`. The service uses `ChannelMapper` (MapStruct) to convert each projection into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. The query does not join or count `channel_followers` or load channel categories, and calls no other service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
+
+`ChannelListIntegrationTest` exercises the real HTTP/security/service/persistence stack with Flyway migrations, public access, filtering, default and custom pagination, tied timestamps, stored follower totals, null images and invalid inputs. Gateway tests cover anonymous routing and protection of other channel operations.
+
 ## Create channel
 
 `POST /channel/internal/api/channels` creates a channel for a supplied streamer UUID. The endpoint currently accepts calls without a JWT or an internal token. Caller authentication and User Service integration are deferred. Gateway's `/channel/api/**` route does not route this internal endpoint.

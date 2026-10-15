@@ -19,8 +19,8 @@ import java.util.Set;
 public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
     private static final Set<String> PUBLIC_ENDPOINTS_GET = Set.of(
-            "/channel/api/categories"
-
+            "/channel/api/categories",
+            "/channel/api/channels"
     );
     private static final Set<String> PUBLIC_ENDPOINTS_POST = Set.of(
             "/user/api/auth/login",

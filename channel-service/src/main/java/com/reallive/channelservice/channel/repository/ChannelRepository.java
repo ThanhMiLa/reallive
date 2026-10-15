@@ -1,7 +1,11 @@
 package com.reallive.channelservice.channel.repository;
 
 import com.reallive.channelservice.channel.entity.ChannelEntity;
+import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
+import com.reallive.channelservice.channel.repository.projection.ChannelSummaryProjection;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +15,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID> {
+
+    @Query(value = """
+            select channel.name as name,
+                   channel.bannerUrl as bannerUrl,
+                   channel.avatarUrl as avatarUrl,
+                   channel.followerCount as followerCount
+            from ChannelEntity channel
+            where channel.status = :status
+            order by channel.createdAt desc, channel.id desc
+            """, countQuery = "select count(channel) from ChannelEntity channel where channel.status = :status")
+    Page<ChannelSummaryProjection> findChannelSummariesByStatus(@Param("status") ChannelStatus status, Pageable pageable);
 
     Optional<ChannelEntity> findByStreamerId(UUID streamerId);
 

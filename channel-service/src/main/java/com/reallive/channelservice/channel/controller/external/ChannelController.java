@@ -2,8 +2,10 @@ package com.reallive.channelservice.channel.controller.external;
 
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
+import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.common.dto.ApiResponse;
+import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.util.AuthenticationUserId;
 
 import jakarta.validation.Valid;
@@ -19,9 +21,11 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.InitBinder;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -33,6 +37,19 @@ import java.time.Instant;
 public class ChannelController {
 
     ChannelService channelService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<PageResponse<ChannelListResponse>>> getChannels(
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        PageResponse<ChannelListResponse> channels = channelService.getChannels(page, size);
+        return ResponseEntity.ok(ApiResponse.<PageResponse<ChannelListResponse>>builder()
+                .status(200)
+                .code(1000)
+                .message("Channels retrieved successfully")
+                .result(channels)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
 
     @InitBinder("updateChannelRequest")
     public void configureUpdateBinding(WebDataBinder binder) {

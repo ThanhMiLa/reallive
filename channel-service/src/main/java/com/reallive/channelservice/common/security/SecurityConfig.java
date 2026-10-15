@@ -29,7 +29,8 @@ public class SecurityConfig {
     JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
     private static final String[] PUBLIC_ENDPOINTS_GET = {
-            "/api/categories"
+            "/api/categories",
+            "/api/channels"
     };
 
     private static final String[] PUBLIC_ENDPOINTS_POST = {

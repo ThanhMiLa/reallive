@@ -4,11 +4,27 @@ import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
+import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
+import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.exception.AppException;
 
 import java.util.UUID;
 
 public interface ChannelService {
+
+    /**
+     * Retrieves a page of active, non-deleted channels for public discovery.
+     *
+     * <p>Channels are ordered by creation time descending, then ID descending for ties.
+     * Follower totals are read from the stored channel counter without counting follower records.
+     * No authentication or remote service call is required, and no data is changed.</p>
+     *
+     * @param page the zero-based page number; the page offset must not exceed {@link Integer#MAX_VALUE}
+     * @param size the requested page size, from 1 through 100
+     * @return the channel summaries and pagination totals; content is empty when the page has no results
+     * @throws AppException if pagination values are outside the supported bounds
+     */
+    PageResponse<ChannelListResponse> getChannels(int page, int size);
 
     /**
      * Creates an active channel with a deterministic slug for the supplied streamer.
