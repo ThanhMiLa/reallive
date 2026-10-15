@@ -11,7 +11,8 @@ public interface StreamerService {
      *
      * @param userId the user ID whose streamer record is checked
      * @return the streamer ID when the persisted streamer status is {@code ACTIVE}
-     * @throws AppException if the streamer does not exist or its status is not {@code ACTIVE}
+     * @throws AppException if the user does not exist or is not active, or if the streamer does not exist
+     *                      or its status is not {@code ACTIVE}
      */
     UUID getActiveStreamerIdByUserId(UUID userId);
 }

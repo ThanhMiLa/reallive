@@ -77,7 +77,7 @@ class StreamerControllerIntegrationTest {
 
         mvc.perform(get(ENDPOINT, streamer.getId()).contextPath(CONTEXT_PATH))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(ErrorCode.STREAMER_NOT_FOUND.getCode()));
+                .andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_FOUND.getCode()));
     }
 
     @Test
@@ -96,7 +96,7 @@ class StreamerControllerIntegrationTest {
     void rejectsAnUnknownUserId() throws Exception {
         mvc.perform(get(ENDPOINT, UUID.randomUUID()).contextPath(CONTEXT_PATH))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(ErrorCode.STREAMER_NOT_FOUND.getCode()));
+                .andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_FOUND.getCode()));
     }
 
     @ParameterizedTest
