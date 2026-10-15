@@ -2,6 +2,7 @@ package com.reallive.channelservice.channel.repository.specification;
 
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
+import com.reallive.channelservice.channel.entity.ChannelFollowerEntity;
 import com.reallive.channelservice.channel.entity.enums.CategoryStatus;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import jakarta.persistence.criteria.Root;
@@ -22,7 +23,7 @@ public final class ChannelSpecifications {
     }
 
     public static Specification<ChannelEntity> inActiveCategories(Set<UUID> categoryIds) {
-        if (categoryIds == null || categoryIds.isEmpty()) {
+        if (categoryIds == null) {
             return Specification.unrestricted();
         }
         return (root, query, builder) -> {
@@ -33,6 +34,20 @@ public final class ChannelSpecifications {
                             association.get("id").get("categoryId").in(categoryIds),
                             builder.equal(association.get("category").get("status"), CategoryStatus.ACTIVE));
             return builder.exists(membership);
+        };
+    }
+
+    /**
+     * Filters current follow membership for the authenticated user.
+     */
+    public static Specification<ChannelEntity> matchesFollowing(UUID userId, boolean following) {
+        return (root, query, builder) -> {
+            Subquery<UUID> membership = query.subquery(UUID.class);
+            Root<ChannelFollowerEntity> follower = membership.from(ChannelFollowerEntity.class);
+            membership.select(follower.get("id").get("channelId"))
+                    .where(builder.equal(follower.get("id").get("channelId"), root.get("id")),
+                            builder.equal(follower.get("id").get("userId"), userId));
+            return following ? builder.exists(membership) : builder.not(builder.exists(membership));
         };
     }
 

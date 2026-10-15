@@ -22,9 +22,16 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ChannelListRequest {
 
+    @Size(min = 1)
     Set<@NotNull UUID> categoryIds;
 
+    @Size(max = 255)
+
     String keyword;
+
+    @NotNull
+    @Builder.Default
+    Boolean following = false;
 
     @NotNull
     @Builder.Default
@@ -40,16 +47,4 @@ public class ChannelListRequest {
     @Max(100)
     @Builder.Default
     Integer size = 20;
-
-    /**
-     * Normalizes optional search text before validation and querying.
-     */
-    @Size(max = 255)
-    public String getKeyword() {
-        if (keyword == null) {
-            return null;
-        }
-        String normalized = keyword.strip();
-        return normalized.isEmpty() ? null : normalized;
-    }
 }

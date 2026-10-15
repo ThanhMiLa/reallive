@@ -17,20 +17,25 @@ public interface ChannelService {
      * Retrieves a filtered page of active, non-deleted channels for public discovery.
      *
      * <p>An optional category filter matches membership in any selected active category. Missing or
-     * inactive categories contribute no matches; an omitted or empty category set disables category filtering.
+     * inactive categories contribute no matches; an omitted category set disables category filtering.
+     * A supplied category set must contain at least one non-null UUID.
      * An optional keyword matches a literal substring of the name,
-     * description or slug, ignoring case. Category and keyword filters are combined with AND.
+     * description or slug, ignoring case. All supplied filters are combined with AND.
+     * The required following flag selects channels currently followed ({@code true}) or not followed
+     * ({@code false}) by the authenticated user, defaulting to {@code false} when omitted from the request.
      * Blank keywords disable text filtering. Channels are ordered by the requested follower-count
      * direction (descending by default), then creation time and ID descending for ties.
      * Follower totals are read from the stored channel counter without counting follower records.
-     * No authentication or remote service call is required, and no data is changed.</p>
+     * An authenticated user ID is required. No remote service call is required,
+     * and no data is changed.</p>
      *
-     * @param request the validated optional set of category UUIDs, keyword of at most 255 characters after stripping,
-     *                follower sort direction, zero-based page and page size from 1 through 100
+     * @param userId the required authenticated user UUID
+     * @param request the validated optional nonempty set of category UUIDs, keyword of at most 255 characters,
+     *                non-null following flag, follower sort direction, zero-based page and page size from 1 through 100
      * @return the channel summaries and pagination totals; content is empty when the page has no results
-     * @throws AppException if the page offset exceeds {@link Integer#MAX_VALUE}
+     * @throws AppException if the page offset exceeds {@link Integer#MAX_VALUE} or the authenticated user ID is missing
      */
-    PageResponse<ChannelListResponse> getChannels(ChannelListRequest request);
+    PageResponse<ChannelListResponse> getChannels(UUID userId, ChannelListRequest request);
 
     /**
      * Creates an active channel with a deterministic slug for the supplied streamer.

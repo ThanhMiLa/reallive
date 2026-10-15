@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @RestController("externalChannelController")
 @RequestMapping("/api/channels")
@@ -37,9 +38,12 @@ public class ChannelController {
     ChannelService channelService;
 
     @GetMapping
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<PageResponse<ChannelListResponse>>> getChannels(
-            @Valid @ModelAttribute("channelListRequest") ChannelListRequest request) {
-        PageResponse<ChannelListResponse> channels = channelService.getChannels(request);
+            @Valid @ModelAttribute("channelListRequest") ChannelListRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID userId = AuthenticationUserId.getAuthenticatedUserId(jwt);
+        PageResponse<ChannelListResponse> channels = channelService.getChannels(userId, request);
         return ResponseEntity.ok(ApiResponse.<PageResponse<ChannelListResponse>>builder()
                 .status(200)
                 .code(1000)

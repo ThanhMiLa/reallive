@@ -36,25 +36,30 @@ Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channe
 
 ## List channels
 
-`GET /channel/api/channels?page=0&size=20` returns a public page of active, non-deleted channels. Call through Gateway at `http://localhost:8888/channel/api/channels`; an access token is not required. Only this exact GET path is public; channel writes and child paths retain their authentication requirements. Supplied token cookies are still validated under the existing security policy.
+`GET /channel/api/channels?page=0&size=20` returns a page of active, non-deleted channels. Call through Gateway at `http://localhost:8888/channel/api/channels` with an authenticated access-token cookie. The required `following` flag defaults to `false`, so omitting it selects the current user's unfollowed channels and still requires login. The GET path remains `permitAll()` at the request-filter level; controller method security enforces `@PreAuthorize("isAuthenticated()")`. Gateway forwards the path while validating any supplied token cookies. Channel writes and child paths retain their authentication requirements.
 
 | Query parameter | Default | Rules |
 | --- | --- | --- |
-| `categoryIds` | No filter | Optional set of category UUIDs. Accepts one UUID, comma-separated UUIDs or repeated parameters. Matches membership in any selected active category. Duplicate IDs are ignored; missing or inactive categories contribute no matches. An omitted or empty set disables category filtering. |
-| `keyword` | No filter | Optional literal substring of `name`, `description` or `slug`, ignoring case and preserving accents. Leading/trailing whitespace is stripped; blank text disables the filter. At most 255 characters after stripping. `%`, `_`, `!` and backslash are treated literally. |
+| `categoryIds` | No category filter | Optional set of category UUIDs, validated with `@Size(min = 1)` and non-null elements. May be omitted, but a supplied set must not be empty. Accepts one UUID, comma-separated UUIDs or repeated parameters. Matches membership in any selected active category. Duplicate IDs are ignored; missing or inactive categories contribute no matches. |
+| `keyword` | No keyword filter | Optional literal substring of `name`, `description` or `slug`, ignoring case and preserving accents. `@Size(max = 255)` validates the raw field, including whitespace. The search Specification strips surrounding whitespace; blank text disables text filtering. `%`, `_`, `!` and backslash are treated literally. |
+| `following` | `false` | Non-null Boolean: `true` selects channels the authenticated user currently follows; `false` selects channels they do not follow. Omission retains the default; an explicitly empty value is rejected. |
 | `sortDirection` | `DESC` | Follower-count direction: `ASC` or `DESC`. |
 | `page` | `0` | Zero-based page number, at least zero. |
 | `size` | `20` | Page size from `1` through `100`. |
 
-Category and keyword filters combine with AND; selected categories combine with OR, as do keyword matches on the three searchable fields. Without filters, all active, non-deleted channels are eligible. The offset (`page * size`) must fit a signed 32-bit integer. Invalid UUIDs or empty elements within a nonempty category set, unsupported sort directions, overlong keywords, invalid pagination and explicitly empty `page`, `size` or `sortDirection` parameters return HTTP 400 / code `1004`. Database access failures return HTTP 503 / code `1003`. Empty or out-of-range pages return HTTP 200 with an empty `content` list and totals calculated using the same filters.
+All filters combine with AND; selected categories combine with OR, as do keyword matches on the three searchable fields. Without category or keyword filters, all active, non-deleted channels in the selected following group are eligible. User identity comes exclusively from the JWT subject, never from a client-supplied user ID. Users with no current follows receive an empty page for `following=true` and all otherwise eligible channels for `following=false`.
+
+The offset (`page * size`) must fit a signed 32-bit integer. Invalid UUIDs, empty category sets or null category elements, malformed Booleans, unsupported sort directions, overlong keywords, invalid pagination and explicitly empty `following`, `page`, `size` or `sortDirection` parameters return HTTP 400 / code `1004`. A valid list request without authentication, or with a missing/invalid user UUID in the JWT subject, returns HTTP 401 / code `1001`. Database access failures return HTTP 503 / code `1003`. Empty or out-of-range pages return HTTP 200 with an empty `content` list and totals calculated using the same filters.
 
 Channels are ordered by `follower_count DESC` by default, or `ASC` when requested, followed by `created_at DESC, id DESC` for ties. The channel model currently has no visibility field; all active, non-deleted channels are eligible for public discovery. Stream/VOD visibility is independent. Concurrent follower changes, additions or removals can shift offset-based page boundaries.
 
 ```shell
-curl 'http://localhost:8888/channel/api/channels?keyword=gaming&sortDirection=ASC&page=0&size=10'
-curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000&keyword=gaming&sortDirection=DESC'
-curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000,550e8400-e29b-41d4-a716-446655440001'
-curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000&categoryIds=550e8400-e29b-41d4-a716-446655440001'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels?keyword=gaming&sortDirection=ASC&page=0&size=10'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000&keyword=gaming&sortDirection=DESC'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000,550e8400-e29b-41d4-a716-446655440001'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-a716-446655440000&categoryIds=550e8400-e29b-41d4-a716-446655440001'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels?following=true&page=0&size=10'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels?following=false&page=0&size=20'
 ```
 
 ```json
@@ -80,9 +85,13 @@ curl 'http://localhost:8888/channel/api/channels?categoryIds=550e8400-e29b-41d4-
 }
 ```
 
-Each item contains exactly these four fields. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership and keyword predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. The query does not join or count `channel_followers` or load category entities, and calls no other service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
+Each item contains exactly these four fields. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership, keyword and following predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. Following filtering uses EXISTS / NOT EXISTS against `channel_followers` for the authenticated user's UUID. Follower totals still come from the stored counter, without counting follower rows. The query does not load category entities or call another service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
 
-`ChannelListIntegrationTest` exercises the real HTTP/security/service/persistence stack with Flyway migrations, public access, category/keyword filters in isolation and combination, literal wildcard handling, follower sorting in both directions, default/custom pagination, tied timestamps, stored follower totals, null images and invalid inputs. Gateway tests cover anonymous routing and protection of other channel operations.
+Authenticated frontend clients can request `following=true` and `following=false` in parallel for separate sections. Each section maintains its own page, size, totals and loading state. This endpoint no longer exposes an unfiltered anonymous mode.
+
+`ChannelListIntegrationTest` exercises the HTTP/service/persistence stack with authenticated requests, Flyway migrations, category/keyword filters in isolation and combination, literal wildcard handling, follower sorting in both directions, default/custom pagination, tied timestamps, stored follower totals, null images and invalid inputs. Gateway tests cover routing and protection of other channel operations.
+
+`ChannelFollowingIntegrationTest` runs the real cookie authentication and method-security stack, verifying both following states, user isolation, independent pagination, users with no follows, combined filters, current membership after follow/unfollow and invalid credentials or inputs. It also accepts the disposable PostgreSQL test properties documented below.
 
 ## Create channel
 

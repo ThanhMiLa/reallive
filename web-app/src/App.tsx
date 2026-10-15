@@ -76,11 +76,17 @@ function AppContent() {
         theme="dark"
         position="top-right"
         richColors
+        closeButton
+        offset={{ top: '70px', right: '16px' }}
         toastOptions={{
           style: {
             background: '#151822',
             border: '1px solid #232838',
             color: '#f3f4f6',
+          },
+          classNames: {
+            closeButton:
+              '!bg-[#1f2433] !text-gray-300 hover:!text-white !border-[#232838]',
           },
         }}
       />

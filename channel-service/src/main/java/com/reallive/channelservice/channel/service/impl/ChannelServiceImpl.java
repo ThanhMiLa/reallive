@@ -63,7 +63,10 @@ public class ChannelServiceImpl implements ChannelService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<ChannelListResponse> getChannels(ChannelListRequest request) {
+    public PageResponse<ChannelListResponse> getChannels(UUID userId, ChannelListRequest request) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
         if ((long) request.getPage() * request.getSize() > Integer.MAX_VALUE) {
             throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         }
@@ -75,7 +78,8 @@ public class ChannelServiceImpl implements ChannelService {
         // Build Specification
         Specification<ChannelEntity> specification = ChannelSpecifications.isActive()
                 .and(ChannelSpecifications.inActiveCategories(request.getCategoryIds()))
-                .and(ChannelSpecifications.matchesKeyword(request.getKeyword()));
+                .and(ChannelSpecifications.matchesKeyword(request.getKeyword()))
+                .and(ChannelSpecifications.matchesFollowing(userId, request.getFollowing()));
 
         //Query db base sorted, specification and map to dto response
         Page<ChannelListResponse> channels = channelRepository

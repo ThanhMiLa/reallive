@@ -13,16 +13,74 @@ import {
   Smile,
   Send,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth.store'
 
 interface ChatMessage {
   id: string
   badge?: string
   badgeColor?: string
-  user: string
-  color: string
-  text: string
+  user?: string
+  color?: string
+  text?: string
+  isReply?: boolean
+  replyTo?: string
+  replyText?: string
 }
+
+interface FeaturedStream {
+  id: string
+  title: string
+  streamer: string
+  avatar: string
+  viewers: string
+  category: string
+  language: string
+  tag: string
+  snapshot: string
+}
+
+const featuredStreams: FeaturedStream[] = [
+  {
+    id: '1',
+    title: 'LIVE: Team Vitality vs. MOUZ - ESL Pro League Grand Final',
+    streamer: 'ESLCS',
+    avatar:
+      'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=100&h=100&fit=crop',
+    viewers: '3.6K',
+    category: 'Counter-Strike 2',
+    language: 'English',
+    tag: 'ESL Official',
+    snapshot:
+      'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=1600&h=900&fit=crop',
+  },
+  {
+    id: '2',
+    title: 'VALORANT Champions Tour 2026 - Americas Stage 1 Playoffs',
+    streamer: 'VALORANT_Americas',
+    avatar:
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
+    viewers: '8.9K',
+    category: 'Valorant',
+    language: 'English',
+    tag: 'Official VCT',
+    snapshot:
+      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&h=900&fit=crop',
+  },
+  {
+    id: '3',
+    title: '🔥 ROAD TO RANK 1 RADIANT | DUO W/ TARIK',
+    streamer: 'TenZ',
+    avatar:
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+    viewers: '14.2K',
+    category: 'Valorant',
+    language: 'English',
+    tag: 'Pro Player',
+    snapshot:
+      'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1600&h=900&fit=crop',
+  },
+]
 
 const initialMessages: ChatMessage[] = [
   {
@@ -71,6 +129,26 @@ const initialMessages: ChatMessage[] = [
   },
   {
     id: '7',
+    isReply: true,
+    replyTo: 'smithereens117',
+    replyText: 'rip bro',
+  },
+  {
+    id: '8',
+    badge: '43',
+    badgeColor: 'bg-blue-600/20 text-blue-300',
+    user: 'markokokotko',
+    color: 'text-[#00f0ff]',
+    text: 'gg wp',
+  },
+  {
+    id: '9',
+    user: 'P0rsche_M0nkey',
+    color: 'text-purple-400',
+    text: 'lets go vita',
+  },
+  {
+    id: '10',
     badge: '11',
     badgeColor: 'bg-yellow-500/20 text-yellow-400',
     user: 'xThomasTv',
@@ -127,10 +205,23 @@ const streamsForYou = [
 ]
 
 export function HomePage() {
+  const [currentSlide, setCurrentSlide] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [inputMsg, setInputMsg] = useState('')
   const { isAuthenticated, user, openAuthModal } = useAuthStore()
+
+  const currentStream = featuredStreams[currentSlide]
+
+  const handleNextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % featuredStreams.length)
+  }
+
+  const handlePrevSlide = () => {
+    setCurrentSlide(
+      (prev) => (prev - 1 + featuredStreams.length) % featuredStreams.length,
+    )
+  }
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,12 +251,12 @@ export function HomePage() {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
           {/* Featured Video Player (Left 9 cols) */}
           <div className="xl:col-span-9 bg-black rounded-xl overflow-hidden relative border border-[#232838] flex flex-col justify-between shadow-2xl group min-h-[460px] md:min-h-[500px]">
-            {/* Background Image / Ambient Vignette */}
+            {/* Background Snapshot with Ambient Vignette Overlay */}
             <div className="absolute inset-0 z-0">
               <img
-                alt="CS2 Pro Match Stream"
-                className="w-full h-full object-cover filter brightness-[0.8] contrast-[1.05]"
-                src="https://images.unsplash.com/photo-1542751371-adc38448a05e?w=1600&h=900&fit=crop"
+                alt={currentStream.title}
+                className="w-full h-full object-cover filter brightness-[0.8] contrast-[1.05] transition-all duration-500"
+                src={currentStream.snapshot}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-transparent to-black/60" />
             </div>
@@ -179,13 +270,13 @@ export function HomePage() {
                 </span>
                 <span className="inline-flex items-center gap-1.5 bg-black/70 backdrop-blur-md text-gray-200 text-xs font-medium px-2.5 py-1 rounded-md border border-white/10">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  3.6K viewers
+                  {currentStream.viewers} viewers
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 rounded bg-yellow-500/80 text-black font-extrabold text-[11px] tracking-wider uppercase">
-                  ESL Official
+                  {currentStream.tag}
                 </span>
                 <button
                   type="button"
@@ -205,13 +296,13 @@ export function HomePage() {
             <div className="relative z-10 p-4 sm:p-5">
               <div className="bg-[#0f1118]/90 backdrop-blur-md rounded-xl p-4 border border-[#232838] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
                 {/* Streamer Info */}
-                <div className="flex items-center gap-3.5">
-                  <div className="relative">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="relative flex-shrink-0">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-purple-600 p-0.5">
                       <img
-                        alt="ESLCS Avatar"
+                        alt={currentStream.streamer}
                         className="w-full h-full rounded-full object-cover"
-                        src="https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=100&h=100&fit=crop"
+                        src={currentStream.avatar}
                       />
                     </div>
                     <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-[9px] text-black font-bold p-0.5 rounded-full">
@@ -219,54 +310,71 @@ export function HomePage() {
                     </span>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h2 className="font-bold text-base text-white tracking-wide">
-                        ESLCS
+                      <h2 className="font-bold text-base text-white tracking-wide truncate">
+                        {currentStream.streamer}
                       </h2>
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#00f0ff]" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#00f0ff] flex-shrink-0" />
                     </div>
                     <p className="text-xs sm:text-sm text-gray-300 font-medium line-clamp-1">
-                      LIVE: Team Vitality vs. MOUZ - ESL Pro League Grand Final
+                      {currentStream.title}
                     </p>
-                    <div className="flex items-center gap-2 mt-1.5">
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span className="text-[11px] font-medium bg-[#1f2433] text-gray-300 px-2 py-0.5 rounded">
-                        Counter-Strike 2
+                        {currentStream.category}
                       </span>
                       <span className="text-[11px] font-medium bg-[#1f2433] text-gray-400 px-2 py-0.5 rounded">
-                        English
+                        {currentStream.language}
                       </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Action CTA & Arrows */}
-                <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-gray-700/50">
+                <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-gray-700/50 flex-shrink-0">
+                  {/* Carousel Dots */}
                   <div className="flex items-center gap-1.5 hidden sm:flex">
-                    <span className="w-6 h-1.5 bg-[#00f0ff] rounded-full" />
-                    <span className="w-1.5 h-1.5 bg-gray-600 rounded-full" />
-                    <span className="w-1.5 h-1.5 bg-gray-600 rounded-full" />
+                    {featuredStreams.map((_, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setCurrentSlide(index)}
+                        className={`transition-all rounded-full cursor-pointer ${
+                          currentSlide === index
+                            ? 'w-6 h-1.5 bg-[#00f0ff]'
+                            : 'w-1.5 h-1.5 bg-gray-600 hover:bg-gray-400'
+                        }`}
+                        aria-label={`Slide ${index + 1}`}
+                      />
+                    ))}
                   </div>
 
+                  {/* Arrow Controls */}
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
+                      onClick={handlePrevSlide}
+                      aria-label="Previous slide"
                       className="w-8 h-8 rounded-lg bg-[#151822] hover:bg-[#1f2433] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#232838] cursor-pointer"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
                     <button
                       type="button"
+                      onClick={handleNextSlide}
+                      aria-label="Next slide"
                       className="w-8 h-8 rounded-lg bg-[#151822] hover:bg-[#1f2433] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#232838] cursor-pointer"
                     >
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
+                  {/* Watch CTA Button */}
                   <button
                     type="button"
                     onClick={() => {
-                      if (!isAuthenticated) openAuthModal('login')
+                      toast.info(`Đang phát: ${currentStream.title}`)
                     }}
                     className="px-5 py-2.5 bg-[#00f0ff] hover:bg-[#00c8d6] text-black font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 neon-glow-cyan transition cursor-pointer"
                   >
@@ -291,12 +399,14 @@ export function HomePage() {
               <div className="flex items-center gap-2 text-gray-400">
                 <button
                   type="button"
+                  aria-label="Users"
                   className="hover:text-white text-xs p-1 cursor-pointer"
                 >
                   <Users className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
+                  aria-label="Settings"
                   className="hover:text-white text-xs p-1 cursor-pointer"
                 >
                   <Sliders className="w-3.5 h-3.5" />
@@ -306,30 +416,48 @@ export function HomePage() {
 
             {/* Chat Message List */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-              {messages.map((m) => (
-                <div key={m.id} className="leading-relaxed">
-                  {m.badge && (
-                    <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold mr-1 ${
-                        m.badgeColor || 'bg-yellow-500/20 text-yellow-400'
-                      }`}
-                    >
-                      {m.badge}
-                    </span>
-                  )}
-                  <span
-                    className={`font-bold hover:underline cursor-pointer ${m.color}`}
+              {messages.map((m) =>
+                m.isReply ? (
+                  <div
+                    key={m.id}
+                    className="leading-relaxed pl-2 border-l-2 border-gray-700 text-gray-400 text-[11px]"
                   >
-                    {m.user}:
-                  </span>
-                  <span className="text-gray-300 pl-1">{m.text}</span>
-                </div>
-              ))}
+                    <p>
+                      Replying to{' '}
+                      <span className="text-indigo-300 font-medium">
+                        {m.replyTo}
+                      </span>
+                      : {m.replyText}
+                    </p>
+                  </div>
+                ) : (
+                  <div key={m.id} className="leading-relaxed">
+                    {m.badge && (
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold mr-1 ${
+                          m.badgeColor || 'bg-yellow-500/20 text-yellow-400'
+                        }`}
+                      >
+                        {m.badge}
+                      </span>
+                    )}
+                    <span
+                      className={`font-bold hover:underline cursor-pointer ${m.color}`}
+                    >
+                      {m.user}:
+                    </span>
+                    <span className="text-gray-300 pl-1">{m.text}</span>
+                  </div>
+                ),
+              )}
             </div>
 
             {/* Chat Input Bar */}
             <div className="p-3 border-t border-[#232838] bg-[#0c0d14]">
-              <form onSubmit={handleSendMessage} className="relative flex items-center">
+              <form
+                onSubmit={handleSendMessage}
+                className="relative flex items-center"
+              >
                 <input
                   type="text"
                   value={inputMsg}
@@ -360,7 +488,11 @@ export function HomePage() {
               </form>
               <div className="flex items-center justify-between mt-2 text-[11px] text-gray-500">
                 <span>Slow mode: 3s</span>
-                <button type="button" className="hover:text-gray-300 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => toast.info('Kênh đang bật quy tắc trò chuyện văn minh.')}
+                  className="hover:text-gray-300 cursor-pointer"
+                >
                   Rules
                 </button>
               </div>
@@ -393,7 +525,7 @@ export function HomePage() {
             <article
               key={stream.id}
               onClick={() => {
-                if (!isAuthenticated) openAuthModal('login')
+                toast.info(`Xem stream: ${stream.title}`)
               }}
               className="bg-[#0f1118] border border-[#232838] rounded-xl overflow-hidden hover:border-[#00f0ff]/50 transition duration-200 flex flex-col group cursor-pointer"
             >

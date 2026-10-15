@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ChannelListIntegrationTest {
 
     private static final String PATH = "/channel/api/channels";
+    private static final UUID VIEWER_ID = UUID.randomUUID();
     private static final LocalDateTime CREATED_AT = LocalDateTime.of(2026, 1, 1, 0, 0);
 
     @Autowired
@@ -47,8 +49,8 @@ class ChannelListIntegrationTest {
     private JdbcTemplate jdbc;
 
     @Test
-    void anonymousRequestReturnsEmptyPageWithDefaultPaginationAndStandardEnvelope() throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel"))
+    void authenticatedRequestReturnsEmptyPageWithDefaultPaginationAndStandardEnvelope() throws Exception {
+        mvc.perform(authenticatedListRequest())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.code").value(1000))
@@ -69,7 +71,7 @@ class ChannelListIntegrationTest {
         jdbc.update("UPDATE channels SET banner_url = ?, avatar_url = ?, follower_count = ? WHERE id = ?",
                 "https://example.com/banner.png", "https://example.com/avatar.png", 3_000_000_000L, active);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("size", "1"))
+        mvc.perform(authenticatedListRequest().param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.content[0]", aMapWithSize(4)))
@@ -89,7 +91,7 @@ class ChannelListIntegrationTest {
         insertChannel("Banned", "BANNED", false, CREATED_AT.plusDays(3));
         insertChannel("Deleted", "ACTIVE", true, CREATED_AT.plusDays(4));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("page", "0").param("size", "2"))
+        mvc.perform(authenticatedListRequest().param("page", "0").param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(2)))
                 .andExpect(jsonPath("$.result.content[0].name").value("Oldest"))
@@ -99,7 +101,7 @@ class ChannelListIntegrationTest {
                 .andExpect(jsonPath("$.result.totalElements").value(3))
                 .andExpect(jsonPath("$.result.totalPages").value(2));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("page", "1").param("size", "2"))
+        mvc.perform(authenticatedListRequest().param("page", "1").param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.content[0].name").value("Newest"))
@@ -107,7 +109,7 @@ class ChannelListIntegrationTest {
                 .andExpect(jsonPath("$.result.totalElements").value(3))
                 .andExpect(jsonPath("$.result.totalPages").value(2));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("page", "5").param("size", "2"))
+        mvc.perform(authenticatedListRequest().param("page", "5").param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(0)))
                 .andExpect(jsonPath("$.result.page").value(5))
@@ -125,7 +127,7 @@ class ChannelListIntegrationTest {
         jdbc.update("UPDATE channels SET id = ? WHERE id = ?",
                 UUID.fromString("00000000-0000-0000-0000-000000000002"), second);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("sortDirection", direction).param("size", "1"))
+        mvc.perform(authenticatedListRequest().param("sortDirection", direction).param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].name").value("Second"))
                 .andExpect(jsonPath("$.result.content[0]", aMapWithSize(4)))
@@ -133,7 +135,7 @@ class ChannelListIntegrationTest {
                 .andExpect(jsonPath("$.result.content[0].avatarUrl").value(nullValue()))
                 .andExpect(jsonPath("$.result.content[0].numberOfFollower").value(0));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("sortDirection", direction)
+        mvc.perform(authenticatedListRequest().param("sortDirection", direction)
                         .param("page", "1").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].name").value("First"));
@@ -146,7 +148,7 @@ class ChannelListIntegrationTest {
         insertChannel("Middle", 200, CREATED_AT.plusDays(1));
         insertChannel("Popular", 3_000_000_000L, CREATED_AT);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("sortDirection", direction))
+        mvc.perform(authenticatedListRequest().param("sortDirection", direction))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(3)))
                 .andExpect(jsonPath("$.result.content[0].name").value(first))
@@ -161,7 +163,7 @@ class ChannelListIntegrationTest {
         insertChannel("Unrelated", "ACTIVE", false, CREATED_AT.plusDays(1));
         jdbc.update("UPDATE channels SET " + field + " = ? WHERE id = ?", "preGaMiNgpost", matching);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("keyword", "  GAMING  ").param("size", "1"))
+        mvc.perform(authenticatedListRequest().param("keyword", "  GAMING  ").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.content[0].name").value(field.equals("name") ? "preGaMiNgpost" : "Matching"))
@@ -174,7 +176,7 @@ class ChannelListIntegrationTest {
         insertChannel("Contains " + keyword, "ACTIVE", false, CREATED_AT);
         insertChannel("Contains ordinary text", "ACTIVE", false, CREATED_AT);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("keyword", keyword))
+        mvc.perform(authenticatedListRequest().param("keyword", keyword))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.content[0].name").value("Contains " + keyword))
@@ -185,7 +187,7 @@ class ChannelListIntegrationTest {
     @ValueSource(strings = {"", "  ", "\t", "\u2003"})
     void blankKeywordLeavesChannelsUnfiltered(String keyword) throws Exception {
         insertChannel("Visible", "ACTIVE", false, CREATED_AT);
-        mvc.perform(get(PATH).contextPath("/channel").param("keyword", keyword))
+        mvc.perform(authenticatedListRequest().param("keyword", keyword))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.totalElements").value(1));
@@ -194,7 +196,7 @@ class ChannelListIntegrationTest {
     @Test
     void noKeywordMatchReturnsAnEmptyPage() throws Exception {
         insertChannel("Visible", "ACTIVE", false, CREATED_AT);
-        mvc.perform(get(PATH).contextPath("/channel").param("keyword", "unmatched"))
+        mvc.perform(authenticatedListRequest().param("keyword", "unmatched"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(0)))
                 .andExpect(jsonPath("$.result.totalElements").value(0))
@@ -202,15 +204,18 @@ class ChannelListIntegrationTest {
     }
 
     @Test
-    void validatesKeywordLengthAfterTrimming() throws Exception {
+    void validatesKeywordLengthBeforeSearchNormalization() throws Exception {
         String keyword = "a".repeat(255);
         UUID channel = insertChannel("Matching", "ACTIVE", false, CREATED_AT);
         jdbc.update("UPDATE channels SET description = ? WHERE id = ?", keyword, channel);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("keyword", "  " + keyword + "  "))
+        mvc.perform(authenticatedListRequest().param("keyword", keyword))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)));
-        mvc.perform(get(PATH).contextPath("/channel").param("keyword", keyword + "a"))
+        mvc.perform(authenticatedListRequest().param("keyword", keyword + "a"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(1004));
+        mvc.perform(authenticatedListRequest().param("keyword", "  " + keyword + "  "))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(1004));
     }
@@ -226,7 +231,7 @@ class ChannelListIntegrationTest {
         assignCategory(member, other);
         assignCategory(excluded, other);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", selected.toString()).param("size", "1"))
+        mvc.perform(authenticatedListRequest().param("categoryIds", selected.toString()).param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.content[0].name").value("Member"))
@@ -240,12 +245,12 @@ class ChannelListIntegrationTest {
         UUID member = insertChannel("Visible without category filter", "ACTIVE", false, CREATED_AT);
         assignCategory(member, inactive);
         for (UUID categoryId : new UUID[]{UUID.randomUUID(), inactive}) {
-            mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", categoryId.toString()))
+            mvc.perform(authenticatedListRequest().param("categoryIds", categoryId.toString()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.result.content", hasSize(0)))
                     .andExpect(jsonPath("$.result.totalElements").value(0));
         }
-        mvc.perform(get(PATH).contextPath("/channel"))
+        mvc.perform(authenticatedListRequest())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)));
     }
@@ -270,7 +275,7 @@ class ChannelListIntegrationTest {
                 ? new String[]{firstCategory + "," + secondCategory + "," + firstCategory}
                 : new String[]{firstCategory.toString(), secondCategory.toString(), firstCategory.toString()};
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", values).param("size", "2"))
+        mvc.perform(authenticatedListRequest().param("categoryIds", values).param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(2)))
                 .andExpect(jsonPath("$.result.content[0].name").value("First only"))
@@ -278,14 +283,14 @@ class ChannelListIntegrationTest {
                 .andExpect(jsonPath("$.result.totalElements").value(3))
                 .andExpect(jsonPath("$.result.totalPages").value(2));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", values)
+        mvc.perform(authenticatedListRequest().param("categoryIds", values)
                         .param("page", "1").param("size", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
                 .andExpect(jsonPath("$.result.content[0].name").value("Second only"))
                 .andExpect(jsonPath("$.result.totalElements").value(3));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", values)
+        mvc.perform(authenticatedListRequest().param("categoryIds", values)
                         .param("keyword", "only").param("sortDirection", "ASC").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].name").value("Second only"))
@@ -300,7 +305,7 @@ class ChannelListIntegrationTest {
         assignCategory(insertChannel("Visible", 100, CREATED_AT), active);
         assignCategory(insertChannel("Inactive category only", 200, CREATED_AT), inactive);
 
-        mvc.perform(get(PATH).contextPath("/channel")
+        mvc.perform(authenticatedListRequest()
                         .param("categoryIds", active + "," + inactive + "," + UUID.randomUUID()).param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
@@ -309,12 +314,11 @@ class ChannelListIntegrationTest {
     }
 
     @Test
-    void emptyCategorySetDisablesCategoryFiltering() throws Exception {
+    void rejectsAnExplicitlyEmptyCategorySet() throws Exception {
         insertChannel("Uncategorised", 100, CREATED_AT);
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", ""))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.content[0].name").value("Uncategorised"))
-                .andExpect(jsonPath("$.result.totalElements").value(1));
+        mvc.perform(authenticatedListRequest().param("categoryIds", ""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(1004));
     }
 
     @ParameterizedTest
@@ -322,7 +326,7 @@ class ChannelListIntegrationTest {
     void rejectsInvalidOrEmptyCategoryElementsAlongsideValidIds(String format) throws Exception {
         UUID active = insertCategory("ACTIVE");
         for (String invalid : new String[]{"not-a-uuid", ""}) {
-            MockHttpServletRequestBuilder request = get(PATH).contextPath("/channel");
+            MockHttpServletRequestBuilder request = authenticatedListRequest();
             String[] values = format.equals("comma")
                     ? new String[]{active + "," + invalid}
                     : new String[]{active.toString(), invalid};
@@ -346,7 +350,7 @@ class ChannelListIntegrationTest {
         assignCategory(insertChannel("Gaming banned", "BANNED", false, CREATED_AT), categoryId);
         assignCategory(insertChannel("Gaming deleted", "ACTIVE", true, CREATED_AT), categoryId);
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", categoryId.toString())
+        mvc.perform(authenticatedListRequest().param("categoryIds", categoryId.toString())
                         .param("keyword", "gaming").param("sortDirection", "ASC").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
@@ -354,13 +358,13 @@ class ChannelListIntegrationTest {
                 .andExpect(jsonPath("$.result.totalElements").value(2))
                 .andExpect(jsonPath("$.result.totalPages").value(2));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", categoryId.toString())
+        mvc.perform(authenticatedListRequest().param("categoryIds", categoryId.toString())
                         .param("keyword", "gaming").param("sortDirection", "ASC").param("page", "1").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].name").value("Gaming popular"))
                 .andExpect(jsonPath("$.result.totalElements").value(2));
 
-        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", categoryId.toString())
+        mvc.perform(authenticatedListRequest().param("categoryIds", categoryId.toString())
                         .param("keyword", "gaming").param("page", "5").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(0)))
@@ -371,7 +375,7 @@ class ChannelListIntegrationTest {
     @ParameterizedTest
     @CsvSource({"categoryIds,not-a-uuid", "sortDirection,INVALID", "sortDirection,followerCount"})
     void rejectsMalformedFilterAndSortParameters(String parameter, String value) throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel").param(parameter, value))
+        mvc.perform(authenticatedListRequest().param(parameter, value))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(1004))
                 .andExpect(jsonPath("$.result").value(false));
@@ -380,7 +384,7 @@ class ChannelListIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"page", "size", "sortDirection"})
     void rejectsExplicitlyEmptyRequiredParameters(String parameter) throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel").param(parameter, ""))
+        mvc.perform(authenticatedListRequest().param(parameter, ""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(1004));
     }
@@ -390,7 +394,7 @@ class ChannelListIntegrationTest {
         for (int index = 0; index < 21; index++) {
             insertChannel("Channel " + index, "ACTIVE", false, CREATED_AT.plusDays(index));
         }
-        mvc.perform(get(PATH).contextPath("/channel"))
+        mvc.perform(authenticatedListRequest())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(20)))
                 .andExpect(jsonPath("$.result.totalElements").value(21))
@@ -399,7 +403,7 @@ class ChannelListIntegrationTest {
 
     @Test
     void acceptsMaximumPageSize() throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel").param("size", "100"))
+        mvc.perform(authenticatedListRequest().param("size", "100"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.size").value(100));
     }
@@ -408,7 +412,7 @@ class ChannelListIntegrationTest {
     @CsvSource({"page,-1", "size,0", "size,-1", "size,101", "page,abc", "size,abc",
             "page,2147483648", "size,2147483648", "page,2147483647"})
     void rejectsInvalidPaginationWithStandardBadRequest(String parameter, String value) throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel").param(parameter, value))
+        mvc.perform(authenticatedListRequest().param(parameter, value))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.code").value(1004))
@@ -432,6 +436,11 @@ class ChannelListIntegrationTest {
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, id, UUID.randomUUID(), name, id.toString(), status, createdAt, deleted ? createdAt : null);
         return id;
+    }
+
+    private MockHttpServletRequestBuilder authenticatedListRequest() {
+        return get(PATH).contextPath("/channel")
+                .with(jwt().jwt(token -> token.subject(VIEWER_ID.toString())));
     }
 
     private UUID insertChannel(String name, long followerCount, LocalDateTime createdAt) {
