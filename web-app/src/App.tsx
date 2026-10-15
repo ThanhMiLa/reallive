@@ -3,6 +3,7 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
   useLocation,
   useNavigate,
 } from 'react-router-dom'
@@ -11,6 +12,10 @@ import { Toaster } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { HomePage } from '@/pages/HomePage'
+import { BrowsePage } from '@/pages/browse/BrowsePage'
+import { BrowseLivestreamsTab } from '@/pages/browse/tabs/BrowseLivestreamsTab'
+import { BrowseCategoriesTab } from '@/pages/browse/tabs/BrowseCategoriesTab'
+import { BrowseChannelsTab } from '@/pages/browse/tabs/BrowseChannelsTab'
 import { AuthModal } from '@/components/auth/AuthModal'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -64,6 +69,12 @@ function AppContent() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<HomePage />} />
           <Route path="/register" element={<HomePage />} />
+          <Route path="/browse" element={<BrowsePage />}>
+            <Route index element={<Navigate to="livestreams" replace />} />
+            <Route path="livestreams" element={<BrowseLivestreamsTab />} />
+            <Route path="categories" element={<BrowseCategoriesTab />} />
+            <Route path="channels" element={<BrowseChannelsTab />} />
+          </Route>
           <Route path="*" element={<HomePage />} />
         </Routes>
       </div>
@@ -77,7 +88,7 @@ function AppContent() {
         position="top-right"
         richColors
         closeButton
-        offset={{ top: '70px', right: '16px' }}
+        offset={{ top: '76px', right: '16px' }}
         toastOptions={{
           style: {
             background: '#151822',

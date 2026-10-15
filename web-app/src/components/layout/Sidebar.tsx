@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router-dom'
 import { Home, Compass, Heart, Settings } from 'lucide-react'
 import { useUiStore } from '@/stores/ui.store'
 
@@ -84,38 +85,47 @@ export function Sidebar() {
         {/* Primary Navigation: Home, Browse, Following (No Drops & Rewards) */}
         <nav className="space-y-1">
           {/* Active Tab: Home */}
-          <a
-            href="/"
+          <NavLink
+            to="/"
+            end
             title="Home"
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-semibold bg-[#151822] text-[#00f0ff] border-l-4 border-[#00f0ff] shadow-sm transition ${
-              isSidebarCollapsed ? 'justify-center px-0' : ''
-            }`}
+            className={({ isActive }) =>
+              `flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm transition ${
+                isActive
+                  ? 'font-semibold bg-[#151822] text-[#00f0ff] border-l-4 border-[#00f0ff] shadow-sm'
+                  : 'font-medium text-gray-400 hover:text-white hover:bg-[#151822]'
+              } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`
+            }
           >
             <Home className="w-4 h-4 flex-shrink-0" />
             {!isSidebarCollapsed && <span>Home</span>}
-          </a>
+          </NavLink>
 
           {/* Browse */}
-          <a
-            href="#browse"
+          <NavLink
+            to="/browse"
             title="Browse"
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-[#151822] transition ${
-              isSidebarCollapsed ? 'justify-center px-0' : ''
-            }`}
+            className={({ isActive }) =>
+              `flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm transition ${
+                isActive
+                  ? 'font-semibold bg-[#151822] text-[#00f0ff] border-l-4 border-[#00f0ff] shadow-sm'
+                  : 'font-medium text-gray-400 hover:text-white hover:bg-[#151822]'
+              } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`
+            }
           >
-            <Compass className="w-4 h-4 flex-shrink-0 text-gray-400 hover:text-white" />
+            <Compass className="w-4 h-4 flex-shrink-0" />
             {!isSidebarCollapsed && <span>Browse</span>}
-          </a>
+          </NavLink>
 
           {/* Following */}
           <a
             href="#following"
             title="Following"
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-[#151822] transition ${
+            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-[#151822] transition ${
               isSidebarCollapsed ? 'justify-center px-0' : ''
             }`}
           >
-            <Heart className="w-4 h-4 flex-shrink-0 text-gray-400 hover:text-white" />
+            <Heart className="w-4 h-4 flex-shrink-0" />
             {!isSidebarCollapsed && <span>Following</span>}
           </a>
         </nav>

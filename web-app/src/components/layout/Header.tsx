@@ -44,7 +44,7 @@ export function Header() {
   }
 
   return (
-    <header className="h-14 bg-[#0f1118] border-b border-[#232838] flex items-center justify-between px-4 sticky top-0 z-40 select-none">
+    <header className="h-[62px] bg-[#0f1118] border-b border-[#232838] flex items-center justify-between px-4 sticky top-0 z-40 select-none">
       {/* Left: 3-bar Hamburger Menu & Brand Name (Text Only) */}
       <div className="flex items-center gap-3">
         {/* Dấu 3 gạch để bật tắt navbar */}
@@ -59,7 +59,7 @@ export function Header() {
 
         {/* Chữ RealLive - Không dùng logo icon như template */}
         <a href="/" className="flex items-center group">
-          <span className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#00f0ff] bg-clip-text text-transparent font-outfit">
+          <span className="text-[34px] sm:text-[43px] font-black tracking-tight leading-none bg-gradient-to-r from-white via-slate-100 to-[#00f0ff] bg-clip-text text-transparent font-outfit">
             Real<span className="text-[#00f0ff]">Live</span>
           </span>
         </a>
@@ -80,7 +80,7 @@ export function Header() {
       </div>
 
       {/* Right: Notification Bell & User Avatar */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
         {/* Hình chuông thông báo */}
         <button
           type="button"
@@ -88,7 +88,7 @@ export function Header() {
           aria-label="Notifications"
           className="p-2 text-gray-300 hover:text-white rounded-lg hover:bg-[#1f2433] relative transition cursor-pointer"
         >
-          <Bell className="w-4 h-4" />
+          <Bell className="w-5 h-5" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#00f0ff] rounded-full ring-2 ring-[#0f1118]" />
         </button>
 
@@ -104,14 +104,14 @@ export function Header() {
               <img
                 src={user.avatarUrl}
                 alt={user.displayName || 'Avatar'}
-                className="w-8 h-8 rounded-full object-cover border border-[#00f0ff]/70"
+                className="w-9 h-9 rounded-full object-cover border border-[#00f0ff]/70"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white border border-[#00f0ff]/70 shadow-sm">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-sm font-bold text-white border border-[#00f0ff]/70 shadow-sm">
                 {user?.displayName ? (
                   user.displayName.charAt(0).toUpperCase()
                 ) : (
-                  <UserIcon className="w-4 h-4 text-white" />
+                  <UserIcon className="w-4.5 h-4.5 text-white" />
                 )}
               </div>
             )}
