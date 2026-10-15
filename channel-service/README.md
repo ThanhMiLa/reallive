@@ -70,6 +70,7 @@ curl -b cookies.txt 'http://localhost:8888/channel/api/channels?following=false&
   "result": {
     "content": [
       {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
         "name": "My channel",
         "bannerUrl": "https://example.com/banner.png",
         "avatarUrl": "https://example.com/avatar.png",
@@ -85,7 +86,7 @@ curl -b cookies.txt 'http://localhost:8888/channel/api/channels?following=false&
 }
 ```
 
-Each item contains exactly these four fields. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership, keyword and following predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. Following filtering uses EXISTS / NOT EXISTS against `channel_followers` for the authenticated user's UUID. Follower totals still come from the stored counter, without counting follower rows. The query does not load category entities or call another service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
+Each item contains exactly these five fields, including the channel UUID in `id`. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership, keyword and following predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. Following filtering uses EXISTS / NOT EXISTS against `channel_followers` for the authenticated user's UUID. Follower totals still come from the stored counter, without counting follower rows. The query does not load category entities or call another service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
 
 Authenticated frontend clients can request `following=true` and `following=false` in parallel for separate sections. Each section maintains its own page, size, totals and loading state. This endpoint no longer exposes an unfiltered anonymous mode.
 

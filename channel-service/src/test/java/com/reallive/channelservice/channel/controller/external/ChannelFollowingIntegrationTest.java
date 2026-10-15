@@ -79,7 +79,8 @@ class ChannelFollowingIntegrationTest {
         follow(popular, userId);
         follow(popular, otherUser);
         follow(insertChannel("Followed smaller", 100), userId);
-        follow(insertChannel("Other user", 400), otherUser);
+        UUID otherUserChannel = insertChannel("Other user", 400);
+        follow(otherUserChannel, otherUser);
         insertChannel("New channel", 200);
         UUID banned = insertChannel("Banned", 1000);
         UUID deleted = insertChannel("Deleted", 1000);
@@ -92,7 +93,9 @@ class ChannelFollowingIntegrationTest {
                         .param("following", following).param("userId", otherUser.toString()).param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content", hasSize(1)))
-                .andExpect(jsonPath("$.result.content[0]", aMapWithSize(4)))
+                .andExpect(jsonPath("$.result.content[0]", aMapWithSize(5)))
+                .andExpect(jsonPath("$.result.content[0].id")
+                        .value((Boolean.parseBoolean(following) ? popular : otherUserChannel).toString()))
                 .andExpect(jsonPath("$.result.content[0].name").value(first))
                 .andExpect(jsonPath("$.result.page").value(0))
                 .andExpect(jsonPath("$.result.totalElements").value(2))
