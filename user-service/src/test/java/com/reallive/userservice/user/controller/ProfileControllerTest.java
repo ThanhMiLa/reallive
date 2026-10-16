@@ -241,7 +241,7 @@ class ProfileControllerTest {
     }
 
     @Test
-    void getMyProfileRejectsBannedAccounts() throws Exception {
+    void getProfileDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         UserEntity user = createUser("viewer");
         user.setStatus(UserStatus.BANNED);
         user = userRepository.saveAndFlush(user);
@@ -249,8 +249,8 @@ class ProfileControllerTest {
         authenticate(user.getId().toString());
 
         mockMvc.perform(get("/api/users/me").cookie(accessCookie()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_ACTIVE.getCode()));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000));
     }
 
     @Test
@@ -426,13 +426,13 @@ class ProfileControllerTest {
     }
 
     @Test
-    void updateMyProfileRejectsBannedAccountsWithoutUploading() throws Exception {
+    void updateProfileDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         UserEntity user = createProfile();
         user.setStatus(UserStatus.BANNED);
         userRepository.saveAndFlush(user);
         authenticate(user.getId().toString());
-        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/users/me").file(avatar()).cookie(accessCookie()))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/users/me").param("displayName", "Updated").cookie(accessCookie()))
+                .andExpect(status().isOk());
         verifyNoInteractions(storage);
     }
 

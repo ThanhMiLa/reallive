@@ -79,10 +79,6 @@ public class UserEntity extends BaseEntity {
     @Column(name = "auth_revision", nullable = false)
     long authRevision;
 
-    public boolean isActive() {
-        return this.status == UserStatus.ACTIVE;
-    }
-
     @Override
     public final boolean equals(Object other) {
         if (this == other) {

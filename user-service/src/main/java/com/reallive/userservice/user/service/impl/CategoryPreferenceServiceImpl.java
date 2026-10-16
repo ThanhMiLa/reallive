@@ -5,7 +5,6 @@ import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
-import com.reallive.userservice.common.util.UserValidator;
 import com.reallive.userservice.user.dto.request.UpdateCategoryPreferencesRequest;
 import com.reallive.userservice.user.dto.response.CategoryPreferencesResponse;
 import com.reallive.userservice.user.entity.UserCategoryPreferenceEntity;
@@ -38,7 +37,7 @@ public class CategoryPreferenceServiceImpl implements CategoryPreferenceService 
     @Override
     @Transactional(readOnly = true)
     public CategoryPreferencesResponse getCategoryPreferences(UUID userId) {
-        validateActiveUser(userId);
+        findUser(userId);
         List<UUID> categoryIds = userCategoryPreferenceRepository.findCategoryIdsByUserId(userId);
         return CategoryPreferencesResponse.builder()
                 .categoryIds(categoryIds)
@@ -47,7 +46,7 @@ public class CategoryPreferenceServiceImpl implements CategoryPreferenceService 
 
     @Override
     public CategoryPreferencesResponse updateCategoryPreferences(UUID userId, UpdateCategoryPreferencesRequest request) {
-        UserEntity user = validateActiveUser(userId);
+        UserEntity user = findUser(userId);
         Set<UUID> uniqueCategoryIds = new LinkedHashSet<>(request.getCategoryIds());
         channelClientResolver.validateCategories(uniqueCategoryIds);
         persistCategoryPreferences(user, uniqueCategoryIds);
@@ -56,10 +55,9 @@ public class CategoryPreferenceServiceImpl implements CategoryPreferenceService 
                 .build();
     }
 
-    private UserEntity validateActiveUser(UUID userId) {
+    private UserEntity findUser(UUID userId) {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        UserValidator.validateActive(user);
         return user;
     }
 

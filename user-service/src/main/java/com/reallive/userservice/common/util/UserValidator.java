@@ -9,12 +9,6 @@ public final class UserValidator {
     private UserValidator() {
     }
 
-    public static void validateActive(UserEntity user) {
-        if (!user.isActive()) {
-            throw new AppException(ErrorCode.USER_NOT_ACTIVE);
-        }
-    }
-
     public static void validateEmailNotVerified(UserEntity user) {
         if (user.isEmailVerified()) {
             throw new AppException(ErrorCode.EMAIL_ALREADY_VERIFIED);

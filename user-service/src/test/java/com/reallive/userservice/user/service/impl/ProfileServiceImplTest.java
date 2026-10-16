@@ -14,6 +14,7 @@ import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.mapper.ProfileMapper;
 import com.reallive.userservice.user.repository.ProfileRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,12 +26,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import javax.imageio.ImageIO;
-
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,8 +42,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -148,14 +148,12 @@ class ProfileServiceImplTest {
     }
 
     @Test
-    void updateRejectsBannedAccountsBeforeUploading() throws Exception {
+    void updateDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         profileForUpdate();
         user.setStatus(UserStatus.BANNED);
-        AppException exception = assertThrows(AppException.class,
-                () -> profileService.updateMyProfile(user.getId(), avatarRequest()));
-        assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
-        verifyNoInteractions(storage);
-        verify(profileRepository, never()).save(any());
+        Assertions.assertDoesNotThrow(() -> profileService.updateMyProfile(user.getId(),
+                UpdateProfileRequest.builder().displayName("Updated").build()));
+        verify(profileRepository).save(any());
     }
 
     @Test
@@ -433,13 +431,11 @@ class ProfileServiceImplTest {
     }
 
     @Test
-    void getMyProfileRejectsBannedAccounts() {
+    void getProfileDoesNotRepeatGatewayAccountStatusCheck() {
         user.setStatus(UserStatus.BANNED);
         ProfileEntity profile = ProfileEntity.builder().user(user).displayName("Viewer").build();
         when(profileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
 
-        AppException exception = assertThrows(AppException.class, () -> profileService.getMyProfile(user.getId()));
-
-        assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
+        Assertions.assertDoesNotThrow(() -> profileService.getMyProfile(user.getId()));
     }
 }

@@ -152,14 +152,14 @@ class CategoryPreferenceControllerTest {
     }
 
     @Test
-    void getCategoryPreferencesReturnsForbiddenWhenUserIsBanned() throws Exception {
+    void getPreferencesDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         UserEntity user = createUser("banneduser", UserStatus.BANNED);
         authenticate(user.getId().toString());
 
         mockMvc.perform(get("/api/users/me/category-preferences").cookie(accessCookie()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.status").value(403))
-                .andExpect(jsonPath("$.code").value(1003));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.code").value(1000));
     }
 
     @Test
@@ -261,7 +261,7 @@ class CategoryPreferenceControllerTest {
     }
 
     @Test
-    void updateCategoryPreferencesReturnsForbiddenWhenUserIsBanned() throws Exception {
+    void updatePreferencesDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         UserEntity user = createUser("banneduser", UserStatus.BANNED);
         authenticate(user.getId().toString());
 
@@ -269,11 +269,11 @@ class CategoryPreferenceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryIds\":[\"" + UUID.randomUUID() + "\"]}")
                         .cookie(accessCookie()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.status").value(403))
-                .andExpect(jsonPath("$.code").value(1003));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.code").value(1000));
 
-        verifyNoInteractions(channelClientResolver);
+        verify(channelClientResolver).validateCategories(any());
     }
 
     @Test

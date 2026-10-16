@@ -86,11 +86,10 @@ class VerifyEmailOtpServiceTest {
     }
 
     @Test
-    void bannedUserIsRejectedBeforeConsumingOtp() {
+    void verifyOtpDoesNotRepeatGatewayAccountStatusCheck() {
         user.setStatus(UserStatus.BANNED);
-        assertError(ErrorCode.USER_NOT_ACTIVE);
-        verifyNoInteractions(store);
-        assertFalse(user.isEmailVerified());
+        when(store.consume(user.getId(), hash())).thenReturn(EmailVerificationOtpCheckResult.VALID);
+        assertTrue(service.verifyEmailOtp(user.getId(), request).isEmailVerified());
     }
 
     @Test

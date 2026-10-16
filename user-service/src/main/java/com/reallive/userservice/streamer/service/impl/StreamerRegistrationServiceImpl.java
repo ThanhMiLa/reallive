@@ -73,7 +73,6 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
     }
 
     private void validateEligibility(UserEntity user) {
-        UserValidator.validateActive(user);
         UserValidator.validateEmailVerified(user);
         if (user.getRoles().stream().anyMatch(role -> "STREAMER".equals(role.getName()))
                 || streamerRepository.existsByUserId(user.getId())) {

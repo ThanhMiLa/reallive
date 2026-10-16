@@ -6,9 +6,9 @@ import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.util.UserValidator;
 import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
-import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.dto.request.VerifyEmailOtpRequest;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpResponse;
@@ -108,7 +108,6 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     private UserEntity getEligibleUser(UUID userId) {
         UserEntity user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        UserValidator.validateActive(user);
         UserValidator.validateEmailNotVerified(user);
         return user;
     }

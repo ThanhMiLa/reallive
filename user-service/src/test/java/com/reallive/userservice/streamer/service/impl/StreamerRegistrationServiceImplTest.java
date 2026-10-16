@@ -148,7 +148,7 @@ class StreamerRegistrationServiceImplTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"missing-user, USER_NOT_FOUND", "banned, USER_NOT_ACTIVE", "unverified, EMAIL_NOT_VERIFIED",
+    @CsvSource({"missing-user, USER_NOT_FOUND", "unverified, EMAIL_NOT_VERIFIED",
             "streamer-role, ALREADY_STREAMER", "streamer-record, ALREADY_STREAMER", "missing-role, STREAMER_ROLE_NOT_FOUND"})
     void rejectedRegistrationDoesNotMutateUserOrPersistAnything(String condition, ErrorCode expected) {
         switch (condition) {

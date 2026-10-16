@@ -181,14 +181,13 @@ class VerifyEmailOtpIntegrationTest {
     }
 
     @Test
-    void bannedUserIsRejectedWithoutConsumingTheStoredOtp() throws Exception {
+    void verificationDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         saveOtp();
-        String originalHash = redis.opsForValue().get(key());
         user.setStatus(UserStatus.BANNED);
         repository.saveAndFlush(user);
-        verifyOtp(OTP, "verify-token", 403, 1003);
-        assertEquals(originalHash, redis.opsForValue().get(key()));
-        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+        verifyOtp(OTP, "verify-token", 200, 1000);
+        Assertions.assertNull(redis.opsForValue().get(key()));
+        assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
     }
 
     @Test

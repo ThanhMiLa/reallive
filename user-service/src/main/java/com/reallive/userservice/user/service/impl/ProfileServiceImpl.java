@@ -1,11 +1,9 @@
 package com.reallive.userservice.user.service.impl;
 
-import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.service.R2StorageService;
-import com.reallive.userservice.common.util.UserValidator;
 import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
@@ -42,8 +40,6 @@ public class ProfileServiceImpl implements ProfileService {
     public UserProfileResponse getMyProfile(UUID userId) {
         ProfileEntity profile = profileRepository.findByUserId(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.PROFILE_NOT_FOUND));
-        UserEntity user = profile.getUser();
-        UserValidator.validateActive(user);
 
         return profileMapper.toResponse(profile);
     }
@@ -57,7 +53,6 @@ public class ProfileServiceImpl implements ProfileService {
         AvatarImage avatar = request.getAvatar() == null ? null : AvatarValidator.validate(request.getAvatar());
         ProfileEntity profile = profileRepository.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.PROFILE_NOT_FOUND));
-        UserValidator.validateActive(profile.getUser());
 
         if (request.getDisplayName() != null) {
             profile.setDisplayName(request.getDisplayName().strip());

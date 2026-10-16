@@ -10,11 +10,13 @@ import com.reallive.userservice.user.dto.request.UpdateCategoryPreferencesReques
 import com.reallive.userservice.user.dto.response.CategoryPreferencesResponse;
 import com.reallive.userservice.user.entity.UserCategoryPreferenceEntity;
 import com.reallive.userservice.user.repository.UserCategoryPreferenceRepository;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,7 +50,7 @@ class CategoryPreferenceServiceImplTest {
                 userRepository,
                 userCategoryPreferenceRepository,
                 channelClientResolver,
-                org.springframework.transaction.support.TransactionOperations.withoutTransaction()
+                TransactionOperations.withoutTransaction()
         );
     }
 
@@ -106,7 +107,7 @@ class CategoryPreferenceServiceImplTest {
     }
 
     @Test
-    void getCategoryPreferencesThrowsUserNotActiveWhenUserIsBanned() {
+    void getPreferencesDoesNotRepeatGatewayAccountStatusCheck() {
         UUID userId = UUID.randomUUID();
         UserEntity user = UserEntity.builder()
                 .id(userId)
@@ -115,12 +116,8 @@ class CategoryPreferenceServiceImplTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        AppException exception = assertThrows(AppException.class,
-                () -> categoryPreferenceService.getCategoryPreferences(userId));
-
-        assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
-        verify(userRepository).findById(userId);
-        verifyNoInteractions(userCategoryPreferenceRepository);
+        Assertions.assertDoesNotThrow(() -> categoryPreferenceService.getCategoryPreferences(userId));
+        verify(userCategoryPreferenceRepository).findCategoryIdsByUserId(userId);
     }
 
     @Test
@@ -143,7 +140,7 @@ class CategoryPreferenceServiceImplTest {
 
     @ParameterizedTest
     @EnumSource(value = UserStatus.class, names = {"BANNED"})
-    void updateCategoryPreferencesThrowsUserNotActiveWhenUserNotActive(UserStatus status) {
+    void updatePreferencesDoesNotRepeatGatewayAccountStatusCheck(UserStatus status) {
         UUID userId = UUID.randomUUID();
         UserEntity user = UserEntity.builder()
                 .id(userId)
@@ -156,13 +153,7 @@ class CategoryPreferenceServiceImplTest {
                 .categoryIds(List.of(UUID.randomUUID()))
                 .build();
 
-        AppException exception = assertThrows(AppException.class,
-                () -> categoryPreferenceService.updateCategoryPreferences(userId, request));
-
-        assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
-        verify(userRepository).findById(userId);
-        verifyNoInteractions(channelClientResolver);
-        verifyNoInteractions(userCategoryPreferenceRepository);
+        Assertions.assertDoesNotThrow(() -> categoryPreferenceService.updateCategoryPreferences(userId, request));
     }
 
     @Test

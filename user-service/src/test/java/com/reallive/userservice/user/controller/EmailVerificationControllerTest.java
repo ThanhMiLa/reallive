@@ -161,12 +161,12 @@ class EmailVerificationControllerTest {
     }
 
     @Test
-    void dbBanOverridesActiveClaimInJwt() throws Exception {
+    void requestOtpDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
         user.setStatus(UserStatus.BANNED);
         repository.saveAndFlush(user);
         mvc.perform(post(ENDPOINT).cookie(cookie()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1003));
-        verifyNoInteractions(store, publisher);
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.code").value(1000));
+        verify(publisher).publish(any());
         assertEquals(UserStatus.BANNED, repository.findById(user.getId()).orElseThrow().getStatus());
         assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
     }
@@ -308,13 +308,14 @@ class EmailVerificationControllerTest {
     }
 
     @Test
-    void bannedUserCannotVerifyDespiteActiveJwtClaim() throws Exception {
+    void verifyOtpDoesNotRepeatGatewayAccountStatusCheck() throws Exception {
+        when(store.consume(any(), anyString())).thenReturn(EmailVerificationOtpCheckResult.VALID);
         user.setStatus(UserStatus.BANNED);
         repository.saveAndFlush(user);
         mvc.perform(verifyRequest("{\"otp\":\"012345\"}"))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1003));
-        assertFalse(repository.findById(user.getId()).orElseThrow().isEmailVerified());
-        verifyNoInteractions(store, publisher);
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(1000));
+        assertTrue(repository.findById(user.getId()).orElseThrow().isEmailVerified());
+        verifyNoInteractions(publisher);
     }
 
     @Test

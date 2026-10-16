@@ -289,7 +289,7 @@ class StreamerRegistrationIntegrationTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"banned, 403, 1003", "unverified, 403, 1027", "role-only, 409, 1030", "missing-user, 404, 1004"})
+    @CsvSource({"unverified, 403, 1027", "role-only, 409, 1030", "missing-user, 404, 1004"})
     void databaseEligibilityFailuresDoNotChangeUserOrCreateStreamer(String condition, int httpStatus, int code) throws Exception {
         switch (condition) {
             case "banned" -> user.setStatus(UserStatus.BANNED);

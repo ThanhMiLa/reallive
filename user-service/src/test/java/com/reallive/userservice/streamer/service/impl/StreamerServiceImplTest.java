@@ -16,7 +16,6 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -59,7 +58,7 @@ class StreamerServiceImplTest {
     }
 
     @Test
-    void rejectsInactiveUserBeforeLookingUpStreamer() {
+    void accountStatusIsNotRepeatedWhenResolvingStreamer() {
         UUID userId = UUID.randomUUID();
         UserEntity user = UserEntity.builder()
                 .id(userId)
@@ -69,8 +68,8 @@ class StreamerServiceImplTest {
 
         AppException exception = assertThrows(AppException.class, () -> service.getActiveStreamerIdByUserId(userId));
 
-        assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
-        verify(streamerRepository, never()).findByUserId(userId);
+        assertEquals(ErrorCode.STREAMER_NOT_FOUND, exception.getErrorCode());
+        verify(streamerRepository).findByUserId(userId);
     }
 
     @Test

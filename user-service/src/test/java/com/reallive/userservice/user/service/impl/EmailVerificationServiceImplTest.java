@@ -5,12 +5,13 @@ import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
-import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
+import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
 import com.reallive.userservice.user.util.EmailVerificationOtpHasher;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -97,10 +98,10 @@ class EmailVerificationServiceImplTest {
     }
 
     @Test
-    void bannedAccountCannotRequestOtp() {
+    void requestOtpDoesNotRepeatGatewayAccountStatusCheck() {
         user.setStatus(UserStatus.BANNED);
-        assertError(ErrorCode.USER_NOT_ACTIVE);
-        verifyNoInteractions(store, random, publisher);
+        Assertions.assertDoesNotThrow(() -> service.requestEmailVerificationOtp(user.getId()));
+        verify(publisher).publish(any());
     }
 
     @Test
