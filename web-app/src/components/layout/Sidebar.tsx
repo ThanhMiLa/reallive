@@ -1,6 +1,10 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Home, Compass, Heart, Settings } from 'lucide-react'
 import { useUiStore } from '@/stores/ui.store'
+import { useAuthStore } from '@/stores/auth.store'
+import { useQuery } from '@tanstack/react-query'
+import { channelApi } from '@/api/channel.api'
 
 interface StreamerItem {
   id: string
@@ -10,32 +14,33 @@ interface StreamerItem {
   isLive: boolean
 }
 
-const followingStreamers: StreamerItem[] = [
-  {
-    id: '1',
-    name: 'BenjaminTran',
-    category: 'Just Chatting',
-    avatar:
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-  {
-    id: '2',
-    name: 'Shyvana',
-    category: 'Valorant',
-    avatar:
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-  {
-    id: '3',
-    name: 'Kaelen',
-    category: 'Counter-Strike 2',
-    avatar:
-      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-]
+function ChannelAvatar({
+  name,
+  avatarUrl,
+}: {
+  name: string
+  avatarUrl: string | null
+}) {
+  const [imgError, setImgError] = useState(false)
+  const hasAvatar = Boolean(avatarUrl && avatarUrl.trim() && !imgError)
+
+  if (hasAvatar && avatarUrl) {
+    return (
+      <img
+        alt={name}
+        className="w-8 h-8 rounded-full object-cover border border-[#232838]"
+        src={avatarUrl}
+        onError={() => setImgError(true)}
+      />
+    )
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-xs font-bold text-white border border-[#232838] flex-shrink-0">
+      {name ? name.charAt(0).toUpperCase() : 'C'}
+    </div>
+  )
+}
 
 const recommendedStreamers: StreamerItem[] = [
   {
@@ -74,6 +79,20 @@ const recommendedStreamers: StreamerItem[] = [
 
 export function Sidebar() {
   const { isSidebarCollapsed } = useUiStore()
+  const { isAuthenticated, isCheckingAuth, openAuthModal } = useAuthStore()
+
+  const {
+    data: channelsPage,
+    isLoading: isChannelsLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['channels', 'following'],
+    queryFn: () => channelApi.getChannels({ following: true }),
+    enabled: isAuthenticated,
+  })
+
+  const followedChannels = channelsPage?.content || []
+  const showLoading = isCheckingAuth || (isAuthenticated && isChannelsLoading)
 
   return (
     <aside
@@ -144,38 +163,77 @@ export function Sidebar() {
             </div>
           )}
 
-          <div className="space-y-1">
-            {followingStreamers.map((streamer) => (
-              <div
-                key={streamer.id}
-                title={`${streamer.name} • ${streamer.category}`}
-                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#151822] transition group cursor-pointer ${
-                  isSidebarCollapsed ? 'justify-center px-0' : ''
-                }`}
-              >
-                <div className="relative flex-shrink-0">
-                  <img
-                    alt={streamer.name}
-                    className="w-8 h-8 rounded-full object-cover"
-                    src={streamer.avatar}
-                  />
-                  {streamer.isLive && (
-                    <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]" />
+          {showLoading ? (
+            <div className="space-y-2 px-2 py-1">
+              {[1, 2, 3].map((idx) => (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-3 px-1 py-1 ${
+                    isSidebarCollapsed ? 'justify-center px-0' : ''
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#1b2030] animate-pulse flex-shrink-0" />
+                  {!isSidebarCollapsed && (
+                    <div className="h-3.5 w-24 bg-[#1b2030] rounded animate-pulse" />
                   )}
                 </div>
-                {!isSidebarCollapsed && (
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-semibold text-gray-200 truncate group-hover:text-white">
-                      {streamer.name}
-                    </span>
-                    <span className="text-[11px] text-gray-400 truncate">
-                      {streamer.category}
-                    </span>
-                  </div>
-                )}
+              ))}
+            </div>
+          ) : !isAuthenticated ? (
+            !isSidebarCollapsed ? (
+              <div className="px-3 py-2 text-xs text-gray-400">
+                <p className="text-[11px] text-gray-500 mb-1 leading-relaxed">
+                  Sign in to view followed channels
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('login')}
+                  className="text-xs text-[#00f0ff] hover:underline font-medium cursor-pointer"
+                >
+                  Log in
+                </button>
               </div>
-            ))}
-          </div>
+            ) : null
+          ) : isError ? (
+            !isSidebarCollapsed ? (
+              <p className="text-xs text-gray-500 px-3 py-1.5">
+                Failed to load channels
+              </p>
+            ) : null
+          ) : followedChannels.length === 0 ? (
+            !isSidebarCollapsed ? (
+              <p className="text-xs text-gray-500 px-3 py-1.5">
+                No followed channels yet
+              </p>
+            ) : null
+          ) : (
+            <div className="space-y-1">
+              {followedChannels.map((channel) => (
+                <div
+                  key={channel.id}
+                  title={channel.name}
+                  className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#151822] transition group cursor-pointer ${
+                    isSidebarCollapsed ? 'justify-center px-0' : ''
+                  }`}
+                >
+                  <div className="relative flex-shrink-0">
+                    <ChannelAvatar
+                      key={channel.avatarUrl || channel.id}
+                      name={channel.name}
+                      avatarUrl={channel.avatarUrl}
+                    />
+                  </div>
+                  {!isSidebarCollapsed && (
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-gray-200 truncate group-hover:text-white">
+                        {channel.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Channels Section 2: RECOMMENDED */}
