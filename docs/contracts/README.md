@@ -7,3 +7,7 @@ This directory contains versioned example payloads for events exchanged between 
 | [Email verification requested v1](kafka/email-verification-requested.v1.json) | User Service | Notification Service |
 
 The email verification example contains synthetic test values. Both services' `EmailVerificationRequestedMessageTest` classes read the same file to verify their Kafka message format. Run those tests from each service directory with `./mvnw -Dtest=EmailVerificationRequestedMessageTest test`; the repository's `docs/contracts` directory must be present.
+
+## Authentication state
+
+The [Auth State contract](Auth%20State.md) defines Redis authorities/status, JWT claims, error handling, committed synchronization and rollout/backfill.

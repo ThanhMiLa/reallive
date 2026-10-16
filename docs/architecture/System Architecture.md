@@ -9,6 +9,8 @@
 
 ### 2.1 API Gateway
 
+Authentication and authorization follow the [Auth State contract](../contracts/Auth%20State.md). Gateway verifies JWT signatures, token lifetime/type and revocation, then checks `auth:status:{userId}` for protected endpoints. Downstream security loads current authorities from Redis on each protected request. JWT scope is not an authorization source, and business services do not repeat account-active validation.
+
 **Responsibility**
 
 - Acts as the single entry point for Web App and Mobile App requests.

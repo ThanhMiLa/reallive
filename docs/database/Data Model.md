@@ -24,6 +24,7 @@
 | email | VARCHAR(255) | UNIQUE, NOT NULL | UNIQUE | User email |
 | password_hash | VARCHAR(255) | NOT NULL | - | Password hash |
 | status | VARCHAR(30) | NOT NULL | INDEX | `ACTIVE, BANNED` |
+| auth_revision | BIGINT | NOT NULL, DEFAULT 0 | - | Monotonic revision for committed account authorities/status synchronization |
 | email_verified | BOOLEAN | NOT NULL | - | Email verification status |
 | created_at | TIMESTAMP | NOT NULL | - | Created time |
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
@@ -107,6 +108,19 @@ Composite Index:
 Composite Constraint:
 - `PRIMARY KEY (user_id, category_id)`
 
+
+#### 1.1.11 auth_state_sync_tasks
+
+`auth_state_sync_tasks` stores durable publication work owned by User Service. A role/status mutation records its task in the same transaction, and a worker retries Redis synchronization after commit. See [Auth State](../contracts/Auth%20State.md).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| user_id | UUID | PK, FK `users.id`, ON DELETE CASCADE | Account awaiting synchronization |
+| revision | BIGINT | NOT NULL | Auth revision recorded with the mutation |
+| attempts | INTEGER | NOT NULL, DEFAULT 0 | Failed publication attempts |
+| next_attempt_at | TIMESTAMP | NOT NULL, INDEX | Earliest next retry in UTC |
+
+One task exists per account. Synchronization publishes current committed state and removes completed tasks; it never repeats the original business operation.
 
 ### 1.2 Relationships
 
