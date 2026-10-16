@@ -2,6 +2,8 @@ package com.reallive.userservice.auth.repository;
 
 import com.reallive.userservice.auth.entity.UserEntity;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -23,6 +25,16 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from UserEntity user where user.id = :userId")
     Optional<UserEntity> findByIdForUpdate(UUID userId);
+
+    @EntityGraph(attributePaths = {"roles", "roles.permissions"})
+    @Query("select user from UserEntity user where user.id = :userId")
+    Optional<UserEntity> findWithAuthoritiesById(UUID userId);
+
+    @Query("select user.id from UserEntity user")
+    Page<UUID> findAllIds(Pageable pageable);
+
+    @Query("select user.id from UserEntity user join user.roles role where role.id = :roleId")
+    Page<UUID> findIdsByRoleId(UUID roleId, Pageable pageable);
 
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);

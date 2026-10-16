@@ -1,11 +1,6 @@
 package com.reallive.userservice.auth.entity;
 
 import com.reallive.userservice.common.entity.BaseEntity;
-
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -21,7 +16,6 @@ import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,6 +23,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.FieldDefaults;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -77,6 +75,9 @@ public class UserEntity extends BaseEntity {
     @ToString.Exclude
     @Builder.Default
     Set<RoleEntity> roles = new HashSet<>();
+
+    @Column(name = "auth_revision", nullable = false)
+    long authRevision;
 
     public boolean isActive() {
         return this.status == UserStatus.ACTIVE;

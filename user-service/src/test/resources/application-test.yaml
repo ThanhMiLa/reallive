@@ -23,6 +23,8 @@ storage:
     secret-access-key: test-secret-key
 
 auth:
+  state:
+    retry-enabled: false
   cookie:
     access-token:
       name: access_token

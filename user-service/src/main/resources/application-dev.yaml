@@ -1,4 +1,5 @@
 server:
+  address: ${BACKEND_BIND_ADDRESS:127.0.0.1}
   port: 8080
   servlet:
     context-path: /user
@@ -77,6 +78,11 @@ jwt:
   ttl_refreshToken: ${AUTH_REFRESH_TOKEN_TTL:604800}
 
 auth:
+  state:
+    ttl-grace: ${AUTH_STATE_TTL_GRACE:60s}
+    retry-enabled: ${AUTH_STATE_RETRY_ENABLED:true}
+    retry-delay: ${AUTH_STATE_RETRY_DELAY:5s}
+    backfill-enabled: ${AUTH_STATE_BACKFILL_ENABLED:false}
   cookie:
     access-token:
       name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
