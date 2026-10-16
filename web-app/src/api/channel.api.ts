@@ -1,6 +1,7 @@
 import apiClient from './client'
 import type { ApiResponse } from '@/types/auth.types'
 import type {
+  CategoryItem,
   ChannelListItem,
   ChannelListParams,
   PageResponse,
@@ -20,4 +21,15 @@ export const channelApi = {
     })
     return response.data.result
   },
+
+  /**
+   * Fetch all active categories.
+   */
+  getCategories: async (): Promise<CategoryItem[]> => {
+    const response = await apiClient.get<ApiResponse<CategoryItem[]>>(
+      '/channel/api/categories',
+    )
+    return response.data.result
+  },
 }
+

@@ -22,3 +22,11 @@ export interface ChannelListParams {
   page?: number
   size?: number
 }
+
+export interface CategoryItem {
+  id: string
+  name: string
+  slug: string
+  thumbnailUrl: string | null
+}
+
