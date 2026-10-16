@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isAxiosError } from 'axios'
 import { authApi } from '@/api/auth.api'
 import type {
   AuthRequest,
@@ -105,7 +106,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         user: profile,
         isAuthenticated: true,
       })
-    } catch {
+    } catch (error) {
+      if (isAxiosError(error) && error.response?.status === 503) {
+        return
+      }
       set({
         user: null,
         isAuthenticated: false,
