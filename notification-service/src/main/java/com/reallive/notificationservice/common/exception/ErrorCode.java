@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 @Getter
 @AllArgsConstructor
 public enum ErrorCode {
+    AUTH_STATE_UNAVAILABLE(1013, "Authentication state temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     UNAUTHENTICATED(1001, "Unauthorized", HttpStatus.UNAUTHORIZED),
     ACCESS_DENIED(1002, "Access Denied", HttpStatus.FORBIDDEN),
     EMAIL_MESSAGE_INVALID(1003, "Invalid email request message", HttpStatus.BAD_REQUEST),

@@ -1,6 +1,8 @@
 package com.reallive.notificationservice.common.security;
 
+import com.reallive.notificationservice.common.adapter.redis.RedisAuthoritiesReader;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -10,10 +12,13 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.AntPathMatcher;
+
+import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
@@ -33,11 +38,14 @@ public class SecurityConfig {
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
+    private final RedisAuthoritiesReader authoritiesReader;
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, BearerTokenResolver bearerTokenResolver) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(new AuthStateFailureFilter(), BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, PUBLIC_ENDPOINTS_GET).permitAll()
                         .requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS_POST).permitAll()
@@ -63,6 +71,9 @@ public class SecurityConfig {
                     .equals(request.getRequestURI().substring(request.getContextPath().length()))) {
                 return null;
             }
+            if (isPublicRequest(request)) {
+                return null;
+            }
             Cookie[] cookies = request.getCookies();
 
             if (cookies == null) {
@@ -82,12 +93,20 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        jwtGrantedAuthoritiesConverter.setAuthorityPrefix("");
-        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
-        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter);
-        return jwtAuthenticationConverter;
+    RedisJwtAuthenticationConverter jwtAuthenticationConverter() {
+        return new RedisJwtAuthenticationConverter(authoritiesReader);
     }
 
+    private boolean isPublicRequest(HttpServletRequest request) {
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        String method = request.getMethod();
+        AntPathMatcher matcher = new AntPathMatcher();
+        if ("GET".equals(method) && Arrays.stream(PUBLIC_ENDPOINTS_GET).anyMatch(pattern -> matcher.match(pattern, path))) {
+            return true;
+        }
+        if ("POST".equals(method) && Arrays.stream(PUBLIC_ENDPOINTS_POST).anyMatch(pattern -> matcher.match(pattern, path))) {
+            return true;
+        }
+        return false;
+    }
 }
