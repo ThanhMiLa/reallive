@@ -22,7 +22,6 @@ public class JwtClaimsValidator implements OAuth2TokenValidator<Jwt> {
             Instant now = Instant.now();
             Instant issuedAt = token.getIssuedAt();
             Instant expiresAt = token.getExpiresAt();
-            Object scope = token.getClaims().get("scope");
             String type = token.getClaimAsString("type");
             UUID.fromString(token.getSubject());
             if (!issuer.equals(token.getClaimAsString("iss"))
@@ -30,8 +29,7 @@ public class JwtClaimsValidator implements OAuth2TokenValidator<Jwt> {
                     || issuedAt == null || issuedAt.isAfter(now)
                     || expiresAt == null || !expiresAt.isAfter(now) || !expiresAt.isAfter(issuedAt)
                     || token.getNotBefore() != null && token.getNotBefore().isAfter(now)
-                    || !TokenType.ACCESS.name().equals(type) && !TokenType.REFRESH.name().equals(type)
-                    || scope != null && !(scope instanceof String)) {
+                    || !TokenType.ACCESS.name().equals(type) && !TokenType.REFRESH.name().equals(type)) {
                 return invalidClaims();
             }
             return OAuth2TokenValidatorResult.success();

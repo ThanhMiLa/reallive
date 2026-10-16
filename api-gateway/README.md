@@ -13,7 +13,7 @@ Spring Cloud Gateway WebFlux, Java 21. The development profile listens on port `
 | `POST /user/api/auth/logout` | None; all supplied token cookies must be valid |
 | `POST /user/api/auth/refresh` | None at gateway; user-service requires a refresh cookie. All supplied token cookies must be valid |
 | `POST /notification/api/webhooks/sendgrid` | SendGrid signature headers, verified by Notification; no user cookies or CSRF token |
-| Other routed endpoints | Valid access cookie; any supplied refresh cookie must also be valid |
+| Other routed endpoints, including `GET /channel/api/channels` | Valid access cookie; any supplied refresh cookie must also be valid; Redis account status must be `ACTIVE` |
 | `GET /api/auth/csrf` (local controller) | None; all supplied token cookies must be valid |
 
 The filter verifies supplied cookies first, then looks up the request method and exact path in the static final `PUBLIC_ENDPOINTS` map. Add public routed paths to `PUBLIC_ENDPOINTS_GET` or `PUBLIC_ENDPOINTS_POST` in `AuthenticationGlobalFilter`; all unlisted method/path combinations require an access cookie. Refresh-cookie presence is enforced by user-service, which rejects a missing or blank refresh token.
@@ -27,9 +27,10 @@ Redis uses the same database and string keys as user-service:
 ```text
 auth:revoked:access:{jti}
 auth:revoked:refresh:{jti}
+auth:status:{userId}
 ```
 
-The gateway only reads these keys. User-service writes them and atomically consumes refresh tokens using `SET NX` with TTL. A gateway blacklist read alone does not prevent concurrent refresh. Backend services continue to read identity/authorities from the forwarded cookies and enforce business authorization.
+The gateway only reads these keys. After checking token cookies and matching their subjects, protected routed requests read account status once. `BANNED` returns 403; a missing/invalid status or Redis failure returns 503. Public endpoints skip status lookup. User-service atomically consumes refresh tokens together with auth-state publication in Redis. A gateway blacklist read alone does not prevent concurrent refresh. Backend services obtain identity from the forwarded JWT and load current authorities from `auth:authorities:{userId}` on every protected request. JWT scope is ignored. See the [Auth State contract](../docs/contracts/Auth%20State.md) for ownership, TTL, synchronization and migration.
 
 ## Failures and recovery
 
@@ -39,12 +40,13 @@ Responses use `{status, code, message, result, timestamp}`.
 |---|---|
 | `401 / 1001` | Missing required token, invalid/expired/revoked token, duplicate cookie, or mixed subjects |
 | `403 / 1002` | Missing/invalid CSRF token or access denied |
+| `403 / 1003` | Account status is `BANNED` |
 | `400 / 1012` | Unsupported Authorization header |
-| `503 / 1013` | Redis error or blacklist lookup timeout |
+| `503 / 1013` | Redis error, lookup timeout, missing or invalid account status |
 
 For invalid auth cookies, the gateway rejects the request and expires the affected cookies with `Max-Age=0`, matching their configured paths. Both are cleared for mixed subjects. Missing credentials, unsupported headers, and Redis failures do not clear otherwise valid cookies. Redis failures never forward the request.
 
-JWT TTL and cookie Max-Age share the same configuration in user-service: `AUTH_ACCESS_TOKEN_TTL` (default 900 seconds) and `AUTH_REFRESH_TOKEN_TTL` (default 2592000 seconds). An explicitly supplied expired access cookie still blocks refresh. The client can retry refresh after the gateway has expired the bad access cookie; it must not blindly retry every `401` or repeatedly refresh with an invalid refresh token. Serialize refresh operations in the client.
+JWT TTL and cookie Max-Age share the same configuration in user-service: `AUTH_ACCESS_TOKEN_TTL` (development default 86400 seconds) and `AUTH_REFRESH_TOKEN_TTL` (development default 604800 seconds). An explicitly supplied expired access cookie still blocks refresh. The client can retry refresh after the gateway has expired the bad access cookie; it must not blindly retry every `401` or repeatedly refresh with an invalid refresh token. Serialize refresh operations in the client.
 
 ## Browser and mobile clients
 

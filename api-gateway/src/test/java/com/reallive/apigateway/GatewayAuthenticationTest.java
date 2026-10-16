@@ -11,10 +11,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.data.redis.core.ReactiveValueOperations;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -72,6 +74,7 @@ class GatewayAuthenticationTest {
 
     private final Set<String> revoked = ConcurrentHashMap.newKeySet();
     private volatile boolean redisUnavailable;
+    private String accountStatus;
     private CsrfCredentials csrf;
 
     @DynamicPropertySource
@@ -93,6 +96,10 @@ class GatewayAuthenticationTest {
         LAST_REQUEST.set(null);
         revoked.clear();
         redisUnavailable = false;
+        accountStatus = "ACTIVE";
+        ReactiveValueOperations<String, String> statusValues = Mockito.mock(ReactiveValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(statusValues);
+        when(statusValues.get(anyString())).thenAnswer(invocation -> accountStatus == null ? Mono.empty() : Mono.just(accountStatus));
         when(redisTemplate.hasKey(anyString())).thenAnswer(invocation -> redisUnavailable
                 ? Mono.error(new IOException("Redis offline"))
                 : Mono.just(revoked.contains(invocation.getArgument(0))));
@@ -113,10 +120,9 @@ class GatewayAuthenticationTest {
     }
 
     @Test
-    void publicChannelListWithPaginationReachesBackendWithoutTokens() {
-        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isOk();
-        assertEquals(1, BACKEND_CALLS.get());
-        assertEquals("/channel/api/channels", LAST_REQUEST.get().path());
+    void channelListRequiresAuthenticationBeforeAccountStatusLookup() {
+        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
         verifyNoInteractions(redisTemplate);
     }
 
@@ -274,7 +280,7 @@ class GatewayAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"type", "issuer", "signature", "algorithm", "sub", "nbf", "iat", "scope", "exp", "jti"})
+    @ValueSource(strings = {"type", "issuer", "signature", "algorithm", "sub", "nbf", "iat", "exp", "jti"})
     void invalidJwtContractIsRejectedBeforeRedis(String failure) throws Exception {
         String type = failure.equals("type") ? "REFRESH" : "ACCESS";
         String subject = failure.equals("sub") ? "not-a-uuid" : SUBJECT;
@@ -294,6 +300,50 @@ class GatewayAuthenticationTest {
                 .exchange().expectStatus().isUnauthorized();
         verifyNoInteractions(redisTemplate);
         assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @Test
+    void bannedAccountIsRejectedBeforeForwardingWithoutClearingValidCookies() throws Exception {
+        accountStatus = "BANNED";
+        Token access = token("ACCESS");
+        request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
+                .expectStatus().isForbidden().expectHeader().doesNotExist(HttpHeaders.SET_COOKIE)
+                .expectBody().jsonPath("$.code").isEqualTo(1003);
+        assertEquals(0, BACKEND_CALLS.get());
+        accountStatus = "ACTIVE";
+        request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
+                .expectStatus().isOk();
+        assertEquals(1, BACKEND_CALLS.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"UNKNOWN", "", "null"})
+    void invalidOrMissingAccountStatusReturns503(String value) throws Exception {
+        accountStatus = value.equals("null") ? null : value;
+        Token access = token("ACCESS");
+        request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
+                .expectStatus().isEqualTo(503).expectHeader().doesNotExist(HttpHeaders.SET_COOKIE);
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"timeout", "connection"})
+    void statusLookupFailureReturns503WithoutForwardingOrClearingCookies(String failure) throws Exception {
+        when(redisTemplate.opsForValue().get(anyString())).thenReturn(failure.equals("timeout")
+                ? Mono.never() : Mono.error(new IOException("Redis status unavailable")));
+        Token access = token("ACCESS");
+        request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
+                .expectStatus().isEqualTo(503).expectHeader().doesNotExist(HttpHeaders.SET_COOKIE);
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @Test
+    void publicEndpointDoesNotReadStatusForBannedAccount() throws Exception {
+        accountStatus = "BANNED";
+        Token access = token("ACCESS");
+        request(HttpMethod.POST, AUTH_PATH + "/logout").cookie("access_token", access.value())
+                .exchange().expectStatus().isOk();
+        Mockito.verify(redisTemplate.opsForValue(), Mockito.never()).get(anyString());
     }
 
     @Test

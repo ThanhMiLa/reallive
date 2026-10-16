@@ -18,6 +18,8 @@ import java.util.Set;
 @Service
 public class CookieAuthenticationService {
 
+    private static final String VERIFIED_USER_ID = CookieAuthenticationService.class.getName() + ".userId";
+
     private final GatewaySecurityProperties properties;
     private final JwtTokenVerifier verifier;
 
@@ -35,12 +37,19 @@ public class CookieAuthenticationService {
             return Flux.just(TokenType.ACCESS, TokenType.REFRESH)
                     .concatMap(type -> verifyCookie(exchange, type))
                     .collectList()
-                    .flatMap(this::validateResults);
+                    .flatMap(results -> validateResults(results).doOnSuccess(ignored -> results.stream()
+                            .filter(result -> result.type() == TokenType.ACCESS && result.jwt() != null)
+                            .findFirst().ifPresent(result -> exchange.getAttributes()
+                                    .put(VERIFIED_USER_ID, result.jwt().getSubject()))));
         });
     }
 
     public boolean hasCookie(ServerWebExchange exchange, TokenType type) {
         return exchange.getRequest().getCookies().containsKey(cookieSettings(type).name());
+    }
+
+    public String verifiedUserId(ServerWebExchange exchange) {
+        return exchange.getAttribute(VERIFIED_USER_ID);
     }
 
     private Mono<CheckedCookie> verifyCookie(ServerWebExchange exchange, TokenType type) {

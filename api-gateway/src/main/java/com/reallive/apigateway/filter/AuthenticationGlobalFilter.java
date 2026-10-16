@@ -3,7 +3,7 @@ package com.reallive.apigateway.filter;
 import com.reallive.apigateway.security.CookieAuthenticationService;
 import com.reallive.apigateway.security.GatewayErrorResponseWriter;
 import com.reallive.apigateway.security.GatewaySecurityException;
-import com.reallive.apigateway.security.TokenType;
+import com.reallive.apigateway.security.UserStatusService;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -19,8 +19,7 @@ import java.util.Set;
 public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
     private static final Set<String> PUBLIC_ENDPOINTS_GET = Set.of(
-            "/channel/api/categories",
-            "/channel/api/channels"
+            "/channel/api/categories"
     );
     private static final Set<String> PUBLIC_ENDPOINTS_POST = Set.of(
             "/user/api/auth/login",
@@ -39,11 +38,13 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
     private final CookieAuthenticationService cookieAuthenticationService;
     private final GatewayErrorResponseWriter errorWriter;
+    private final UserStatusService userStatusService;
 
     public AuthenticationGlobalFilter(CookieAuthenticationService cookieAuthenticationService,
-                                      GatewayErrorResponseWriter errorWriter) {
+                                      GatewayErrorResponseWriter errorWriter, UserStatusService userStatusService) {
         this.cookieAuthenticationService = cookieAuthenticationService;
         this.errorWriter = errorWriter;
+        this.userStatusService = userStatusService;
     }
 
     @Override
@@ -62,8 +63,9 @@ public class AuthenticationGlobalFilter implements GlobalFilter, Ordered {
         if (PUBLIC_ENDPOINTS.getOrDefault(method, Set.of()).contains(path)) {
             return Mono.empty();
         }
-        return cookieAuthenticationService.hasCookie(exchange, TokenType.ACCESS)
-                ? Mono.empty() : Mono.error(GatewaySecurityException.unauthorized(Set.of()));
+        String userId = cookieAuthenticationService.verifiedUserId(exchange);
+        return userId != null ? userStatusService.requireActive(userId)
+                : Mono.error(GatewaySecurityException.unauthorized(Set.of()));
     }
 
     @Override
