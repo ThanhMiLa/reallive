@@ -1,9 +1,20 @@
 server:
+  address: ${BACKEND_BIND_ADDRESS:127.0.0.1}
   port: 8083
   servlet:
     context-path: /payment
 
 spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_TIMEOUT:2s}
+
   application:
     name: payment-service
 

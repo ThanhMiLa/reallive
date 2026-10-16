@@ -15,7 +15,9 @@ Java 21 / Spring Boot service owning wallets and payment data.
 
 The repository's Docker Compose exposes the payment PostgreSQL database at `localhost:5435` with database `reallive_payment` and username `payment_service`.
 
-Copy `.env.example` to `.env` and configure the database credentials. Export those variables into the shell or configure them in the IDE; Spring Boot does not load `.env` files automatically. Start the service with the development profile:
+Copy `.env.example` to `.env` and configure the database credentials. Set `REDIS_PASSWORD` to the same value as the repository-root `.env` used by Docker Compose. Redis authorities must use the same host, port and logical database as User Service and Gateway. The development defaults are `localhost:6379`, database `0`.
+
+Export those variables into the shell or configure the IDE run configuration to load this service's `.env`; Spring Boot does not load `.env` files automatically. After changing credentials, restart the service. A missing Redis password against the Compose Redis instance produces `NOAUTH HELLO`. Start the service with the development profile:
 
 ```shell
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev

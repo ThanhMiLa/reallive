@@ -1,5 +1,6 @@
 package com.reallive.paymentservice.wallet.controller.internal;
 
+import com.reallive.paymentservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.paymentservice.common.exception.AppException;
 import com.reallive.paymentservice.common.exception.ErrorCode;
 import com.reallive.paymentservice.common.exception.GlobalExceptionHandler;
@@ -7,18 +8,23 @@ import com.reallive.paymentservice.common.security.*;
 import com.reallive.paymentservice.wallet.dto.response.WalletCreationResponse;
 import com.reallive.paymentservice.wallet.service.WalletService;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.Mockito.*;
@@ -30,6 +36,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class,
         JwtAccessDeniedHandler.class, GlobalExceptionHandler.class})
 class WalletControllerTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
 
     @Autowired
     private MockMvc mvc;
@@ -106,10 +120,10 @@ class WalletControllerTest {
     }
 
     @Test
-    void malformedAccessCookieIsRejectedEvenOnPermittedEndpoint() throws Exception {
+    void internalEndpointDoesNotAuthenticateUserCookies() throws Exception {
         mvc.perform(endpoint(UUID.randomUUID()).cookie(new Cookie("access_token", "invalid")))
-                .andExpect(status().isUnauthorized());
-        verifyNoInteractions(service);
+                .andExpect(status().isOk());
+        Mockito.verify(service).createWallet(ArgumentMatchers.any());
     }
 
     private MockHttpServletRequestBuilder endpoint(UUID userId) {
