@@ -30,7 +30,7 @@ All channel and category persistence code belongs to the `channel` business modu
 
 `ChannelCategoryEntity` maps the composite `(channel_id, category_id)` key with `@EmbeddedId` and `@MapsId`, lazy parent relationships and a creation timestamp only. `ChannelCategoryId` is an embeddable identifier value type used by JPA and repository ID operations. The association does not inherit `BaseEntity`, since the data model has no `updated_at` column for this table. There is no cascading parent deletion: remove category links explicitly before physically deleting a channel or category.
 
-Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channels.follower_count` as a nonnegative `BIGINT NOT NULL DEFAULT 0`, initializing existing channels to zero, and creates the follower table from Data Model section 2.1.4. `ChannelFollowerEntity` maps `(channel_id, user_id)` through `ChannelFollowerId`, a lazy channel relationship and an automatically generated `followed_at` timestamp. The user UUID is external to Channel Service and has no cross-service foreign key. The composite primary key supports channel lookups; a separate `user_id` index supports user lookups. Follower records must be removed explicitly before physically deleting a channel. This persistence foundation does not automatically adjust the counter when follower rows change; follow/unfollow operations and a reconciliation job are separate work.
+Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channels.follower_count` as a nonnegative `BIGINT NOT NULL DEFAULT 0`, initializing existing channels to zero, and creates the follower table from Data Model section 2.1.4. `ChannelFollowerEntity` maps `(channel_id, user_id)` through `ChannelFollowerId`, a lazy channel relationship and an automatically generated `followed_at` timestamp. The user UUID is external to Channel Service and has no cross-service foreign key. The composite primary key supports channel lookups; a separate `user_id` index supports user lookups. Follower records must be removed explicitly before physically deleting a channel. Follow/unfollow operations change only follower records; counter reconciliation is deferred to a future scheduled job.
 
 `deleted_at` stores the channel's soft-delete timestamp. `ChannelEntity` uses `@SQLRestriction("deleted_at IS NULL")`, so Hibernate-generated channel queries automatically exclude soft-deleted records, including ID/slug/streamer lookups, existence checks, lists/counts and the query that locks a channel for update. Non-deleted banned channels remain visible and business services still check their status. Native SQL bypasses this restriction; the creation ownership check intentionally includes deleted records because `streamer_id` remains unique. The annotation filters reads; it does not convert repository deletion calls into soft deletes. Updating a user's profile will not automatically change channel profile fields.
 
@@ -86,13 +86,45 @@ curl -b cookies.txt 'http://localhost:8888/channel/api/channels?following=false&
 }
 ```
 
-Each item contains exactly these five fields, including the channel UUID in `id`. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership, keyword and following predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. Following filtering uses EXISTS / NOT EXISTS against `channel_followers` for the authenticated user's UUID. Follower totals still come from the stored counter, without counting follower rows. The query does not load category entities or call another service. Pagination totals count eligible channels. Counter updates and reconciliation remain the responsibility of future follow/unfollow workflows.
+Each item contains exactly these five fields, including the channel UUID in `id`. Image URLs preserve their stored values, including null. `ChannelSpecifications` in `channel.repository.specification` composes active-status, category-membership, keyword and following predicates. `ChannelRepository` implements `JpaSpecificationExecutor`; `findAll(specification, pageable)` applies the same Specification to the page and count queries and loads paginated `ChannelEntity` records with their basic mapped columns. The service uses `ChannelMapper` (MapStruct) to convert each entity into `ChannelListResponse`, mapping `followerCount` to the 64-bit response field `numberOfFollower`. Category filtering uses an EXISTS subquery so channels with multiple categories do not create duplicate results. Following filtering uses EXISTS / NOT EXISTS against `channel_followers` for the authenticated user's UUID. Follower totals still come from the stored counter, without counting follower rows. The query does not load category entities or call another service. Pagination totals count eligible channels. Follow/unfollow changes membership immediately but leaves follower totals and follower-count sorting unchanged until a future scheduled reconciliation job updates the counter.
 
 Authenticated frontend clients can request `following=true` and `following=false` in parallel for separate sections. Each section maintains its own page, size, totals and loading state. This endpoint no longer exposes an unfiltered anonymous mode.
 
 `ChannelListIntegrationTest` exercises the HTTP/service/persistence stack with authenticated requests, Flyway migrations, category/keyword filters in isolation and combination, literal wildcard handling, follower sorting in both directions, default/custom pagination, tied timestamps, stored follower totals, null images and invalid inputs. Gateway tests cover routing and protection of other channel operations.
 
 `ChannelFollowingIntegrationTest` runs the real cookie authentication and method-security stack, verifying both following states, user isolation, independent pagination, users with no follows, combined filters, current membership after follow/unfollow and invalid credentials or inputs. It also accepts the disposable PostgreSQL test properties documented below.
+
+## Follow and unfollow a channel
+
+Each authenticated request targets exactly one channel UUID in the path, with no request body:
+
+| Action | Endpoint | Conditions |
+| --- | --- | --- |
+| Follow | `PUT /channel/api/channels/{channelId}/follow` | Channel exists, is not soft-deleted, is `ACTIVE`, and the user does not already follow it. |
+| Unfollow | `DELETE /channel/api/channels/{channelId}/follow` | Channel exists, is not soft-deleted, and the user currently follows it. Any channel status, including `BANNED`, is allowed. |
+
+User identity comes exclusively from `AuthenticationUserId` using the authenticated JWT subject. No follow-specific authority or streamer role is required. Use the existing authenticated cookie through Gateway:
+
+```shell
+curl -X PUT -b cookies.txt 'http://localhost:8888/channel/api/channels/550e8400-e29b-41d4-a716-446655440000/follow'
+curl -X DELETE -b cookies.txt 'http://localhost:8888/channel/api/channels/550e8400-e29b-41d4-a716-446655440000/follow'
+```
+
+Both operations return HTTP 200 with `status: 200`, `code: 1000`, `result: true`, a timestamp and message `Channel followed successfully` or `Channel unfollowed successfully`. Repeated operations are rejected:
+
+| Condition | HTTP status | Error code |
+| --- | --- | --- |
+| Missing or invalid authentication | 401 | `1001` |
+| Malformed channel UUID, including a list of UUIDs | 400 | `1004` |
+| Missing or soft-deleted channel | 404 | `1009` |
+| Follow on an inactive channel | 403 | `1010` |
+| User already follows the channel | 409 | `1019` |
+| User does not follow the channel | 409 | `1020` |
+| Database access failure | 503 | `1003` |
+
+`ChannelFollowService` checks channel existence and, for follow, active status using a normal read. `ChannelFollowerRepository` uses `INSERT ... ON CONFLICT DO NOTHING` to atomically check membership and create a follow; zero inserted rows means an existing follow. The database supplies `followed_at`, and duplicate requests preserve the original timestamp. Unfollow uses a conditional delete scoped to both IDs; zero deleted rows means no current follow. Concurrent duplicate requests therefore produce one successful change and business conflicts for the remaining requests, without a separate membership precheck. Database constraints still enforce referential integrity.
+
+Each operation runs in a local transaction. Neither operation takes an explicit channel row lock, changes channel fields or audit timestamps, updates `follower_count`, or calls another service. Channel status is validated at read time; follow/unfollow does not serialize concurrent channel moderation. Counter reconciliation and its scheduled job will be implemented separately. `ChannelFollowIntegrationTest` covers authentication, validation, status rules, user/channel isolation, repeated and concurrent requests, transaction rollback, unchanged channel data and immediate following-list membership. It accepts the disposable PostgreSQL properties below and creates and drops an isolated test schema.
 
 ## Create channel
 

@@ -5,6 +5,7 @@ import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
 import com.reallive.channelservice.channel.service.ChannelService;
+import com.reallive.channelservice.channel.service.ChannelFollowService;
 import com.reallive.channelservice.common.dto.ApiResponse;
 import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.util.AuthenticationUserId;
@@ -21,8 +22,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -36,6 +40,37 @@ import java.util.UUID;
 public class ChannelController {
 
     ChannelService channelService;
+    ChannelFollowService channelFollowService;
+
+    @PutMapping("/{channelId}/follow")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<Boolean>> followChannel(
+            @PathVariable UUID channelId, @AuthenticationPrincipal Jwt jwt) {
+        boolean created = channelFollowService.followChannel(
+                AuthenticationUserId.getAuthenticatedUserId(jwt), channelId);
+        return ResponseEntity.ok(ApiResponse.<Boolean>builder()
+                .status(200)
+                .code(1000)
+                .message("Channel followed successfully")
+                .result(created)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
+
+    @DeleteMapping("/{channelId}/follow")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<Boolean>> unfollowChannel(
+            @PathVariable UUID channelId, @AuthenticationPrincipal Jwt jwt) {
+        boolean removed = channelFollowService.unfollowChannel(
+                AuthenticationUserId.getAuthenticatedUserId(jwt), channelId);
+        return ResponseEntity.ok(ApiResponse.<Boolean>builder()
+                .status(200)
+                .code(1000)
+                .message("Channel unfollowed successfully")
+                .result(removed)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")

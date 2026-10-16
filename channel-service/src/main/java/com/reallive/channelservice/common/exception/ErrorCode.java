@@ -24,7 +24,9 @@ public enum ErrorCode {
     BANNER_TOO_LARGE(1014, "Banner must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE),
     BANNER_UPLOAD_FAILED(1015, "Unable to upload banner", HttpStatus.BAD_GATEWAY),
     BANNER_STORAGE_UNAVAILABLE(1016, "Banner storage unavailable", HttpStatus.SERVICE_UNAVAILABLE),
-    UNSUPPORTED_MEDIA_TYPE(1017, "Unsupported media type", HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    UNSUPPORTED_MEDIA_TYPE(1017, "Unsupported media type", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
+    CHANNEL_ALREADY_FOLLOWED(1019, "Channel already followed", HttpStatus.CONFLICT),
+    CHANNEL_NOT_FOLLOWED(1020, "Channel is not followed", HttpStatus.CONFLICT);
 
     private final int code;
     private final String message;
