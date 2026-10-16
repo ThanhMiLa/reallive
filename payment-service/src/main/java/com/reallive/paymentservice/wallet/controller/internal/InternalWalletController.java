@@ -17,7 +17,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @RequestMapping("/internal")
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class WalletController {
+public class InternalWalletController {
     WalletService walletService;
 
     @PostMapping("/api/wallets/create/{userId}")
