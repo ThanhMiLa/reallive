@@ -133,6 +133,45 @@ class ChannelFollowIntegrationTest {
         assertFollowingListContains(channelId, userId, 0);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ACTIVE", "BANNED"})
+    void ownerCannotFollowOwnChannelAndReceivesConflictWithoutChangingData(String channelStatus) throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID channelId = insertChannel(channelStatus);
+        jdbc.update("UPDATE " + table("channels") + " SET user_id = ? WHERE id = ?", userId, channelId);
+        Map<String, Object> profile = channelRow(channelId);
+
+        mvc.perform(authenticatedRequest("PUT", channelId, userId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.code").value(1021))
+                .andExpect(jsonPath("$.message").value("Cannot follow own channel"))
+                .andExpect(jsonPath("$.result").value(nullValue()));
+
+        assertEquals(0, membershipCount(channelId, userId));
+        assertEquals(profile, channelRow(channelId));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACTIVE", "BANNED"})
+    void ownerCanUnfollowALegacySelfFollowWithoutRemovingOtherFollowers(String channelStatus) throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID otherUser = UUID.randomUUID();
+        UUID channelId = insertChannel(channelStatus);
+        jdbc.update("UPDATE " + table("channels") + " SET user_id = ? WHERE id = ?", userId, channelId);
+        Map<String, Object> profile = channelRow(channelId);
+        insertFollow(channelId, userId);
+        insertFollow(channelId, otherUser);
+
+        mvc.perform(authenticatedRequest("DELETE", channelId, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result").value(true));
+
+        assertEquals(0, membershipCount(channelId, userId));
+        assertEquals(1, membershipCount(channelId, otherUser));
+        assertEquals(profile, channelRow(channelId));
+    }
+
     @Test
     void duplicateFollowReturnsConflictAndPreservesTheOriginalTimestamp() throws Exception {
         UUID userId = UUID.randomUUID();

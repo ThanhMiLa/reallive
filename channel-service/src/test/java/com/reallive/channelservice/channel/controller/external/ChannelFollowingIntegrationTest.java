@@ -142,6 +142,53 @@ class ChannelFollowingIntegrationTest {
                 .andExpect(jsonPath("$.result.totalElements").value(1));
     }
 
+    @ParameterizedTest
+    @CsvSource({"default,false", "false,false", "default,true", "false,true"})
+    void unfollowedListingIncludesOwnChannelOnlyWhenItHasNoCurrentSelfFollow(
+            String following, boolean legacySelfFollow) throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID ownChannel = insertChannel("My channel", 300);
+        UUID otherChannel = insertChannel("Other channel", 200);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", userId, ownChannel);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", UUID.randomUUID(), otherChannel);
+        if (legacySelfFollow) {
+            follow(ownChannel, userId);
+        }
+        MockHttpServletRequestBuilder request = get(PATH).contextPath("/channel")
+                .cookie(accessCookie(userId.toString())).param("page", "0").param("size", "20");
+        if (!following.equals("default")) {
+            request.param("following", following);
+        }
+
+        mvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content", hasSize(legacySelfFollow ? 1 : 2)))
+                .andExpect(jsonPath("$.result.content[0].id")
+                        .value((legacySelfFollow ? otherChannel : ownChannel).toString()))
+                .andExpect(jsonPath("$.result.totalElements").value(legacySelfFollow ? 1 : 2));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void followedListingRequiresMembershipEvenForOwnChannel(boolean legacySelfFollow) throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID ownChannel = insertChannel("My channel", 300);
+        UUID otherChannel = insertChannel("Followed channel", 200);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", userId, ownChannel);
+        follow(otherChannel, userId);
+        if (legacySelfFollow) {
+            follow(ownChannel, userId);
+        }
+
+        mvc.perform(get(PATH).contextPath("/channel").cookie(accessCookie(userId.toString()))
+                        .param("following", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content", hasSize(legacySelfFollow ? 2 : 1)))
+                .andExpect(jsonPath("$.result.content[0].id")
+                        .value((legacySelfFollow ? ownChannel : otherChannel).toString()))
+                .andExpect(jsonPath("$.result.totalElements").value(legacySelfFollow ? 2 : 1));
+    }
+
     @Test
     void defaultListingAlsoRequiresAuthentication() throws Exception {
         mvc.perform(get(PATH).contextPath("/channel"))

@@ -27,6 +27,9 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
     @Transactional
     public boolean followChannel(UUID userId, UUID channelId) {
         ChannelEntity channel = findChannel(userId, channelId);
+        if(userId.equals(channel.getUserId())) {
+            throw new AppException(ErrorCode.CANNOT_FOLLOW_OWN_CHANNEL);
+        }
         if (channel.getStatus() != ChannelStatus.ACTIVE) {
             throw new AppException(ErrorCode.CHANNEL_NOT_ACTIVE);
         }
