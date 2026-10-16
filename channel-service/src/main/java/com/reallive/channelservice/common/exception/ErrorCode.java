@@ -21,7 +21,7 @@ public enum ErrorCode {
     CATEGORY_NOT_FOUND(1011, "Category not found", HttpStatus.BAD_REQUEST),
     CATEGORY_NOT_ACTIVE(1012, "Category is not active", HttpStatus.BAD_REQUEST),
     BANNER_INVALID(1013, "Banner must be a valid JPEG, PNG or WebP image with at most 16 million pixels", HttpStatus.BAD_REQUEST),
-    BANNER_TOO_LARGE(1014, "Banner must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE),
+    BANNER_TOO_LARGE(1014, "Banner must not exceed 1 MB", HttpStatus.PAYLOAD_TOO_LARGE),
     BANNER_UPLOAD_FAILED(1015, "Unable to upload banner", HttpStatus.BAD_GATEWAY),
     BANNER_STORAGE_UNAVAILABLE(1016, "Banner storage unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     UNSUPPORTED_MEDIA_TYPE(1017, "Unsupported media type", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
