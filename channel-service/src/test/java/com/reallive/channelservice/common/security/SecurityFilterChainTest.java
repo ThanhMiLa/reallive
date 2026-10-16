@@ -5,12 +5,18 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
+import com.reallive.channelservice.common.exception.AppException;
+import com.reallive.channelservice.common.exception.ErrorCode;
 import com.reallive.channelservice.common.exception.GlobalExceptionHandler;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -19,18 +25,24 @@ import org.springframework.core.env.Environment;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -43,6 +55,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class,
         JwtAccessDeniedHandler.class, GlobalExceptionHandler.class, SecurityFilterChainTest.TestController.class})
 class SecurityFilterChainTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
 
     @Autowired
     private MockMvc mvc;
@@ -102,21 +122,21 @@ class SecurityFilterChainTest {
         mvc.perform(get("/channel/test/identity").contextPath("/channel")
                         .header("Authorization", "Bearer malformed-token")
                         .cookie(new Cookie("channel_access", token("ROLE_USER"))))
-                .andExpect(status().isOk()).andExpect(content().string("test-user"));
+                .andExpect(status().isOk()).andExpect(content().string("00000000-0000-0000-0000-000000000001"));
     }
 
     @Test
     void validConfiguredAccessCookieAuthenticatesTheSubject() throws Exception {
         mvc.perform(get("/channel/test/identity").contextPath("/channel")
                         .cookie(new Cookie("channel_access", token("USER"))))
-                .andExpect(status().isOk()).andExpect(content().string("test-user"));
+                .andExpect(status().isOk()).andExpect(content().string("00000000-0000-0000-0000-000000000001"));
     }
 
     @Test
     void authenticatedPostUsesExistingGatewayCsrfPolicy() throws Exception {
         mvc.perform(post("/channel/test/identity").contextPath("/channel")
                         .cookie(new Cookie("channel_access", token("USER"))))
-                .andExpect(status().isOk()).andExpect(content().string("test-user"));
+                .andExpect(status().isOk()).andExpect(content().string("00000000-0000-0000-0000-000000000001"));
     }
 
     @Test
@@ -179,7 +199,7 @@ class SecurityFilterChainTest {
     @ValueSource(strings = {"iat", "exp"})
     void missingRequiredTimestampReturns401(String missingClaim) throws Exception {
         Instant now = Instant.now();
-        var claims = new JWTClaimsSet.Builder().subject("test-user");
+        var claims = new JWTClaimsSet.Builder().subject("00000000-0000-0000-0000-000000000001");
         if (!"iat".equals(missingClaim)) {
             claims.issueTime(Date.from(now));
         }
@@ -195,7 +215,7 @@ class SecurityFilterChainTest {
     @Test
     void expirationBeforeIssueTimeReturns401() throws Exception {
         Instant now = Instant.now();
-        var claims = new JWTClaimsSet.Builder().subject("test-user").issueTime(Date.from(now))
+        var claims = new JWTClaimsSet.Builder().subject("00000000-0000-0000-0000-000000000001").issueTime(Date.from(now))
                 .expirationTime(Date.from(now.minusSeconds(1))).build();
 
         mvc.perform(get("/channel/test/identity").contextPath("/channel")
@@ -203,9 +223,25 @@ class SecurityFilterChainTest {
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
     }
 
+    @Test
+    void unavailableAuthoritiesReturn503FromSecurityWithoutClearingCookies() throws Exception {
+        String access = token("ROLE_USER");
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenThrow(new AppException(
+                        ErrorCode.AUTH_STATE_UNAVAILABLE));
+        mvc.perform(get("/channel/test/identity").contextPath("/channel")
+                        .cookie(new Cookie("channel_access", access)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(MockMvcResultMatchers.header().doesNotExist("Set-Cookie"));
+    }
+
     private String token(String scope) throws Exception {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(Arrays.stream(scope.split(" ")).filter(value -> !value.isBlank())
+                        .<GrantedAuthority>map(SimpleGrantedAuthority::new).toList());
         Instant now = Instant.now();
-        return token(new JWTClaimsSet.Builder().subject("test-user").issueTime(Date.from(now))
+        return token(new JWTClaimsSet.Builder().subject("00000000-0000-0000-0000-000000000001").issueTime(Date.from(now))
                 .expirationTime(Date.from(now.plusSeconds(900))).claim("scope", scope).build());
     }
 

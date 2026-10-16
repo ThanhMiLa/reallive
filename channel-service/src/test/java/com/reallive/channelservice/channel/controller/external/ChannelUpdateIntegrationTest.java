@@ -5,7 +5,6 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import com.reallive.channelservice.common.service.R2StorageService;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
@@ -18,11 +17,11 @@ import com.reallive.channelservice.channel.repository.ChannelCategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.client.streamer.StreamerHttpTestServer;
+import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
-
+import com.reallive.channelservice.common.service.R2StorageService;
 import jakarta.servlet.http.Cookie;
-
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +30,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +39,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -46,7 +49,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import org.springframework.web.multipart.MultipartFile;
-
 import tools.jackson.databind.ObjectMapper;
 
 import java.awt.image.BufferedImage;
@@ -60,6 +62,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
@@ -73,7 +76,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import javax.imageio.ImageIO;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -107,6 +109,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ChannelUpdateIntegrationTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
 
     private static final String ENDPOINT = "/channel/api/channels/me";
     private static final StreamerHttpTestServer USER_SERVICE = new StreamerHttpTestServer();
@@ -620,6 +630,9 @@ class ChannelUpdateIntegrationTest {
     }
 
     private Cookie cookie(String scope, String subject) throws Exception {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(Arrays.stream(scope.split(" ")).filter(value -> !value.isBlank())
+                        .<GrantedAuthority>map(SimpleGrantedAuthority::new).toList());
         Instant now = Instant.now();
         var claims = new JWTClaimsSet.Builder().subject(subject).issueTime(Date.from(now))
                 .expirationTime(Date.from(now.plusSeconds(900))).claim("scope", scope).build();

@@ -183,7 +183,9 @@ The service listens at `http://localhost:8081/channel`, matching Gateway's `/cha
 
 Configure `BUCKET_NAME`, `PUBLIC_BASE_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` as in User Service. Use the S3-compatible endpoint without the bucket suffix and a public bucket/custom-domain URL for `PUBLIC_BASE_URL`. Only the backend uploads to R2.
 
-Export `CHANNEL_DB_PASSWORD` or set it in the IDE. Optional `CHANNEL_DB_URL` and `CHANNEL_DB_USERNAME` override the development defaults. Spring Boot does not load the root `.env` file automatically.
+Copy `.env.example` to `.env` and configure the database and R2 credentials. Optional `CHANNEL_DB_URL` and `CHANNEL_DB_USERNAME` override the development defaults. Set `REDIS_PASSWORD` to the same value as the repository-root `.env` used by Docker Compose. Redis authorities must use the same host, port and logical database as User Service and Gateway. The development defaults are `localhost:6379`, database `0`.
+
+Export those variables into the shell or configure the IDE run configuration to load this service's `.env`; Spring Boot does not load `.env` files automatically. After changing credentials, restart the service. A missing Redis password against the Compose Redis instance produces `NOAUTH HELLO`.
 
 ```shell
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev

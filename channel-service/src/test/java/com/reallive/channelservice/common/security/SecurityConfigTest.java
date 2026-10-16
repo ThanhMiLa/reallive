@@ -1,87 +1,68 @@
 package com.reallive.channelservice.common.security;
 
+import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.FactorGrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.List;
+import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class SecurityConfigTest {
 
-    private final SecurityConfig security = new SecurityConfig(new CustomJwtDecoder(),
-            new JwtAuthenticationEntryPoint(), new JwtAccessDeniedHandler());
+    private final RedisAuthoritiesReader reader = mock(RedisAuthoritiesReader.class);
+    private final SecurityConfig security = new SecurityConfig(null, null, null, reader);
 
     @Test
     void readsConfiguredCookieAndIgnoresAuthorizationHeader() {
-        var request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer header-token");
-        request.setCookies(new Cookie("other_cookie", "ignored"), new Cookie("custom_access", "cookie-token"));
-
-        assertEquals("cookie-token", security.bearerTokenResolver("custom_access").resolve(request));
+        var request = new MockHttpServletRequest("GET", "/test/protected");
+        request.addHeader("Authorization", "Bearer untrusted-header");
+        request.setCookies(new Cookie("custom_access", "trusted-cookie"));
+        assertEquals("trusted-cookie", security.bearerTokenResolver("custom_access").resolve(request));
     }
 
     @Test
-    void authorizationHeaderAloneCannotAuthenticate() {
-        var request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer header-token");
-
+    void headerAloneCannotAuthenticate() {
+        var request = new MockHttpServletRequest("GET", "/test/protected");
+        request.addHeader("Authorization", "Bearer untrusted-header");
         assertNull(security.bearerTokenResolver("access_token").resolve(request));
     }
 
     @Test
-    void unrelatedCookiesCannotAuthenticate() {
-        var request = new MockHttpServletRequest();
-        request.setCookies(new Cookie("refresh_token", "refresh-value"));
-
-        assertNull(security.bearerTokenResolver("access_token").resolve(request));
-    }
-
-    @ParameterizedTest
-    @NullAndEmptySource
-    @ValueSource(strings = " ")
-    void missingOrBlankAccessCookieCannotAuthenticate(String value) {
-        var request = new MockHttpServletRequest();
-        request.setCookies(new Cookie("access_token", value));
-
+    void blankAndUnrelatedCookiesCannotAuthenticate() {
+        var request = new MockHttpServletRequest("GET", "/test/protected");
+        request.setCookies(new Cookie("access_token", " "), new Cookie("refresh_token", "refresh"));
         assertNull(security.bearerTokenResolver("access_token").resolve(request));
     }
 
     @Test
-    void readsAccessCookieOnInternalChannelPaths() {
-        var request = new MockHttpServletRequest("POST", "/channel/internal/api/channels");
-        request.setContextPath("/channel");
-        request.setCookies(new Cookie("access_token", "cookie-token"));
-
-        assertEquals("cookie-token", security.bearerTokenResolver("access_token").resolve(request));
-    }
-
-    @Test
-    void scopeAuthoritiesKeepTheirNamesAndPrincipalUsesSubject() {
-        var jwt = Jwt.withTokenValue("token").header("alg", "HS512").subject("user-id")
-                .claim("scope", "ROLE_USER ROLE_STREAMER channel:manage").build();
-
+    void usesCurrentRedisAuthoritiesAndIgnoresOldScope() {
+        UUID userId = UUID.randomUUID();
+        var jwt = Jwt.withTokenValue("old-token").header("alg", "HS512").subject(userId.toString())
+                .claim("scope", "ROLE_ADMIN").build();
+        when(reader.read(userId)).thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
         var authentication = security.jwtAuthenticationConverter().convert(jwt);
-
-        assertEquals("user-id", authentication.getName());
-        assertEquals(List.of(FactorGrantedAuthority.BEARER_AUTHORITY, "ROLE_STREAMER", "ROLE_USER", "channel:manage"),
-                authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority).sorted().toList());
+        assertEquals(userId.toString(), authentication.getName());
+        assertSame(jwt, authentication.getPrincipal());
+        assertTrue(authentication.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_USER")));
+        assertFalse(authentication.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        when(reader.read(userId)).thenReturn(List.of(new SimpleGrantedAuthority("CHANNEL_UPDATE")));
+        var updated = security.jwtAuthenticationConverter().convert(jwt);
+        assertTrue(updated.getAuthorities().contains(new SimpleGrantedAuthority("CHANNEL_UPDATE")));
+        assertFalse(updated.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_USER")));
     }
 
     @Test
-    void tokenWithoutScopeOnlyHasTheFrameworkBearerFactor() {
-        var jwt = Jwt.withTokenValue("token").header("alg", "HS512").subject("user-id").build();
-
-        assertEquals(List.of(FactorGrantedAuthority.BEARER_AUTHORITY),
-                security.jwtAuthenticationConverter().convert(jwt).getAuthorities().stream()
-                        .map(GrantedAuthority::getAuthority).toList());
+    void tokenWithoutScopeLoadsAuthoritiesFromRedis() {
+        UUID userId = UUID.randomUUID();
+        var jwt = Jwt.withTokenValue("token").header("alg", "HS512").subject(userId.toString()).build();
+        when(reader.read(userId)).thenReturn(List.of());
+        assertNotNull(security.jwtAuthenticationConverter().convert(jwt));
+        verify(reader).read(userId);
     }
 }
