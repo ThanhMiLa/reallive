@@ -128,23 +128,26 @@ Each operation runs in a local transaction. Neither operation takes an explicit 
 
 ## Create channel
 
-`POST /channel/internal/api/channels` creates a channel for a supplied streamer UUID. The endpoint currently accepts calls without a JWT or an internal token. Caller authentication and User Service integration are deferred. Gateway's `/channel/api/**` route does not route this internal endpoint.
+`POST /channel/internal/api/channels` creates a channel for a supplied streamer UUID and its owner user UUID. User Service calls this endpoint during become-streamer registration, supplying `streamerId`, `userId`, display name and avatar URL from its own records. The endpoint currently accepts calls without a JWT or an internal token; caller authentication is deferred. Gateway's `/channel/api/**` route does not route this internal endpoint.
 
 ```shell
 curl -X POST http://localhost:8081/channel/internal/api/channels \
   -H 'Content-Type: application/json' \
-  -d '{"streamerId":"550e8400-e29b-41d4-a716-446655440000","name":"My channel","avatarUrl":"https://example.com/avatar.png"}'
+  -d '{"streamerId":"550e8400-e29b-41d4-a716-446655440000","userId":"550e8400-e29b-41d4-a716-446655440001","name":"My channel","avatarUrl":"https://example.com/avatar.png"}'
 ```
 
 | Field | Rules |
 | --- | --- |
 | `streamerId` | Required UUID. Channel Service does not check whether the streamer exists in User Service. |
+| `userId` | Required UUID of the user owning the streamer/channel. User Service supplies it from the authenticated become-streamer workflow. Channel Service persists it without calling User Service to verify the mapping. |
 | `name` | Required, nonblank; leading/trailing whitespace is removed before enforcing the 150-character maximum. |
 | `avatarUrl` | Optional or `null`; when supplied, a nonempty HTTP/HTTPS URL with at most 500 characters. |
 
 Creation returns HTTP 200 with the standard envelope: `status: 200`, `code: 1000`, `message: "Channel created successfully"`, `timestamp`, and `result: true`. The result is a boolean acknowledgement; channel details are not returned. A streamer with an existing channel, including a soft-deleted channel, receives HTTP 400 / code `1005` (`Channel already existed`).
 
-New channels use status `ACTIVE`, slug `channel-{streamerId}`, and null description, banner URL and deletion timestamp. Repeated calls leave the existing channel's name, avatar, audit timestamps, banned status and soft-delete state unchanged. A banned or deleted channel is not restored by this endpoint.
+New channels persist `userId` in `channels.user_id`, use status `ACTIVE`, slug `channel-{streamerId}`, and null description, banner URL and deletion timestamp. Repeated calls leave the existing channel's owner user ID, name, avatar, audit timestamps, banned status and soft-delete state unchanged. A banned or deleted channel is not restored by this endpoint.
+
+Flyway migration `V3__add_channel_user_id.sql` adds `user_id` as a nullable UUID so existing channel records remain valid. Existing rows retain `NULL` until their owner mapping is backfilled from User Service; the migration does not infer user IDs from streamer IDs. The create API and service require a non-null owner for new channels. The column is an external user reference with no cross-service foreign key and is not changed by JPA updates. Channel list/update response contracts remain unchanged. Preventing users from following their own channel will be implemented separately.
 
 The unique `streamer_id` constraint prevents duplicate channels. The creation precheck uses native `existsByStreamerIdIncludingDeleted` to preserve reserved streamer IDs even when the existing channel is hidden by the entity restriction. Insertion joins the local transaction; integrity conflicts and other storage failures return HTTP 503 / code `1003` (`Channel data unavailable`). Invalid fields, malformed JSON, missing bodies and invalid UUIDs return HTTP 400 / code `1004` (`Invalid channel request`). These error responses contain `result: false`. Responses do not expose database details.
 

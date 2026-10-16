@@ -37,6 +37,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -86,7 +87,7 @@ class ChannelPersistenceTest {
     @Test
     void migrationCreatesAllTablesAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("2", flyway.info().current().getVersion().toString());
+        assertEquals("3", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         for (String name : List.of("channels", "categories", "channel_categories", "channel_followers")) {
             assertNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM " + table(name), Integer.class));
@@ -108,7 +109,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            assertEquals(2, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             assertEquals(0L, jdbc.queryForObject("SELECT follower_count FROM " + channelsTable
                     + " WHERE id = ?", Long.class, channelId));
@@ -120,8 +121,39 @@ class ChannelPersistenceTest {
     }
 
     @Test
+    void userIdMigrationPreservesExistingChannelsAndLeavesUnknownOwnersNull() {
+        String schema = "channel_owner_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway initial = Flyway.configure().dataSource(jdbc.getDataSource())
+                .schemas(schema).defaultSchema(schema).target("2").load();
+        try {
+            initial.migrate();
+            UUID channelId = UUID.randomUUID();
+            UUID streamerId = UUID.randomUUID();
+            String channelsTable = "\"" + schema + "\".channels";
+            jdbc.update("INSERT INTO " + channelsTable
+                    + " (id, streamer_id, name, slug, status, follower_count) VALUES (?, ?, ?, ?, ?, ?)",
+                    channelId, streamerId, "Existing channel", "existing-channel", "BANNED", 123L);
+            Map<String, Object> before = jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId);
+
+            Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
+                    .schemas(schema).defaultSchema(schema).load();
+            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            upgraded.validate();
+            Map<String, Object> after = jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId);
+            for (String column : before.keySet()) {
+                assertEquals(before.get(column), after.get(column));
+            }
+            assertNull(jdbc.queryForObject("SELECT user_id FROM " + channelsTable + " WHERE id = ?",
+                    UUID.class, channelId));
+        } finally {
+            jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
+        }
+    }
+
+    @Test
     void persistsChannelProfileWithExternalStreamerIdAndTimestamps() {
         ChannelEntity channel = newChannel();
+        channel.setUserId(UUID.randomUUID());
         channel.setDescription("Channel description");
         channel.setAvatarUrl("https://example.com/avatar.png");
         channel.setBannerUrl("https://example.com/banner.png");
@@ -130,6 +162,7 @@ class ChannelPersistenceTest {
 
         assertNotNull(saved.getId());
         assertEquals(saved.getId(), reloaded.getId());
+        assertEquals(channel.getUserId(), reloaded.getUserId());
         assertEquals(channel.getName(), reloaded.getName());
         assertEquals(channel.getDescription(), reloaded.getDescription());
         assertEquals(channel.getAvatarUrl(), reloaded.getAvatarUrl());

@@ -97,6 +97,7 @@ class StreamerRegistrationServiceImplTest {
         var channelRequest = ArgumentCaptor.forClass(CreateChannelRequest.class);
         verify(channel).createChannel(channelRequest.capture());
         assertEquals(streamerId, channelRequest.getValue().getStreamerId());
+        assertEquals(user.getId(), channelRequest.getValue().getUserId());
         assertEquals("Test streamer", channelRequest.getValue().getName());
         assertEquals("https://images.example.com/avatar.png", channelRequest.getValue().getAvatarUrl());
     }
@@ -133,6 +134,7 @@ class StreamerRegistrationServiceImplTest {
         verify(channel).createChannel(request.capture());
         assertEquals(streamerId, response.getStreamerId());
         assertEquals(streamerId, request.getValue().getStreamerId());
+        assertEquals(user.getId(), request.getValue().getUserId());
         assertEquals("Kênh của tôi", request.getValue().getName());
         assertNull(request.getValue().getAvatarUrl());
     }

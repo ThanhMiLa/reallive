@@ -114,6 +114,7 @@ class ChannelCreationTest {
                 .andExpect(jsonPath("$.result").value(true));
 
         ChannelEntity persisted = channels.findByStreamerId(request.getStreamerId()).orElseThrow();
+        assertEquals(request.getUserId(), persisted.getUserId());
         assertEquals("Kênh của tôi", persisted.getName());
         assertNotNull(persisted.getId());
         assertEquals("channel-" + request.getStreamerId(), persisted.getSlug());
@@ -140,12 +141,15 @@ class ChannelCreationTest {
     @Test
     void acceptsMissingAvatarAndMaximumNameLengthAfterTrimming() throws Exception {
         UUID streamerId = UUID.randomUUID();
-        Map<String, Object> requestBody = Map.of("streamerId", streamerId, "name", "  " + "a".repeat(150) + "  ");
+        UUID userId = UUID.randomUUID();
+        Map<String, Object> requestBody = Map.of("streamerId", streamerId, "userId", userId,
+                "name", "  " + "a".repeat(150) + "  ");
         mvc.perform(post(ENDPOINT).contextPath("/channel").contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(requestBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result").value(true));
         ChannelEntity persisted = channels.findByStreamerId(streamerId).orElseThrow();
+        assertEquals(userId, persisted.getUserId());
         assertEquals("a".repeat(150), persisted.getName());
         assertEquals("", persisted.getAvatarUrl());
     }
@@ -165,14 +169,21 @@ class ChannelCreationTest {
     }
 
     static Stream<String> invalidRequests() {
-        String validPrefix = "{\"streamerId\":\"" + UUID.randomUUID() + "\",\"name\":\"Channel\"";
-        return Stream.concat(Stream.of("", "null", "{", "[]", "{}", "{\"name\":\"Channel\"}",
-                        "{\"streamerId\":\"invalid-uuid\",\"name\":\"Channel\"}",
-                        "{\"streamerId\":null,\"name\":\"Channel\"}",
-                        "{\"streamerId\":\"" + UUID.randomUUID() + "\"}",
-                        "{\"streamerId\":\"" + UUID.randomUUID() + "\",\"name\":null}",
-                        "{\"streamerId\":\"" + UUID.randomUUID() + "\",\"name\":\"   \"}",
-                        "{\"streamerId\":\"" + UUID.randomUUID() + "\",\"name\":\"" + "a".repeat(151) + "\"}"),
+        String streamer = "\"streamerId\":\"" + UUID.randomUUID() + "\"";
+        String user = "\"userId\":\"" + UUID.randomUUID() + "\"";
+        String validPrefix = "{" + streamer + "," + user + ",\"name\":\"Channel\"";
+        return Stream.concat(Stream.of("", "null", "{", "[]", "{}",
+                        "{" + user + ",\"name\":\"Channel\"}",
+                        "{" + user + ",\"streamerId\":\"invalid-uuid\",\"name\":\"Channel\"}",
+                        "{" + user + ",\"streamerId\":null,\"name\":\"Channel\"}",
+                        "{" + streamer + ",\"name\":\"Channel\"}",
+                        "{" + streamer + ",\"userId\":null,\"name\":\"Channel\"}",
+                        "{" + streamer + ",\"userId\":\"invalid-uuid\",\"name\":\"Channel\"}",
+                        "{" + streamer + ",\"userId\":\"\",\"name\":\"Channel\"}",
+                        "{" + streamer + "," + user + "}",
+                        "{" + streamer + "," + user + ",\"name\":null}",
+                        "{" + streamer + "," + user + ",\"name\":\"   \"}",
+                        "{" + streamer + "," + user + ",\"name\":\"" + "a".repeat(151) + "\"}"),
                 Stream.of("", " ", "ftp://example.com/image", "javascript:alert(1)", "/avatar.png",
                                 "https://", "http:///avatar.png", "https://example.com/a b", "https://example.com:65536/avatar",
                                 "https://example.com:invalid/avatar", "https://example.com/" + "a".repeat(501))
@@ -193,6 +204,7 @@ class ChannelCreationTest {
         String storedChannelQuery = "SELECT * FROM \"" + SCHEMA + "\".channels WHERE id = ?";
         Map<String, Object> originalRow = jdbc.queryForMap(storedChannelQuery, original.getId());
         request.setName("Replacement name");
+        request.setUserId(UUID.randomUUID());
         request.setAvatarUrl("https://example.com/replacement.png");
         clearInvocations(channels);
 
@@ -215,7 +227,7 @@ class ChannelCreationTest {
     void concurrentCreatesAllowOneSuccessAndRejectTheDuplicate() throws Exception {
         CreateChannelRequest firstRequest = request("First name", "https://example.com/first.png");
         CreateChannelRequest secondRequest = CreateChannelRequest.builder()
-                .streamerId(firstRequest.getStreamerId()).name("Second name").build();
+                .streamerId(firstRequest.getStreamerId()).userId(firstRequest.getUserId()).name("Second name").build();
         CountDownLatch insertsReady = new CountDownLatch(2);
         var repositoryAnswer = mockingDetails(channels).getMockCreationSettings().getDefaultAnswer();
         doAnswer(invocation -> {
@@ -341,6 +353,17 @@ class ChannelCreationTest {
     }
 
     @Test
+    void directServiceCallRejectsMissingOwnerWithoutCreatingAChannel() {
+        CreateChannelRequest request = request("Missing owner", null);
+        request.setUserId(null);
+
+        AppException failure = assertThrows(AppException.class, () -> channelService.createChannel(request));
+
+        assertEquals(ErrorCode.CHANNEL_REQUEST_INVALID, failure.getErrorCode());
+        assertFalse(channels.existsByStreamerId(request.getStreamerId()));
+    }
+
+    @Test
     void getAtInternalPathStillRequiresAuthentication() throws Exception {
         mvc.perform(get(ENDPOINT).contextPath("/channel"))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
@@ -354,6 +377,7 @@ class ChannelCreationTest {
     }
 
     private static CreateChannelRequest request(String name, String avatarUrl) {
-        return CreateChannelRequest.builder().streamerId(UUID.randomUUID()).name(name).avatarUrl(avatarUrl).build();
+        return CreateChannelRequest.builder().streamerId(UUID.randomUUID()).userId(UUID.randomUUID())
+                .name(name).avatarUrl(avatarUrl).build();
     }
 }

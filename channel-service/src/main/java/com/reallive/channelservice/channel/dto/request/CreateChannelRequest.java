@@ -23,6 +23,9 @@ public class CreateChannelRequest {
     @NotNull
     UUID streamerId;
 
+    @NotNull
+    UUID userId;
+
     String name;
 
     @Size(max = 500)

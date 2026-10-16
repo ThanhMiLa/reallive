@@ -38,15 +38,17 @@ public interface ChannelService {
     PageResponse<ChannelListResponse> getChannels(UUID userId, ChannelListRequest request);
 
     /**
-     * Creates an active channel with a deterministic slug for the supplied streamer.
+     * Creates an active channel with a deterministic slug for the supplied streamer and owner user.
      *
      * <p>An existing channel for the streamer, including a soft-deleted record, is rejected without changing its data.
-     * Concurrent inserts are protected by database uniqueness constraints. Streamer existence
-     * is not verified with User Service. Creation joins the current local transaction when present.</p>
+     * Concurrent inserts are protected by database uniqueness constraints. The supplied owner user UUID
+     * is required and persisted without verifying its mapping to the streamer with User Service.
+     * Creation joins the current local transaction when present.</p>
      *
-     * @param request the streamer UUID, channel name and optional HTTP/HTTPS avatar URL
+     * @param request the streamer UUID, owner user UUID, channel name and optional HTTP/HTTPS avatar URL
      * @return {@code true} when the saved channel has an ID, otherwise {@code false}
-     * @throws AppException if a channel already exists or insertion violates a database constraint
+     * @throws AppException if the owner user UUID is missing, a channel already exists,
+     *                      or insertion violates a database constraint
      */
     boolean createChannel(CreateChannelRequest request);
 

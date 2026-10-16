@@ -55,11 +55,13 @@ class ChannelClientResolverTest {
     @NullSource
     @ValueSource(strings = AVATAR_URL)
     void createChannelSendsRequestAndReturnsConfirmedSuccess(String avatarUrl) {
+        UUID userId = UUID.randomUUID();
         CreateChannelRequest request = CreateChannelRequest.builder()
-                .streamerId(streamerId).name("Test streamer").avatarUrl(avatarUrl).build();
+                .streamerId(streamerId).userId(userId).name("Test streamer").avatarUrl(avatarUrl).build();
         when(client.createChannel(request)).thenReturn(ResponseEntity.ok(envelope(200, 1000, true)));
 
         assertTrue(resolver.createChannel(request));
+        assertEquals(userId.toString(), mapper.valueToTree(request).path("userId").asString());
 
         verify(client).createChannel(request);
         verifyNoMoreInteractions(client);
@@ -283,7 +285,8 @@ class ChannelClientResolverTest {
     }
 
     private CreateChannelRequest createChannelRequest() {
-        return CreateChannelRequest.builder().streamerId(streamerId).name("Test streamer").build();
+        return CreateChannelRequest.builder().streamerId(streamerId).userId(UUID.randomUUID())
+                .name("Test streamer").build();
     }
 
     private static ApiResponse<Boolean> envelope(int status, int code, Boolean result) {

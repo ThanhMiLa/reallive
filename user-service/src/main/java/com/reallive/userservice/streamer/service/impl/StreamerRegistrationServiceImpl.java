@@ -88,6 +88,7 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
                 .name(profile.getDisplayName())
                 .avatarUrl(profile.getAvatarUrl())
                 .streamerId(streamerEntity.getId())
+                .userId(streamerEntity.getUser().getId())
                 .build();
     }
 }

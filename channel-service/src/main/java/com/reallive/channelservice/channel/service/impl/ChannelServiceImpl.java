@@ -98,12 +98,16 @@ public class ChannelServiceImpl implements ChannelService {
     @Override
     @Transactional
     public boolean createChannel(CreateChannelRequest request) {
+        if (request.getUserId() == null) {
+            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
+        }
         if (channelRepository.existsByStreamerIdIncludingDeleted(request.getStreamerId())) {
             throw new AppException(ErrorCode.CHANNEL_ALREADY_EXISTED);
         }
         ChannelEntity channelEntity = ChannelEntity.builder()
                 .name(request.getName())
                 .streamerId(request.getStreamerId())
+                .userId(request.getUserId())
                 .slug("channel-" + request.getStreamerId())
                 .avatarUrl(request.getAvatarUrl() != null ? request.getAvatarUrl() : "")
                 .status(ChannelStatus.ACTIVE)

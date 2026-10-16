@@ -52,6 +52,9 @@ public class ChannelEntity extends BaseEntity {
     @Column(name = "streamer_id", nullable = false, updatable = false)
     UUID streamerId;
 
+    @Column(name = "user_id", updatable = false)
+    UUID userId;
+
     @Column(name = "name", nullable = false, length = 150)
     String name;
 

@@ -184,6 +184,8 @@ Redis consumption and the database transaction are separate. If the database sav
 
 After all checks, including loading the seeded `STREAMER` role, registration preserves existing roles, adds `STREAMER` and its configured permissions through membership, and creates an `ACTIVE` streamer with `verifiedAt` set to the current UTC time. Both writes commit or roll back together. HTTP 200 returns the standard `ApiResponse` with `result: {"streamerId":"...","userId":"...","status":"ACTIVE","roles":["USER","STREAMER"]}`; additional existing roles remain in the response.
 
+Registration calls `POST /channel/internal/api/channels` with the saved streamer's `streamerId`, its owning user's `userId`, and the profile display name and avatar URL. The owner ID comes from the authenticated user's database record. Channel Service requires and stores this UUID in `channels.user_id`; no additional service call is needed to obtain it. Deploy the matching create-channel contract in both services together. Channel creation commits in Channel Service's own transaction, independently of the User Service transaction.
+
 | Failure | HTTP | Code |
 |---|---|---|
 | Missing or invalid authentication | 401 | 1001 |

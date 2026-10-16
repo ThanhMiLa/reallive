@@ -141,6 +141,7 @@ One task exists per account. Synchronization publishes current committed state a
 |---|---|---|---|---|
 | id | UUID | PK, NOT NULL | Primary | Channel ID |
 | streamer_id | UUID | UNIQUE, NOT NULL | UNIQUE | Streamer ID from User Service |
+| user_id | UUID | Nullable for existing rows; required on channel creation | - | Owner user ID from User Service; no cross-service foreign key |
 | name | VARCHAR(150) | NOT NULL | INDEX | Channel name |
 | slug | VARCHAR(150) | UNIQUE, NOT NULL | UNIQUE | Public channel slug |
 | description | VARCHAR(1000) | - | - | Channel description |

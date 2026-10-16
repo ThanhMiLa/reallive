@@ -12,6 +12,7 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CreateChannelRequest {
     UUID streamerId;
+    UUID userId;
     String name;
     String avatarUrl;
 }

@@ -74,7 +74,7 @@
 
 ## IX - Discovery / Search
 - Live Stream List
-- Channel List
+- Channel List ✅
 - Category List ✅
 - Following Feed
 - Recommended Streams
