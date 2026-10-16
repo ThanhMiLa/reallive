@@ -1,7 +1,9 @@
 package com.reallive.userservice.streamer.controller.internal;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.streamer.entity.StreamerEntity;
 import com.reallive.userservice.streamer.entity.StreamerStatus;
@@ -11,15 +13,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.nullValue;
@@ -38,6 +45,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Transactional
 class StreamerControllerIntegrationTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
+
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     private static final String CONTEXT_PATH = "/user";
     private static final String ENDPOINT = CONTEXT_PATH + "/internal/api/streamers/by-user/{userId}/active";

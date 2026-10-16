@@ -1,9 +1,11 @@
 package com.reallive.userservice.user.controller;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
+import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
@@ -14,9 +16,12 @@ import com.reallive.userservice.user.repository.UserCategoryPreferenceRepository
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -34,6 +39,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -49,6 +55,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @ActiveProfiles("test")
 class CategoryPreferenceControllerTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
+
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     @Autowired
     private WebApplicationContext context;

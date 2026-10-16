@@ -5,6 +5,7 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.auth.service.AuthStateSyncService;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.client.channel.CreateChannelRequest;
 import com.reallive.userservice.common.exception.AppException;
@@ -47,7 +48,8 @@ class StreamerRegistrationServiceImplTest {
     private final StreamerRepository streamers = mock(StreamerRepository.class);
     private final ChannelClientResolver channel = mock(ChannelClientResolver.class);
     private final ProfileRepository profiles = mock(ProfileRepository.class);
-    private final StreamerRegistrationServiceImpl service = new StreamerRegistrationServiceImpl(users, roles, streamers, channel, profiles);
+    private final AuthStateSyncService sync = mock(AuthStateSyncService.class);
+    private final StreamerRegistrationServiceImpl service = new StreamerRegistrationServiceImpl(users, sync, roles, streamers, channel, profiles);
     private final RoleEntity streamerRole = role("STREAMER");
     private UserEntity user;
 
@@ -83,7 +85,7 @@ class StreamerRegistrationServiceImplTest {
         order.verify(users).findByIdForUpdate(user.getId());
         order.verify(streamers).existsByUserId(user.getId());
         order.verify(roles).findByName("STREAMER");
-        order.verify(users).save(user);
+        verify(sync).changed(user);
         order.verify(streamers).save(captured.capture());
         assertSame(user, captured.getValue().getUser());
         assertEquals(StreamerStatus.ACTIVE, captured.getValue().getStatus());

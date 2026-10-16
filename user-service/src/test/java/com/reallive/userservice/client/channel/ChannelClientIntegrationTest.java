@@ -1,5 +1,6 @@
 package com.reallive.userservice.client.channel;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import feign.FeignException;
@@ -20,10 +21,12 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 })
 @ActiveProfiles("test")
 class ChannelClientIntegrationTest {
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     private static final ChannelHttpTestServer CHANNEL = new ChannelHttpTestServer();
     @Autowired
@@ -294,7 +299,7 @@ class ChannelClientIntegrationTest {
         UUID cat1 = UUID.randomUUID();
         UUID cat2 = UUID.randomUUID();
         ValidateCategoriesRequest payload = ValidateCategoriesRequest.builder()
-                .categoryIds(java.util.Set.of(cat1, cat2))
+                .categoryIds(Set.of(cat1, cat2))
                 .build();
 
         var response = client.validateCategories(payload);
@@ -314,7 +319,7 @@ class ChannelClientIntegrationTest {
         assertEquals(Boolean.TRUE, response.getBody().getResult());
         assertEquals(1, CHANNEL.callCount());
 
-        assertTrue(resolver.validateCategories(java.util.Set.of(cat1, cat2)));
+        assertTrue(resolver.validateCategories(Set.of(cat1, cat2)));
         assertEquals(2, CHANNEL.callCount());
     }
 
@@ -331,7 +336,7 @@ class ChannelClientIntegrationTest {
         CHANNEL.setErrorStatus(status);
 
         AppException failure = assertThrows(AppException.class,
-                () -> resolver.validateCategories(java.util.Set.of(UUID.randomUUID())));
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
 
         assertEquals(expectedError, failure.getErrorCode());
         assertEquals(1, CHANNEL.callCount());
@@ -344,7 +349,7 @@ class ChannelClientIntegrationTest {
         CHANNEL.setMode(mode);
 
         AppException failure = assertThrows(AppException.class,
-                () -> resolver.validateCategories(java.util.Set.of(UUID.randomUUID())));
+                () -> resolver.validateCategories(Set.of(UUID.randomUUID())));
 
         assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, failure.getErrorCode());
         assertEquals(1, CHANNEL.callCount());

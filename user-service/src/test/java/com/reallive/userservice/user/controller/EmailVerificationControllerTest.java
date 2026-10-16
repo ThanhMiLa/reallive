@@ -1,8 +1,10 @@
 package com.reallive.userservice.user.controller;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
@@ -18,11 +20,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
@@ -33,6 +38,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.aMapWithSize;
@@ -62,6 +68,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @ActiveProfiles("test")
 class EmailVerificationControllerTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
+
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     private static final String ENDPOINT = "/api/users/me/email-verification/otp";
     private static final String VERIFY_ENDPOINT = "/api/users/me/email-verification/verify";

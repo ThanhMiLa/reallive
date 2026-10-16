@@ -7,7 +7,9 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.userservice.auth.adapter.kafka.PasswordResetEmailPublisher;
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.adapter.redis.PasswordResetOtpStore;
+import com.reallive.userservice.auth.adapter.redis.RedisAuthStateStore;
 import com.reallive.userservice.auth.dto.request.AuthRequest;
 import com.reallive.userservice.auth.dto.request.ChangePasswordRequest;
 import com.reallive.userservice.auth.dto.request.ForgotPasswordRequest;
@@ -24,17 +26,23 @@ import com.reallive.userservice.auth.mapper.UserMapper;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.util.PasswordResetOtpHasher;
+import com.reallive.userservice.auth.util.UserAuthoritiesMapper;
 import com.reallive.userservice.client.wallet.WalletClient;
 import com.reallive.userservice.client.wallet.WalletCreationResponse;
 import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
+import com.reallive.userservice.common.security.TokenIssuancePolicy;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import com.reallive.userservice.user.repository.ProfileRepository;
+import feign.FeignException;
+import feign.Request;
+import feign.Response;
+import feign.RetryableException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -43,11 +51,8 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
-import feign.FeignException;
-import feign.Request;
-import feign.Response;
-import feign.RetryableException;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InOrder;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -56,17 +61,18 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
-import java.nio.charset.StandardCharsets;
 import java.net.SocketTimeoutException;
-import java.security.SecureRandom;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -75,7 +81,6 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -86,8 +91,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -109,6 +114,7 @@ class AuthServiceImplTest {
     private PasswordResetEmailPublisher passwordResetEmailPublisher;
     private PasswordResetOtpHasher passwordResetOtpHasher;
     private AuthServiceImpl authService;
+    private AuthStateStore authStateStore;
     private WalletClient walletClient;
 
     @BeforeEach
@@ -128,12 +134,13 @@ class AuthServiceImplTest {
 
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
+        authStateStore = mock(AuthStateStore.class);
         authService = new AuthServiceImpl(
                 userRepository,
                 userMapper,
                 passwordEncoder,
                 roleRepository,
-                redisTemplate,
+                issuer(authStateStore, SIGNING_KEY),
                 profileRepository,
                 passwordResetOtpStore,
                 passwordResetEmailPublisher,
@@ -141,9 +148,6 @@ class AuthServiceImplTest {
                 walletClient
         );
 
-        ReflectionTestUtils.setField(authService, "SIGNER_KEY", SIGNING_KEY);
-        ReflectionTestUtils.setField(authService, "TTL_ACCESS_TOKEN", 900L);
-        ReflectionTestUtils.setField(authService, "TTL_REFRESH_TOKEN", 2592000L);
         ReflectionTestUtils.setField(authService, "otpTtlSeconds", 60L);
         ReflectionTestUtils.setField(authService, "resetTokenTtlSeconds", 600L);
     }
@@ -186,7 +190,7 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Throws UNAUTHENTICATED when user account is BANNED/INACTIVE")
+        @DisplayName("Issuance policy rejects a banned account with USER_NOT_ACTIVE")
         void login_ThrowsUnauthenticated_WhenUserInactive() {
             AuthRequest request = AuthRequest.builder()
                     .username("banned_user")
@@ -198,7 +202,7 @@ class AuthServiceImplTest {
             when(passwordEncoder.matches("secret123", "hashed_pwd")).thenReturn(true);
 
             AppException exception = assertThrows(AppException.class, () -> authService.login(request));
-            assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
+            assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
         }
 
         @Test
@@ -235,8 +239,8 @@ class AuthServiceImplTest {
             assertEquals(user.getId().toString(), accessToken.getJWTClaimsSet().getSubject());
             assertEquals("reallive.com", accessToken.getJWTClaimsSet().getIssuer());
             assertEquals("ACCESS", accessToken.getJWTClaimsSet().getStringClaim("type"));
-            assertTrue(accessToken.getJWTClaimsSet().getStringClaim("scope").contains("ROLE_ADMIN"));
-            assertTrue(accessToken.getJWTClaimsSet().getStringClaim("scope").contains("USER_READ"));
+            assertNull(accessToken.getJWTClaimsSet().getStringClaim("scope"));
+            verify(authStateStore).publish(any(), eq(List.of()), eq(true));
         }
 
         @Test
@@ -257,7 +261,7 @@ class AuthServiceImplTest {
 
             assertNotNull(response);
             SignedJWT accessToken = SignedJWT.parse(response.getAccessToken());
-            assertEquals("", accessToken.getJWTClaimsSet().getStringClaim("scope"));
+            assertNull(accessToken.getJWTClaimsSet().getStringClaim("scope"));
         }
     }
 
@@ -563,7 +567,7 @@ class AuthServiceImplTest {
         @DisplayName("Rejects logout without accessing Redis when refresh token is missing")
         void logout_ThrowsUnauthenticated_WhenRefreshTokenMissing(String refreshToken) throws Exception {
             String jti = UUID.randomUUID().toString();
-            String accessToken = createSignedToken("ACCESS", "user-123", jti, Instant.now().plusSeconds(300));
+            String accessToken = createSignedToken("ACCESS", "00000000-0000-0000-0000-000000000123", jti, Instant.now().plusSeconds(300));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.logout(accessToken, refreshToken));
@@ -577,7 +581,7 @@ class AuthServiceImplTest {
         @DisplayName("Rejects logout without accessing Redis when access token is missing")
         void logout_ThrowsUnauthenticated_WhenAccessTokenMissing(String accessToken) throws Exception {
             String jti = UUID.randomUUID().toString();
-            String refreshToken = createSignedToken("REFRESH", "user-123", jti, Instant.now().plusSeconds(3600));
+            String refreshToken = createSignedToken("REFRESH", "00000000-0000-0000-0000-000000000123", jti, Instant.now().plusSeconds(3600));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.logout(accessToken, refreshToken));
@@ -590,15 +594,14 @@ class AuthServiceImplTest {
         void logout_RevokesBothTokens() throws Exception {
             String accessJti = UUID.randomUUID().toString();
             String refreshJti = UUID.randomUUID().toString();
-            String accessToken = createSignedToken("ACCESS", "user-123", accessJti, Instant.now().plusSeconds(300));
-            String refreshToken = createSignedToken("REFRESH", "user-123", refreshJti, Instant.now().plusSeconds(3600));
+            String accessToken = createSignedToken("ACCESS", "00000000-0000-0000-0000-000000000123", accessJti, Instant.now().plusSeconds(300));
+            String refreshToken = createSignedToken("REFRESH", "00000000-0000-0000-0000-000000000123", refreshJti, Instant.now().plusSeconds(3600));
 
             when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(true);
 
             authService.logout(accessToken, refreshToken);
 
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class));
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
+            verify(authStateStore).revoke(ArgumentMatchers.argThat(values -> values.size() == 2));
         }
 
         @Test
@@ -606,40 +609,39 @@ class AuthServiceImplTest {
         void logout_IgnoresExpiredAccessToken() throws Exception {
             String accessJti = UUID.randomUUID().toString();
             String refreshJti = UUID.randomUUID().toString();
-            String accessToken = createSignedToken("ACCESS", "user-123", accessJti,
+            String accessToken = createSignedToken("ACCESS", "00000000-0000-0000-0000-000000000123", accessJti,
                     Instant.now().minusSeconds(60));
-            String refreshToken = createSignedToken("REFRESH", "user-123", refreshJti,
+            String refreshToken = createSignedToken("REFRESH", "00000000-0000-0000-0000-000000000123", refreshJti,
                     Instant.now().plusSeconds(3600));
             when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class)))
                     .thenReturn(true);
 
             authService.logout(accessToken, refreshToken);
 
-            verify(valueOperations, never()).setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class));
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
+            verify(authStateStore).revoke(ArgumentMatchers.argThat(values -> values.size() == 1
+                    && values.getFirst().key().equals("auth:revoked:refresh:" + refreshJti)));
         }
 
         @Test
         @DisplayName("Throws UNAUTHENTICATED when token was already revoked in Redis")
         void logout_ThrowsUnauthenticated_WhenTokenAlreadyRevoked() throws Exception {
             String jti = UUID.randomUUID().toString();
-            String accessToken = createSignedToken("ACCESS", "user-123", jti, Instant.now().plusSeconds(300));
+            String accessToken = createSignedToken("ACCESS", "00000000-0000-0000-0000-000000000123", jti, Instant.now().plusSeconds(300));
             String refreshJti = UUID.randomUUID().toString();
-            String refreshToken = createSignedToken("REFRESH", "user-123", refreshJti,
+            String refreshToken = createSignedToken("REFRESH", "00000000-0000-0000-0000-000000000123", refreshJti,
                     Instant.now().plusSeconds(3600));
 
-            when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(false);
+            doThrow(new AppException(ErrorCode.UNAUTHENTICATED)).when(authStateStore).revoke(any());
 
             AppException exception = assertThrows(AppException.class, () -> authService.logout(accessToken, refreshToken));
             assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:access:" + jti), eq("1"), any(Duration.class));
-            verify(valueOperations, never()).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
+
         }
 
         @Test
         @DisplayName("Throws UNAUTHENTICATED when token format is malformed")
         void logout_ThrowsUnauthenticated_WhenTokenMalformed() throws Exception {
-            String refreshToken = createSignedToken("REFRESH", "user-123", UUID.randomUUID().toString(),
+            String refreshToken = createSignedToken("REFRESH", "00000000-0000-0000-0000-000000000123", UUID.randomUUID().toString(),
                     Instant.now().plusSeconds(3600));
             AppException exception = assertThrows(AppException.class,
                     () -> authService.logout("invalid.jwt.token", refreshToken));
@@ -675,7 +677,10 @@ class AuthServiceImplTest {
         @DisplayName("Throws UNAUTHENTICATED when refresh token is already revoked in Redis")
         void refresh_ThrowsUnauthenticated_WhenTokenAlreadyRevoked() throws Exception {
             String jti = UUID.randomUUID().toString();
-            String token = createSignedToken("REFRESH", UUID.randomUUID().toString(), jti, Instant.now().plusSeconds(3600));
+            UserEntity user = createTestUser();
+            String token = createSignedToken("REFRESH", user.getId().toString(), jti, Instant.now().plusSeconds(3600));
+            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            doThrow(new AppException(ErrorCode.UNAUTHENTICATED)).when(authStateStore).publish(any(), any(), eq(true));
 
             when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + jti), eq("1"), any(Duration.class)))
                     .thenReturn(false);
@@ -770,12 +775,9 @@ class AuthServiceImplTest {
                 UserRepository users = mock(UserRepository.class);
                 when(users.findById(user.getId())).thenReturn(Optional.of(user));
                 AuthServiceImpl service = new AuthServiceImpl(users, mock(UserMapper.class),
-                        mock(PasswordEncoder.class), mock(RoleRepository.class), redis, mock(ProfileRepository.class),
+                        mock(PasswordEncoder.class), mock(RoleRepository.class), issuer(new RedisAuthStateStore(redis), signingKey), mock(ProfileRepository.class),
                         mock(PasswordResetOtpStore.class), mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class),
                         mock(WalletClient.class));
-                ReflectionTestUtils.setField(service, "SIGNER_KEY", signingKey);
-                ReflectionTestUtils.setField(service, "TTL_ACCESS_TOKEN", 900L);
-                ReflectionTestUtils.setField(service, "TTL_REFRESH_TOKEN", 2592000L);
                 JWTClaimsSet claims = new JWTClaimsSet.Builder().subject(user.getId().toString()).jwtID(jti)
                         .issuer("reallive.com").issueTime(Date.from(Instant.now().minusSeconds(1)))
                         .expirationTime(Date.from(Instant.now().plusSeconds(300))).claim("type", "REFRESH").build();
@@ -855,8 +857,8 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Throws USER_NOT_ACTIVE when user status is BANNED")
-        void changePassword_ThrowsUserNotActive_WhenUserBanned() {
+        @DisplayName("Business password validation does not repeat gateway account-status checks")
+        void changePasswordValidatesPasswordWithoutRepeatingAccountStatusCheck() {
             UserEntity user = createUser("banned_user", "hashed_pwd", UserStatus.BANNED);
             ChangePasswordRequest request = ChangePasswordRequest.builder()
                     .currentPassword("oldSecret123")
@@ -868,8 +870,8 @@ class AuthServiceImplTest {
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
-            assertEquals(ErrorCode.USER_NOT_ACTIVE, exception.getErrorCode());
-            verifyNoInteractions(passwordEncoder, redisTemplate, valueOperations);
+            assertEquals(ErrorCode.CURRENT_PASSWORD_INCORRECT, exception.getErrorCode());
+            verifyNoInteractions(redisTemplate, valueOperations);
         }
 
         @Test
@@ -990,6 +992,8 @@ class AuthServiceImplTest {
             when(valueOperations.setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class)))
                     .thenReturn(false);
 
+            doThrow(new AppException(ErrorCode.UNAUTHENTICATED)).when(authStateStore).publish(any(), any(), eq(true));
+
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), accessToken, refreshToken, request));
             assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
@@ -1026,8 +1030,7 @@ class AuthServiceImplTest {
             assertEquals("new_hashed_pwd", user.getPasswordHash());
             verify(userRepository).save(user);
 
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:access:" + accessJti), eq("1"), any(Duration.class));
-            verify(valueOperations).setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class));
+            verify(authStateStore).publish(any(), ArgumentMatchers.argThat(values -> values.size() == 2), eq(true));
 
             SignedJWT newAccess = SignedJWT.parse(response.getAccessToken());
             assertEquals(user.getId().toString(), newAccess.getJWTClaimsSet().getSubject());
@@ -1059,6 +1062,8 @@ class AuthServiceImplTest {
             when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + refreshJti), eq("1"), any(Duration.class)))
                     .thenReturn(false);
 
+            doThrow(new AppException(ErrorCode.UNAUTHENTICATED)).when(authStateStore).publish(any(), any(), eq(true));
+
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), accessToken, refreshToken, request));
             assertEquals(ErrorCode.UNAUTHENTICATED, exception.getErrorCode());
@@ -1068,6 +1073,15 @@ class AuthServiceImplTest {
     // =========================================================================
     // Helper Methods
     // =========================================================================
+    private AuthTokenServiceImpl issuer(AuthStateStore store, String key) {
+        var issuer = new AuthTokenServiceImpl(store, new UserAuthoritiesMapper(), new TokenIssuancePolicy(), new ObjectMapper());
+        ReflectionTestUtils.setField(issuer, "signerKey", key);
+        ReflectionTestUtils.setField(issuer, "accessTokenTtl", 900L);
+        ReflectionTestUtils.setField(issuer, "refreshTokenTtl", 2592000L);
+        ReflectionTestUtils.setField(issuer, "ttlGrace", Duration.ofSeconds(60));
+        return issuer;
+    }
+
     private UserEntity createUser(String username, String passwordHash, UserStatus status) {
         UserEntity user = new UserEntity();
         user.setId(UUID.randomUUID());
@@ -1087,6 +1101,8 @@ class AuthServiceImplTest {
     private String createSignedToken(String type, String subject, String jti, Instant expiry) throws JOSEException {
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .subject(subject)
+                .issuer("reallive.com")
+                .issueTime(Date.from(expiry.minusSeconds(7200)))
                 .jwtID(jti)
                 .expirationTime(Date.from(expiry))
                 .claim("type", type)
@@ -1116,16 +1132,33 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Throws USER_NOT_ACTIVE when user is inactive or banned")
-        void forgotPassword_UserNotActive() {
-            UserEntity inactiveUser = createTestUser();
-            inactiveUser.setStatus(UserStatus.BANNED);
-            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("banned@example.com").build();
-            when(userRepository.findByEmail("banned@example.com")).thenReturn(Optional.of(inactiveUser));
+        @DisplayName("Public recovery does not repeat account-status checks")
+        void forgotPassword_DoesNotRepeatAccountStatusCheck() {
+            UserEntity user = createTestUser();
+            user.setStatus(UserStatus.BANNED);
+            user.setEmail("user@example.com");
+            ForgotPasswordRequest request = ForgotPasswordRequest.builder().email("user@example.com").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpStore.hasCooldown(user.getId())).thenReturn(false);
+            when(passwordResetOtpHasher.hash(eq(user.getId()), eq("user@example.com"), anyString())).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.save(eq(user.getId()), eq("hashed-otp")))
+                    .thenReturn(new EmailVerificationCooldownResult(true, Duration.ZERO));
 
-            AppException ex = assertThrows(AppException.class, () -> authService.forgotPassword(request));
-            assertEquals(ErrorCode.USER_NOT_ACTIVE, ex.getErrorCode());
-            verify(passwordResetOtpStore, never()).hasCooldown(any());
+            ForgotPasswordResponse response = authService.forgotPassword(request);
+
+            assertNotNull(response);
+            assertNotNull(response.getExpiresAt());
+            assertTrue(response.getExpiresAt().isAfter(Instant.now()));
+
+            ArgumentCaptor<EmailVerificationRequestedMessage> messageCaptor =
+                    ArgumentCaptor.forClass(EmailVerificationRequestedMessage.class);
+            verify(passwordResetEmailPublisher).publish(messageCaptor.capture());
+            EmailVerificationRequestedMessage published = messageCaptor.getValue();
+            assertEquals(user.getId(), published.getUserId());
+            assertEquals(EmailType.PASSWORD_RESET, published.getEmailType());
+            assertEquals("user@example.com", published.getRecipientEmail());
+            assertNotNull(published.getOtp());
+
         }
 
         @Test
@@ -1288,15 +1321,22 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Throws USER_NOT_ACTIVE when user is inactive or banned")
-        void verifyResetOtp_UserNotActive() {
+        @DisplayName("Public recovery does not repeat account-status checks")
+        void verifyResetOtp_DoesNotRepeatAccountStatusCheck() {
             UserEntity user = createTestUser();
             user.setStatus(UserStatus.BANNED);
-            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("suspended@example.com").otp("123456").build();
-            when(userRepository.findByEmail("suspended@example.com")).thenReturn(Optional.of(user));
+            user.setEmail("user@example.com");
+            VerifyResetOtpRequest request = VerifyResetOtpRequest.builder().email("user@example.com").otp("123456").build();
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpHasher.hash(user.getId(), "user@example.com", "123456")).thenReturn("hashed-otp");
+            when(passwordResetOtpStore.consume(user.getId(), "hashed-otp")).thenReturn(EmailVerificationOtpCheckResult.VALID);
 
-            AppException ex = assertThrows(AppException.class, () -> authService.verifyResetOtp(request));
-            assertEquals(ErrorCode.USER_NOT_ACTIVE, ex.getErrorCode());
+            String token = authService.verifyResetOtp(request);
+
+            assertNotNull(token);
+            assertEquals(64, token.length()); // 32 bytes hex
+            verify(passwordResetOtpStore).saveResetToken(eq(token), eq(user.getId()), eq(Duration.ofSeconds(600)));
+
         }
 
         @Test
@@ -1452,19 +1492,25 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Throws USER_NOT_ACTIVE when user is not active")
-        void resetPassword_UserNotActive() {
+        @DisplayName("Public password reset does not repeat account-status checks")
+        void resetPassword_DoesNotRepeatAccountStatusCheck() {
             UserEntity user = createTestUser();
             user.setStatus(UserStatus.BANNED);
+            user.setPasswordHash("hashed-old-secret");
             ResetPasswordRequest request = ResetPasswordRequest.builder()
-                    .newPassword("newSecret123")
-                    .confirmPassword("newSecret123")
+                    .newPassword("newBrandSecret123")
+                    .confirmPassword("newBrandSecret123")
                     .build();
             when(passwordResetOtpStore.consumeResetToken("valid-token")).thenReturn(Optional.of(user.getId()));
             when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(passwordEncoder.matches("newBrandSecret123", "hashed-old-secret")).thenReturn(false);
+            when(passwordEncoder.encode("newBrandSecret123")).thenReturn("hashed-newBrandSecret123");
 
-            AppException ex = assertThrows(AppException.class, () -> authService.resetPassword("valid-token", request));
-            assertEquals(ErrorCode.USER_NOT_ACTIVE, ex.getErrorCode());
+            authService.resetPassword("valid-token", request);
+
+            assertEquals("hashed-newBrandSecret123", user.getPasswordHash());
+            verify(userRepository).save(user);
+
         }
 
         @Test

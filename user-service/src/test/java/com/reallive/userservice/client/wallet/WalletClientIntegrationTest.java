@@ -1,5 +1,6 @@
 package com.reallive.userservice.client.wallet;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import feign.FeignException;
 import feign.RetryableException;
 import org.junit.jupiter.api.AfterAll;
@@ -15,10 +16,11 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.util.UUID;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,6 +30,8 @@ import static org.junit.jupiter.api.Assertions.*;
 })
 @ActiveProfiles("test")
 class WalletClientIntegrationTest {
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     private static final PaymentHttpTestServer PAYMENT = new PaymentHttpTestServer();
     @Autowired

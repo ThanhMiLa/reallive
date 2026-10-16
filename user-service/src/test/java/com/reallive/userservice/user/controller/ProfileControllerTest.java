@@ -1,9 +1,11 @@
 package com.reallive.userservice.user.controller;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
+import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
@@ -23,6 +25,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +35,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
@@ -39,7 +45,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
-import org.mockito.ArgumentCaptor;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -94,6 +99,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @ActiveProfiles("test")
 class ProfileControllerTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
+
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     @Autowired
     private WebApplicationContext context;

@@ -21,7 +21,8 @@ public interface AuthService {
      * @param authRequest the username and password to authenticate
      * @return the newly issued access and refresh tokens
      * @throws AppException with {@link ErrorCode#UNAUTHENTICATED} if the credentials are incorrect
-     *                      or the user is inactive
+     *                      or the credentials are invalid; {@link ErrorCode#USER_NOT_ACTIVE} if token issuance is forbidden,
+     *                      or {@link ErrorCode#AUTH_STATE_UNAVAILABLE} if auth state cannot be published
      */
     AuthResponse login(AuthRequest authRequest);
 
@@ -50,22 +51,25 @@ public interface AuthService {
      * @param accessToken the access token to revoke; must not be {@code null} or blank
      * @param refreshToken the refresh token to revoke; must not be {@code null} or blank
      * @throws AppException with {@link ErrorCode#UNAUTHENTICATED} if either token is missing,
-     *                      cannot be parsed or is already revoked, or if the refresh token has expired
+     *                      cannot be parsed or is already revoked, or if the refresh token has expired;
+     *                      {@link ErrorCode#AUTH_STATE_UNAVAILABLE} if Redis is unavailable
      */
     void logout(String accessToken, String refreshToken);
 
     /**
      * Consumes a refresh token and issues new access and refresh tokens for its active user.
      *
-     * <p>The supplied refresh token is revoked before the user is checked and remains revoked
-     * even if issuing replacement tokens fails. The previous access token is not revoked.</p>
+     * <p>After database commit, consumption and auth-state publication are atomic in Redis.
+     * Redis failure does not separately consume the refresh token. The previous access token
+     * is not revoked.</p>
      *
      * @param token the refresh token to consume; must not be {@code null} or blank
      * @return the newly issued access and refresh tokens
      * @throws AppException with {@link ErrorCode#UNAUTHENTICATED} if the token is missing,
      *                      cannot be parsed, has expired or is already revoked,
      *                      {@link ErrorCode#USER_NOT_FOUND} if its user no longer exists, or
-     *                      {@link ErrorCode#USER_NOT_ACTIVE} if its user is inactive
+     *                      {@link ErrorCode#USER_NOT_ACTIVE} if its user is inactive, or
+     *                      {@link ErrorCode#AUTH_STATE_UNAVAILABLE} if auth state cannot be published
      */
     AuthResponse refresh(String token);
 
@@ -88,21 +92,21 @@ public interface AuthService {
      *                      {@link ErrorCode#PASSWORD_NOT_MATCH} if the new password and confirmation differ,
      *                      {@link ErrorCode#CURRENT_PASSWORD_INCORRECT} if the current password does not match,
      *                      {@link ErrorCode#NEW_PASSWORD_SAME_AS_CURRENT} if the new password matches the current password, or
-     *                      {@link ErrorCode#UNAUTHENTICATED} if the tokens cannot be parsed or are already revoked
+     *                      {@link ErrorCode#UNAUTHENTICATED} if the tokens cannot be parsed or are already revoked, or
+     *                      {@link ErrorCode#AUTH_STATE_UNAVAILABLE} if auth state cannot be published
      */
     AuthResponse changePassword(UUID userId, String accessToken, String refreshToken, ChangePasswordRequest request);
 
     /**
      * Initiates the password reset process by generating and sending a one-time password (OTP) to the user's email.
      *
-     * <p>Checks that the user exists and is active, enforces the reset OTP cooldown period,
+     * <p>Checks that the user exists, enforces the reset OTP cooldown period,
      * generates a 6-digit OTP, stores its cryptographic hash in Redis, and publishes an email
      * event to Kafka for asynchronous delivery.</p>
      *
      * @param request the forgot password request containing the user's email
      * @return the forgot password response containing OTP expiration details
      * @throws AppException with {@link ErrorCode#USER_NOT_FOUND} if no user with the email exists,
-     *                      {@link ErrorCode#USER_NOT_ACTIVE} if the user account is inactive or banned,
      *                      {@link ErrorCode#OTP_COOLDOWN} if a reset OTP was recently requested, or
      *                      {@link ErrorCode#OTP_REQUEST_UNAVAILABLE} if Redis or Kafka is unavailable
      */
@@ -117,7 +121,6 @@ public interface AuthService {
      * @param request the OTP verification request containing email and OTP
      * @return the issued single-use reset token string
      * @throws AppException with {@link ErrorCode#USER_NOT_FOUND} if the user does not exist,
-     *                      {@link ErrorCode#USER_NOT_ACTIVE} if the user is inactive or banned,
      *                      {@link ErrorCode#OTP_NOT_FOUND} if the OTP has expired or was not requested,
      *                      {@link ErrorCode#OTP_MISMATCH} if the OTP is incorrect, or
      *                      {@link ErrorCode#OTP_VERIFICATION_UNAVAILABLE} if Redis is unavailable
@@ -134,7 +137,6 @@ public interface AuthService {
      * @param request the reset password request containing new password and confirmation
      * @throws AppException with {@link ErrorCode#UNAUTHENTICATED} if the reset token is missing, invalid, or expired,
      *                      {@link ErrorCode#USER_NOT_FOUND} if the associated user no longer exists,
-     *                      {@link ErrorCode#USER_NOT_ACTIVE} if the user is inactive or banned,
      *                      {@link ErrorCode#PASSWORD_NOT_MATCH} if the new password and confirmation differ, or
      *                      {@link ErrorCode#NEW_PASSWORD_SAME_AS_CURRENT} if the new password matches the current password
      */

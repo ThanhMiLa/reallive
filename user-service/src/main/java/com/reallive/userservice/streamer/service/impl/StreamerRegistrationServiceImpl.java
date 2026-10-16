@@ -4,6 +4,7 @@ import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.auth.service.AuthStateSyncService;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.client.channel.CreateChannelRequest;
 import com.reallive.userservice.common.exception.AppException;
@@ -32,6 +33,7 @@ import java.util.stream.Collectors;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class StreamerRegistrationServiceImpl implements StreamerRegistrationService {
     UserRepository userRepository;
+    AuthStateSyncService authStateSyncService;
     RoleRepository roleRepository;
     StreamerRepository streamerRepository;
     ChannelClientResolver channelClientResolver;
@@ -48,7 +50,7 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
                 .orElseThrow(() -> new AppException(ErrorCode.STREAMER_ROLE_NOT_FOUND));
 
         user.getRoles().add(streamerRole);
-        userRepository.save(user);
+        authStateSyncService.changed(user);
 
         StreamerEntity streamerEntity = StreamerEntity.builder()
                 .user(user)

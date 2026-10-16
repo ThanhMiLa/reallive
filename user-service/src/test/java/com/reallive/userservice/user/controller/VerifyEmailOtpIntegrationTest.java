@@ -1,25 +1,31 @@
 package com.reallive.userservice.user.controller;
 
+import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
 import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
-import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
+import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.util.EmailVerificationOtpHasher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -60,6 +66,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @EnabledIfSystemProperty(named = "user.test.redis-port", matches = "[0-9]+")
 class VerifyEmailOtpIntegrationTest {
+    @MockitoBean
+    private RedisAuthoritiesReader authAuthoritiesReader;
+
+    @BeforeEach
+    void setUpAuthAuthorities() {
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenReturn(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    }
+
+    @MockitoBean
+    private AuthStateStore authStateStore;
 
     private static final String ENDPOINT = "/api/users/me/email-verification/verify";
     private static final String OTP = "012345";
