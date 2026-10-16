@@ -23,6 +23,9 @@ public interface ChannelService {
      * description or slug, ignoring case. All supplied filters are combined with AND.
      * The required following flag selects channels currently followed ({@code true}) or not followed
      * ({@code false}) by the authenticated user, defaulting to {@code false} when omitted from the request.
+     * Channels owned by that user are excluded from both following groups, including legacy self-follows.
+     * Legacy channels whose owner user ID is null remain eligible under the other filters.
+     * Ownership is filtered before pagination and included in pagination totals.
      * Blank keywords disable text filtering. Channels are ordered by the requested follower-count
      * direction (descending by default), then creation time and ID descending for ties.
      * Follower totals are read from the stored channel counter without counting follower records.

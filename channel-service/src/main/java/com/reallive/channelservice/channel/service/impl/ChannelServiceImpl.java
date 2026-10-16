@@ -77,6 +77,7 @@ public class ChannelServiceImpl implements ChannelService {
 
         // Build Specification
         Specification<ChannelEntity> specification = ChannelSpecifications.isActive()
+                .and(ChannelSpecifications.notOwnedBy(userId))
                 .and(ChannelSpecifications.inActiveCategories(request.getCategoryIds()))
                 .and(ChannelSpecifications.matchesKeyword(request.getKeyword()))
                 .and(ChannelSpecifications.matchesFollowing(userId, request.getFollowing()));

@@ -22,6 +22,15 @@ public final class ChannelSpecifications {
         return (root, query, builder) -> builder.equal(root.get("status"), ChannelStatus.ACTIVE);
     }
 
+    /**
+     * Excludes the authenticated user's channels while retaining legacy channels with unknown owners.
+     */
+    public static Specification<ChannelEntity> notOwnedBy(UUID userId) {
+        return (root, query, builder) -> builder.or(
+                builder.isNull(root.get("userId")),
+                builder.notEqual(root.get("userId"), userId));
+    }
+
     public static Specification<ChannelEntity> inActiveCategories(Set<UUID> categoryIds) {
         if (categoryIds == null) {
             return Specification.unrestricted();

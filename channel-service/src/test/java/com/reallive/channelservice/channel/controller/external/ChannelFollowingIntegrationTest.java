@@ -144,7 +144,7 @@ class ChannelFollowingIntegrationTest {
 
     @ParameterizedTest
     @CsvSource({"default,false", "false,false", "default,true", "false,true"})
-    void unfollowedListingIncludesOwnChannelOnlyWhenItHasNoCurrentSelfFollow(
+    void unfollowedListingExcludesOwnChannelRegardlessOfLegacySelfFollow(
             String following, boolean legacySelfFollow) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID ownChannel = insertChannel("My channel", 300);
@@ -162,15 +162,14 @@ class ChannelFollowingIntegrationTest {
 
         mvc.perform(request)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.content", hasSize(legacySelfFollow ? 1 : 2)))
-                .andExpect(jsonPath("$.result.content[0].id")
-                        .value((legacySelfFollow ? otherChannel : ownChannel).toString()))
-                .andExpect(jsonPath("$.result.totalElements").value(legacySelfFollow ? 1 : 2));
+                .andExpect(jsonPath("$.result.content", hasSize(1)))
+                .andExpect(jsonPath("$.result.content[0].id").value(otherChannel.toString()))
+                .andExpect(jsonPath("$.result.totalElements").value(1));
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void followedListingRequiresMembershipEvenForOwnChannel(boolean legacySelfFollow) throws Exception {
+    void followedListingExcludesOwnChannelEvenWithLegacySelfFollow(boolean legacySelfFollow) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID ownChannel = insertChannel("My channel", 300);
         UUID otherChannel = insertChannel("Followed channel", 200);
@@ -183,10 +182,72 @@ class ChannelFollowingIntegrationTest {
         mvc.perform(get(PATH).contextPath("/channel").cookie(accessCookie(userId.toString()))
                         .param("following", "true"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.content", hasSize(legacySelfFollow ? 2 : 1)))
-                .andExpect(jsonPath("$.result.content[0].id")
-                        .value((legacySelfFollow ? ownChannel : otherChannel).toString()))
-                .andExpect(jsonPath("$.result.totalElements").value(legacySelfFollow ? 2 : 1));
+                .andExpect(jsonPath("$.result.content", hasSize(1)))
+                .andExpect(jsonPath("$.result.content[0].id").value(otherChannel.toString()))
+                .andExpect(jsonPath("$.result.totalElements").value(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"default", "false", "true"})
+    void ownChannelAloneProducesAnEmptyPageAndZeroTotals(String following) throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID ownChannel = insertChannel("My channel", 300);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", userId, ownChannel);
+        if (following.equals("true")) {
+            follow(ownChannel, userId);
+        }
+        MockHttpServletRequestBuilder request = get(PATH).contextPath("/channel")
+                .cookie(accessCookie(userId.toString()));
+        if (!following.equals("default")) {
+            request.param("following", following);
+        }
+
+        mvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content", hasSize(0)))
+                .andExpect(jsonPath("$.result.totalElements").value(0))
+                .andExpect(jsonPath("$.result.totalPages").value(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"default", "false"})
+    void excludesOwnerBeforePaginationAndCombinesWithCategoryKeywordAndFollowingFilters(String following)
+            throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID otherOwner = UUID.randomUUID();
+        UUID category = insertCategory();
+        UUID ownChannel = insertChannel("Gaming owner", 1000);
+        UUID first = insertChannel("Gaming another owner", 300);
+        UUID second = insertChannel("Gaming unknown owner", 200);
+        UUID followed = insertChannel("Gaming followed", 400);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", userId, ownChannel);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", otherOwner, first);
+        for (UUID channel : List.of(ownChannel, first, second, followed)) {
+            assignCategory(channel, category);
+        }
+        follow(followed, userId);
+        assignCategory(insertChannel("Different topic", 500), category);
+        assignCategory(insertChannel("Gaming another category", 600), insertCategory());
+
+        List<UUID> expectedChannels = List.of(first, second);
+        for (int page = 0; page <= expectedChannels.size(); page++) {
+            MockHttpServletRequestBuilder request = get(PATH).contextPath("/channel")
+                    .cookie(accessCookie(userId.toString())).param("userId", otherOwner.toString())
+                    .param("categoryIds", category.toString()).param("keyword", "gaming")
+                    .param("page", Integer.toString(page)).param("size", "1");
+            if (!following.equals("default")) {
+                request.param("following", following);
+            }
+            var response = mvc.perform(request)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.result.content", hasSize(page < expectedChannels.size() ? 1 : 0)))
+                    .andExpect(jsonPath("$.result.page").value(page))
+                    .andExpect(jsonPath("$.result.totalElements").value(2))
+                    .andExpect(jsonPath("$.result.totalPages").value(2));
+            if (page < expectedChannels.size()) {
+                response.andExpect(jsonPath("$.result.content[0].id").value(expectedChannels.get(page).toString()));
+            }
+        }
     }
 
     @Test

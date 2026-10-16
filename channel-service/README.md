@@ -42,12 +42,14 @@ Flyway migration `V2__add_follower_count_and_channel_followers.sql` adds `channe
 | --- | --- | --- |
 | `categoryIds` | No category filter | Optional set of category UUIDs, validated with `@Size(min = 1)` and non-null elements. May be omitted, but a supplied set must not be empty. Accepts one UUID, comma-separated UUIDs or repeated parameters. Matches membership in any selected active category. Duplicate IDs are ignored; missing or inactive categories contribute no matches. |
 | `keyword` | No keyword filter | Optional literal substring of `name`, `description` or `slug`, ignoring case and preserving accents. `@Size(max = 255)` validates the raw field, including whitespace. The search Specification strips surrounding whitespace; blank text disables text filtering. `%`, `_`, `!` and backslash are treated literally. |
-| `following` | `false` | Non-null Boolean: `true` selects channels the authenticated user currently follows; `false` selects channels they do not follow. Omission retains the default; an explicitly empty value is rejected. |
+| `following` | `false` | Non-null Boolean: `true` selects channels the authenticated user currently follows; `false` selects channels they do not follow. Channels owned by the authenticated user are excluded from both groups. Omission retains the default; an explicitly empty value is rejected. |
 | `sortDirection` | `DESC` | Follower-count direction: `ASC` or `DESC`. |
 | `page` | `0` | Zero-based page number, at least zero. |
 | `size` | `20` | Page size from `1` through `100`. |
 
 All filters combine with AND; selected categories combine with OR, as do keyword matches on the three searchable fields. Without category or keyword filters, all active, non-deleted channels in the selected following group are eligible. User identity comes exclusively from the JWT subject, never from a client-supplied user ID. Users with no current follows receive an empty page for `following=true` and all otherwise eligible channels for `following=false`.
+
+Channels whose `user_id` equals the authenticated user's UUID are excluded, including when `following` is omitted and when an old self-follow record still exists. This condition is applied in the database before pagination and in the count query, so `totalElements` and `totalPages` also exclude the user's channels. Legacy channels with a null `user_id` remain eligible under the other filters. Channel Service uses the stored owner ID without calling User Service.
 
 The offset (`page * size`) must fit a signed 32-bit integer. Invalid UUIDs, empty category sets or null category elements, malformed Booleans, unsupported sort directions, overlong keywords, invalid pagination and explicitly empty `following`, `page`, `size` or `sortDirection` parameters return HTTP 400 / code `1004`. A valid list request without authentication, or with a missing/invalid user UUID in the JWT subject, returns HTTP 401 / code `1001`. Database access failures return HTTP 503 / code `1003`. Empty or out-of-range pages return HTTP 200 with an empty `content` list and totals calculated using the same filters.
 
