@@ -26,9 +26,6 @@ export function BrowsePage() {
       <div className="flex flex-col gap-6 mb-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <span className="text-[#00f0ff] text-xs font-bold uppercase tracking-widest block mb-1">
-              Discovery Hub
-            </span>
             <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-outfit">
               Browse
             </h1>
