@@ -58,7 +58,7 @@ function AppContent() {
   }, [isAuthModalOpen, location.pathname, navigate])
 
   return (
-    <div className="bg-[#08090d] text-gray-100 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-black overflow-x-hidden">
+    <div className="bg-[#000000] text-gray-100 font-sans min-h-screen flex flex-col antialiased selection:bg-[#ff2b42] selection:text-white overflow-x-hidden">
       {/* Top Navigation Header */}
       <Header />
 
@@ -91,13 +91,13 @@ function AppContent() {
         offset={{ top: '76px', right: '16px' }}
         toastOptions={{
           style: {
-            background: '#151822',
-            border: '1px solid #232838',
+            background: '#101014',
+            border: '1px solid #1f1f26',
             color: '#f3f4f6',
           },
           classNames: {
             closeButton:
-              '!bg-[#1f2433] !text-gray-300 hover:!text-white !border-[#232838]',
+              '!bg-[#18181f] !text-gray-300 hover:!text-white !border-[#1f1f26]',
           },
         }}
       />

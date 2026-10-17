@@ -101,7 +101,7 @@ export function LoginForm() {
         <button
           type="button"
           onClick={handleForgotPassword}
-          className="text-xs font-medium text-gray-400 hover:text-[#00f0ff] transition cursor-pointer"
+          className="text-xs font-medium text-gray-400 hover:text-[#ff2b42] transition cursor-pointer"
         >
           Forgot password?
         </button>

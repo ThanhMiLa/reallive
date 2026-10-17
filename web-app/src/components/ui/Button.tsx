@@ -27,12 +27,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const variantStyles = {
       primary:
-        'bg-[#53fc18] hover:bg-[#46e012] text-black font-extrabold shadow-lg hover:shadow-emerald-500/20',
-      cyan: 'bg-[#00f0ff] hover:bg-[#00c8d6] text-black font-bold neon-glow-cyan',
+        'bg-[#ff2b42] hover:bg-[#e02237] text-white font-extrabold shadow-lg hover:shadow-red-500/25',
+      cyan: 'bg-[#ff2b42] hover:bg-[#e02237] text-white font-bold neon-glow-red',
       secondary:
-        'bg-[#151822] hover:bg-[#1f2433] border border-[#232838] text-gray-200 font-medium',
+        'bg-[#101014] hover:bg-[#18181f] border border-[#1f1f26] text-gray-200 font-medium',
       ghost:
-        'text-gray-400 hover:text-white hover:bg-[#1f2433] font-semibold',
+        'text-gray-400 hover:text-white hover:bg-[#18181f] font-semibold',
     }
 
     const sizeStyles = {

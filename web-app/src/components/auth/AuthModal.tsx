@@ -51,7 +51,7 @@ export function AuthModal() {
     >
       <div
         ref={modalRef}
-        className="relative w-full max-w-md rounded-2xl bg-[#11131d] border border-white/10 p-6 sm:p-8 shadow-2xl animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-md rounded-2xl bg-[#0a0a0d] border border-[#1f1f26] p-6 sm:p-8 shadow-2xl animate-in zoom-in-95 duration-150"
       >
         {/* Close Button */}
         <button
@@ -68,9 +68,9 @@ export function AuthModal() {
           <div className="flex items-center gap-2 group mb-2">
             <span
               id="auth-modal-title"
-              className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#00f0ff] bg-clip-text text-transparent font-outfit"
+              className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#ff2b42] bg-clip-text text-transparent font-outfit"
             >
-              Real<span className="text-[#00f0ff]">Live</span>
+              Real<span className="text-[#ff2b42]">Live</span>
             </span>
           </div>
           <p className="text-xs text-gray-400">
@@ -81,13 +81,13 @@ export function AuthModal() {
         </div>
 
         {/* Tabs: Log In / Sign Up */}
-        <div className="flex border-b border-gray-800 mb-6">
+        <div className="flex border-b border-[#1f1f26] mb-6">
           <button
             type="button"
             onClick={() => setAuthModalTab('login')}
             className={`pb-3 px-4 text-sm transition cursor-pointer ${
               authModalTab === 'login'
-                ? 'font-bold text-[#00f0ff] border-b-2 border-[#00f0ff]'
+                ? 'font-bold text-[#ff2b42] border-b-2 border-[#ff2b42]'
                 : 'font-medium text-gray-400 hover:text-white'
             }`}
           >
@@ -98,7 +98,7 @@ export function AuthModal() {
             onClick={() => setAuthModalTab('register')}
             className={`pb-3 px-4 text-sm transition cursor-pointer ${
               authModalTab === 'register'
-                ? 'font-bold text-[#00f0ff] border-b-2 border-[#00f0ff]'
+                ? 'font-bold text-[#ff2b42] border-b-2 border-[#ff2b42]'
                 : 'font-medium text-gray-400 hover:text-white'
             }`}
           >
@@ -111,8 +111,8 @@ export function AuthModal() {
 
         {/* Divider */}
         <div className="relative flex items-center justify-center my-6">
-          <div className="border-t border-gray-800 w-full" />
-          <span className="bg-[#11131d] px-3 text-xs text-gray-500 font-medium absolute">
+          <div className="border-t border-[#1f1f26] w-full" />
+          <span className="bg-[#0a0a0d] px-3 text-xs text-gray-500 font-medium absolute">
             or continue with
           </span>
         </div>
@@ -122,7 +122,7 @@ export function AuthModal() {
           <button
             type="button"
             onClick={handleGoogleAuth}
-            className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 bg-[#151822] hover:bg-[#1f2433] border border-[#232838] rounded-lg text-sm text-gray-200 transition font-medium cursor-pointer"
+            className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 bg-[#101014] hover:bg-[#18181f] border border-[#1f1f26] rounded-lg text-sm text-gray-200 transition font-medium cursor-pointer"
           >
             <GoogleIcon className="w-4 h-4" />
             <span>Continue with Google</span>
@@ -137,7 +137,7 @@ export function AuthModal() {
               <button
                 type="button"
                 onClick={() => setAuthModalTab('register')}
-                className="text-[#00f0ff] font-semibold hover:underline cursor-pointer ml-1"
+                className="text-[#ff2b42] font-semibold hover:underline cursor-pointer ml-1"
               >
                 Sign Up
               </button>
@@ -148,7 +148,7 @@ export function AuthModal() {
               <button
                 type="button"
                 onClick={() => setAuthModalTab('login')}
-                className="text-[#00f0ff] font-semibold hover:underline cursor-pointer ml-1"
+                className="text-[#ff2b42] font-semibold hover:underline cursor-pointer ml-1"
               >
                 Log In
               </button>

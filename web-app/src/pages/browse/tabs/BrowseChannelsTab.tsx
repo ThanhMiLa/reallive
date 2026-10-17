@@ -9,11 +9,11 @@ import type { ApiResponse } from '@/types/auth.types'
 import type { ChannelListItem } from '@/types/channel.types'
 
 const BANNER_GRADIENTS = [
-  'from-cyan-950/60 via-[#1b2032] to-[#141824]',
-  'from-purple-950/60 via-[#1b2032] to-[#141824]',
-  'from-emerald-950/60 via-[#1b2032] to-[#141824]',
-  'from-rose-950/60 via-[#1b2032] to-[#141824]',
-  'from-amber-950/60 via-[#1b2032] to-[#141824]',
+  'from-rose-950/60 via-[#141419] to-[#0a0a0c]',
+  'from-purple-950/60 via-[#141419] to-[#0a0a0c]',
+  'from-emerald-950/60 via-[#141419] to-[#0a0a0c]',
+  'from-red-950/60 via-[#141419] to-[#0a0a0c]',
+  'from-amber-950/60 via-[#141419] to-[#0a0a0c]',
 ]
 
 function formatFollowers(count: number): string {
@@ -59,7 +59,7 @@ function ChannelCard({
   return (
     <div className="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1">
       {/* Banner at top with rounded corners */}
-      <div className="relative h-32 sm:h-36 w-full rounded-2xl overflow-hidden bg-[#151822] shadow-md group-hover:shadow-[0_0_24px_rgba(0,240,255,0.2)] transition-all duration-300">
+      <div className="relative h-32 sm:h-36 w-full rounded-2xl overflow-hidden bg-[#101014] shadow-md group-hover:shadow-[0_0_24px_rgba(255,43,66,0.25)] transition-all duration-300">
         {hasBanner ? (
           <>
             <img
@@ -85,7 +85,7 @@ function ChannelCard({
         {/* Avatar overlapping bottom of banner */}
         <div className="flex items-end -mt-8 mb-2">
           <div className="relative flex-shrink-0">
-            <div className="w-16 h-16 rounded-full p-0.5 bg-[#08090d] ring-4 ring-[#08090d] shadow-lg overflow-hidden group-hover:ring-[#00f0ff]/40 transition-all">
+            <div className="w-16 h-16 rounded-full p-0.5 bg-[#000000] ring-4 ring-[#000000] shadow-lg overflow-hidden group-hover:ring-[#ff2b42]/40 transition-all">
               {hasAvatar ? (
                 <img
                   src={channel.avatarUrl!}
@@ -94,7 +94,7 @@ function ChannelCard({
                   onError={() => setAvatarError(true)}
                 />
               ) : (
-                <div className="w-full h-full rounded-full bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-lg font-bold text-white">
+                <div className="w-full h-full rounded-full bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center text-lg font-bold text-white">
                   {channel.name ? channel.name.charAt(0).toUpperCase() : 'C'}
                 </div>
               )}
@@ -107,7 +107,7 @@ function ChannelCard({
           <div className="min-w-0 flex-1">
             <h3
               title={channel.name}
-              className="text-white text-base sm:text-lg font-bold truncate group-hover:text-[#00f0ff] transition-colors"
+              className="text-white text-base sm:text-lg font-bold truncate group-hover:text-[#ff2b42] transition-colors"
             >
               {channel.name}
             </h3>
@@ -124,7 +124,7 @@ function ChannelCard({
                 onAction?.(channel)
               }}
               disabled={isActionLoading}
-              className="flex-shrink-0 flex items-center gap-1.5 bg-[#00f0ff] hover:bg-[#00d0dd] active:scale-95 text-black font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-cyan-500/20 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              className="flex-shrink-0 flex items-center gap-1.5 bg-[#ff2b42] hover:bg-[#e02237] active:scale-95 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-red-500/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {isActionLoading ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -143,7 +143,7 @@ function ChannelCard({
                 onAction?.(channel)
               }}
               disabled={isActionLoading}
-              className="flex-shrink-0 flex items-center gap-1.5 bg-[#161a26] hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/40 text-gray-300 border border-[#232838] font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              className="flex-shrink-0 flex items-center gap-1.5 bg-[#101014] hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/40 text-gray-300 border border-[#1f1f26] font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {isActionLoading ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -162,11 +162,11 @@ function ChannelCard({
 function ChannelSkeleton() {
   return (
     <div className="flex flex-col animate-pulse">
-      <div className="h-32 sm:h-36 w-full rounded-2xl bg-[#151822]" />
+      <div className="h-32 sm:h-36 w-full rounded-2xl bg-[#101014]" />
       <div className="px-2 pt-0 pb-2 flex flex-col flex-1">
-        <div className="-mt-8 mb-2 w-16 h-16 rounded-full bg-[#1b2030] ring-4 ring-[#08090d]" />
-        <div className="h-4 w-32 bg-[#151822] rounded mb-2" />
-        <div className="h-3.5 w-20 bg-[#151822] rounded" />
+        <div className="-mt-8 mb-2 w-16 h-16 rounded-full bg-[#18181f] ring-4 ring-[#000000]" />
+        <div className="h-4 w-32 bg-[#101014] rounded mb-2" />
+        <div className="h-3.5 w-20 bg-[#101014] rounded" />
       </div>
     </div>
   )
@@ -279,8 +279,8 @@ export function BrowseChannelsTab() {
   if (!isAuthenticated) {
     return (
       <div className="pb-12">
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
-          <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center text-[#00f0ff] mb-4">
+        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
+          <div className="w-12 h-12 rounded-full bg-rose-500/10 flex items-center justify-center text-[#ff2b42] mb-4">
             <LogIn className="w-6 h-6" />
           </div>
           <h3 className="text-lg font-bold text-white mb-1.5">
@@ -292,7 +292,7 @@ export function BrowseChannelsTab() {
           <button
             type="button"
             onClick={() => openAuthModal('login')}
-            className="bg-[#00f0ff] hover:bg-[#00d0dd] text-black font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md shadow-cyan-500/20"
+            className="bg-[#ff2b42] hover:bg-[#e02237] text-white font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md shadow-rose-950/40"
           >
             Log In
           </button>
@@ -318,7 +318,7 @@ export function BrowseChannelsTab() {
             ))}
           </div>
         ) : isFollowingError ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
             <AlertCircle className="w-9 h-9 text-rose-500 mb-2.5" />
             <h3 className="text-sm font-semibold text-gray-200 mb-1">
               Failed to load followed channels
@@ -330,7 +330,7 @@ export function BrowseChannelsTab() {
               type="button"
               onClick={() => refetchFollowing()}
               disabled={isFollowingFetching}
-              className="flex items-center gap-2 bg-[#1b2032] hover:bg-[#232a42] text-[#00f0ff] border border-[#1f2639] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-2 bg-[#101014] hover:bg-[#18181f] text-[#ff2b42] border border-[#1f1f26] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${isFollowingFetching ? 'animate-spin' : ''}`}
@@ -339,7 +339,7 @@ export function BrowseChannelsTab() {
             </button>
           </div>
         ) : followingChannels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
             <Users className="w-9 h-9 text-gray-600 mb-2.5" />
             <h3 className="text-sm font-semibold text-gray-200 mb-1">
               No followed channels yet
@@ -381,7 +381,7 @@ export function BrowseChannelsTab() {
             ))}
           </div>
         ) : isRecommendedError ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
             <AlertCircle className="w-9 h-9 text-rose-500 mb-2.5" />
             <h3 className="text-sm font-semibold text-gray-200 mb-1">
               Failed to load recommended channels
@@ -393,7 +393,7 @@ export function BrowseChannelsTab() {
               type="button"
               onClick={() => refetchRecommended()}
               disabled={isRecommendedFetching}
-              className="flex items-center gap-2 bg-[#1b2032] hover:bg-[#232a42] text-[#00f0ff] border border-[#1f2639] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-2 bg-[#101014] hover:bg-[#18181f] text-[#ff2b42] border border-[#1f1f26] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${isRecommendedFetching ? 'animate-spin' : ''}`}
@@ -402,7 +402,7 @@ export function BrowseChannelsTab() {
             </button>
           </div>
         ) : recommendedChannels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
             <Users className="w-9 h-9 text-gray-600 mb-2.5" />
             <h3 className="text-sm font-semibold text-gray-200 mb-1">
               No recommended channels

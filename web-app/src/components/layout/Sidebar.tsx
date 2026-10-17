@@ -28,7 +28,7 @@ function ChannelAvatar({
     return (
       <img
         alt={name}
-        className="w-8 h-8 rounded-full object-cover border border-[#232838]"
+        className="w-8 h-8 rounded-full object-cover border border-[#1f1f26]"
         src={avatarUrl}
         onError={() => setImgError(true)}
       />
@@ -36,7 +36,7 @@ function ChannelAvatar({
   }
 
   return (
-    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-xs font-bold text-white border border-[#232838] flex-shrink-0">
+    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-600 to-amber-600 flex items-center justify-center text-xs font-bold text-white border border-[#1f1f26] flex-shrink-0">
       {name ? name.charAt(0).toUpperCase() : 'C'}
     </div>
   )
@@ -96,7 +96,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`bg-[#0f1118] border-r border-[#232838] flex flex-col justify-between transition-all duration-300 select-none flex-shrink-0 z-30 ${
+      className={`bg-[#08080a] border-r border-[#1f1f26] flex flex-col justify-between transition-all duration-300 select-none flex-shrink-0 z-30 ${
         isSidebarCollapsed ? 'w-16 hidden sm:flex' : 'w-64 hidden lg:flex'
       }`}
     >
@@ -111,8 +111,8 @@ export function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm transition ${
                 isActive
-                  ? 'font-semibold bg-[#151822] text-[#00f0ff] border-l-4 border-[#00f0ff] shadow-sm'
-                  : 'font-medium text-gray-400 hover:text-white hover:bg-[#151822]'
+                  ? 'font-semibold bg-[#121216] text-[#ff2b42] border-l-4 border-[#ff2b42] shadow-sm'
+                  : 'font-medium text-gray-400 hover:text-white hover:bg-[#121216]'
               } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`
             }
           >
@@ -127,8 +127,8 @@ export function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm transition ${
                 isActive
-                  ? 'font-semibold bg-[#151822] text-[#00f0ff] border-l-4 border-[#00f0ff] shadow-sm'
-                  : 'font-medium text-gray-400 hover:text-white hover:bg-[#151822]'
+                  ? 'font-semibold bg-[#121216] text-[#ff2b42] border-l-4 border-[#ff2b42] shadow-sm'
+                  : 'font-medium text-gray-400 hover:text-white hover:bg-[#121216]'
               } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`
             }
           >
@@ -140,7 +140,7 @@ export function Sidebar() {
           <a
             href="#following"
             title="Following"
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-[#151822] transition ${
+            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-[#121216] transition ${
               isSidebarCollapsed ? 'justify-center px-0' : ''
             }`}
           >
@@ -159,7 +159,7 @@ export function Sidebar() {
             </div>
           ) : (
             <div className="w-full flex justify-center mb-2">
-              <span className="w-6 h-px bg-[#232838]" />
+              <span className="w-6 h-px bg-[#1f1f26]" />
             </div>
           )}
 
@@ -172,9 +172,9 @@ export function Sidebar() {
                     isSidebarCollapsed ? 'justify-center px-0' : ''
                   }`}
                 >
-                  <div className="w-8 h-8 rounded-full bg-[#1b2030] animate-pulse flex-shrink-0" />
+                  <div className="w-8 h-8 rounded-full bg-[#121216] animate-pulse flex-shrink-0" />
                   {!isSidebarCollapsed && (
-                    <div className="h-3.5 w-24 bg-[#1b2030] rounded animate-pulse" />
+                    <div className="h-3.5 w-24 bg-[#121216] rounded animate-pulse" />
                   )}
                 </div>
               ))}
@@ -188,7 +188,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => openAuthModal('login')}
-                  className="text-xs text-[#00f0ff] hover:underline font-medium cursor-pointer"
+                  className="text-xs text-[#ff2b42] hover:underline font-medium cursor-pointer"
                 >
                   Log in
                 </button>
@@ -212,7 +212,7 @@ export function Sidebar() {
                 <div
                   key={channel.id}
                   title={channel.name}
-                  className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#151822] transition group cursor-pointer ${
+                  className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#121216] transition group cursor-pointer ${
                     isSidebarCollapsed ? 'justify-center px-0' : ''
                   }`}
                 >
@@ -246,7 +246,7 @@ export function Sidebar() {
             </div>
           ) : (
             <div className="w-full flex justify-center mb-2">
-              <span className="w-6 h-px bg-[#232838]" />
+              <span className="w-6 h-px bg-[#1f1f26]" />
             </div>
           )}
 
@@ -255,7 +255,7 @@ export function Sidebar() {
               <div
                 key={streamer.id}
                 title={`${streamer.name} • ${streamer.category}`}
-                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#151822] transition group cursor-pointer ${
+                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#121216] transition group cursor-pointer ${
                   isSidebarCollapsed ? 'justify-center px-0' : ''
                 }`}
               >
@@ -266,7 +266,7 @@ export function Sidebar() {
                     src={streamer.avatar}
                   />
                   {streamer.isLive && (
-                    <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#0f1118]" />
+                    <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#08080a]" />
                   )}
                 </div>
                 {!isSidebarCollapsed && (
@@ -286,7 +286,7 @@ export function Sidebar() {
       </div>
 
       {/* Left Sidebar Footer Status */}
-      <div className="p-3 border-t border-[#232838] bg-[#0c0d14] flex items-center justify-between">
+      <div className="p-3 border-t border-[#1f1f26] bg-[#050507] flex items-center justify-between">
         {!isSidebarCollapsed ? (
           <>
             <div className="flex items-center gap-2">

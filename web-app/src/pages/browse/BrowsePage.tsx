@@ -31,7 +31,7 @@ export function BrowsePage() {
         </div>
 
         {/* Navigation Tabs (Livestreams / Categories / Channels) */}
-        <div className="flex items-center gap-8 border-b border-[#232838] pt-1">
+        <div className="flex items-center gap-8 border-b border-[#1f1f26] pt-1">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
@@ -41,7 +41,7 @@ export function BrowsePage() {
                 className={({ isActive }) =>
                   `group relative pb-3.5 text-sm sm:text-base flex items-center gap-2 transition cursor-pointer ${
                     isActive
-                      ? 'text-[#00f0ff] font-bold border-b-2 border-[#00f0ff]'
+                      ? 'text-[#ff2b42] font-bold border-b-2 border-[#ff2b42]'
                       : 'text-gray-400 hover:text-white font-medium'
                   }`
                 }

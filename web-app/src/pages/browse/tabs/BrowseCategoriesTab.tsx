@@ -7,37 +7,37 @@ import type { CategoryItem } from '@/types/channel.types'
 
 const FALLBACK_GRADIENTS = [
   {
-    bg: 'from-cyan-950/70 via-[#151822] to-[#0c0d14]',
-    iconBg: 'bg-cyan-500/10',
-    iconColor: 'text-[#00f0ff]',
-    border: 'border-[#00f0ff]/30',
+    bg: 'from-rose-950/70 via-[#101014] to-[#050507]',
+    iconBg: 'bg-rose-500/10',
+    iconColor: 'text-[#ff2b42]',
+    border: 'border-[#ff2b42]/30',
   },
   {
-    bg: 'from-purple-950/70 via-[#151822] to-[#0c0d14]',
+    bg: 'from-purple-950/70 via-[#101014] to-[#050507]',
     iconBg: 'bg-purple-500/10',
     iconColor: 'text-purple-400',
     border: 'border-purple-500/30',
   },
   {
-    bg: 'from-emerald-950/70 via-[#151822] to-[#0c0d14]',
+    bg: 'from-emerald-950/70 via-[#101014] to-[#050507]',
     iconBg: 'bg-emerald-500/10',
     iconColor: 'text-emerald-400',
     border: 'border-emerald-500/30',
   },
   {
-    bg: 'from-indigo-950/70 via-[#151822] to-[#0c0d14]',
+    bg: 'from-indigo-950/70 via-[#101014] to-[#050507]',
     iconBg: 'bg-indigo-500/10',
     iconColor: 'text-indigo-400',
     border: 'border-indigo-500/30',
   },
   {
-    bg: 'from-rose-950/70 via-[#151822] to-[#0c0d14]',
-    iconBg: 'bg-rose-500/10',
-    iconColor: 'text-rose-400',
-    border: 'border-rose-500/30',
+    bg: 'from-red-950/70 via-[#101014] to-[#050507]',
+    iconBg: 'bg-red-500/10',
+    iconColor: 'text-red-400',
+    border: 'border-red-500/30',
   },
   {
-    bg: 'from-amber-950/70 via-[#151822] to-[#0c0d14]',
+    bg: 'from-amber-950/70 via-[#101014] to-[#050507]',
     iconBg: 'bg-amber-500/10',
     iconColor: 'text-amber-400',
     border: 'border-amber-500/30',
@@ -65,7 +65,7 @@ function CategoryCard({ category }: { category: CategoryItem }) {
       className="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1"
     >
       {/* Category Thumbnail / Poster */}
-      <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-[#151822] border border-[#232838] shadow-md group-hover:border-[#00f0ff]/50 group-hover:shadow-[0_0_20px_rgba(0,240,255,0.2)] transition-all duration-300">
+      <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-[#101014] border border-[#1f1f26] shadow-md group-hover:border-[#ff2b42]/50 group-hover:shadow-[0_0_20px_rgba(255,43,66,0.2)] transition-all duration-300">
         {hasThumbnail ? (
           <>
             <img
@@ -74,7 +74,7 @@ function CategoryCard({ category }: { category: CategoryItem }) {
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               onError={() => setImgError(true)}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0f1118]/85 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#000000]/85 via-transparent to-transparent pointer-events-none" />
           </>
         ) : (
           <div
@@ -97,7 +97,7 @@ function CategoryCard({ category }: { category: CategoryItem }) {
 
       {/* Category Name below */}
       <div className="pt-2.5 flex flex-col min-w-0">
-        <h3 className="font-semibold text-sm sm:text-base text-gray-200 group-hover:text-[#00f0ff] transition-colors truncate">
+        <h3 className="font-semibold text-sm sm:text-base text-gray-200 group-hover:text-[#ff2b42] transition-colors truncate">
           {category.name}
         </h3>
       </div>
@@ -124,14 +124,14 @@ export function BrowseCategoriesTab() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4 sm:gap-5">
           {Array.from({ length: 12 }).map((_, idx) => (
             <div key={idx} className="flex flex-col gap-2.5">
-              <div className="w-full aspect-[3/4] rounded-xl bg-[#151822] border border-[#232838] animate-pulse" />
-              <div className="h-4 w-3/4 bg-[#151822] rounded animate-pulse" />
+              <div className="w-full aspect-[3/4] rounded-xl bg-[#101014] border border-[#1f1f26] animate-pulse" />
+              <div className="h-4 w-3/4 bg-[#101014] rounded animate-pulse" />
             </div>
           ))}
         </div>
       ) : isError ? (
         /* Error State */
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#232838] rounded-xl bg-[#0f1118] px-4">
+        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
           <AlertCircle className="w-10 h-10 text-rose-500 mb-3" />
           <h3 className="text-base font-semibold text-gray-200 mb-1">
             Failed to load categories
@@ -144,7 +144,7 @@ export function BrowseCategoriesTab() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="flex items-center gap-2 bg-[#151822] hover:bg-[#1b2030] text-[#00f0ff] border border-[#232838] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-2 bg-[#101014] hover:bg-[#18181f] text-[#ff2b42] border border-[#1f1f26] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`}
@@ -154,7 +154,7 @@ export function BrowseCategoriesTab() {
         </div>
       ) : categories.length === 0 ? (
         /* Empty State */
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#232838] rounded-xl bg-[#0f1118] px-4">
+        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
           <Gamepad2 className="w-10 h-10 text-gray-600 mb-3" />
           <h3 className="text-base font-semibold text-gray-200 mb-1">
             No categories found

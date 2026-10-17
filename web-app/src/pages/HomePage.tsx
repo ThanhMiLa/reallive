@@ -102,7 +102,7 @@ const initialMessages: ChatMessage[] = [
   {
     id: '3',
     badge: '37',
-    badgeColor: 'bg-cyan-500/20 text-cyan-300',
+    badgeColor: 'bg-rose-500/20 text-rose-300',
     user: 'Almdar_Ali',
     color: 'text-pink-400',
     text: 'lets gooo',
@@ -118,7 +118,7 @@ const initialMessages: ChatMessage[] = [
     badge: '43',
     badgeColor: 'bg-blue-600/20 text-blue-300',
     user: 'markokokotko',
-    color: 'text-[#00f0ff]',
+    color: 'text-[#ff2b42]',
     text: '🔥',
   },
   {
@@ -138,7 +138,7 @@ const initialMessages: ChatMessage[] = [
     badge: '43',
     badgeColor: 'bg-blue-600/20 text-blue-300',
     user: 'markokokotko',
-    color: 'text-[#00f0ff]',
+    color: 'text-[#ff2b42]',
     text: 'gg wp',
   },
   {
@@ -235,7 +235,7 @@ export function HomePage() {
     const newMsg: ChatMessage = {
       id: Date.now().toString(),
       badge: 'YOU',
-      badgeColor: 'bg-cyan-500/30 text-cyan-300',
+      badgeColor: 'bg-rose-500/30 text-rose-300',
       user: user?.displayName || 'You',
       color: 'text-white',
       text: inputMsg.trim(),
@@ -250,7 +250,7 @@ export function HomePage() {
       <section aria-label="Featured Live Stream and Chat" className="mb-10">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
           {/* Featured Video Player (Left 9 cols) */}
-          <div className="xl:col-span-9 bg-black rounded-xl overflow-hidden relative border border-[#232838] flex flex-col justify-between shadow-2xl group min-h-[460px] md:min-h-[500px]">
+          <div className="xl:col-span-9 bg-black rounded-xl overflow-hidden relative border border-[#1f1f26] flex flex-col justify-between shadow-2xl group min-h-[460px] md:min-h-[500px]">
             {/* Background Snapshot with Ambient Vignette Overlay */}
             <div className="absolute inset-0 z-0">
               <img
@@ -258,7 +258,7 @@ export function HomePage() {
                 className="w-full h-full object-cover filter brightness-[0.8] contrast-[1.05] transition-all duration-500"
                 src={currentStream.snapshot}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#08090d] via-transparent to-black/60" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#000000] via-transparent to-black/60" />
             </div>
 
             {/* Top Overlays */}
@@ -294,11 +294,11 @@ export function HomePage() {
 
             {/* Bottom Floating Player Details Overlay */}
             <div className="relative z-10 p-4 sm:p-5">
-              <div className="bg-[#0f1118]/90 backdrop-blur-md rounded-xl p-4 border border-[#232838] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+              <div className="bg-[#08080a]/90 backdrop-blur-md rounded-xl p-4 border border-[#1f1f26] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
                 {/* Streamer Info */}
                 <div className="flex items-center gap-3.5 min-w-0">
                   <div className="relative flex-shrink-0">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-purple-600 p-0.5">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#ff2b42] to-amber-500 p-0.5">
                       <img
                         alt={currentStream.streamer}
                         className="w-full h-full rounded-full object-cover"
@@ -315,16 +315,16 @@ export function HomePage() {
                       <h2 className="font-bold text-base text-white tracking-wide truncate">
                         {currentStream.streamer}
                       </h2>
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#00f0ff] flex-shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#ff2b42] flex-shrink-0" />
                     </div>
                     <p className="text-xs sm:text-sm text-gray-300 font-medium line-clamp-1">
                       {currentStream.title}
                     </p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      <span className="text-[11px] font-medium bg-[#1f2433] text-gray-300 px-2 py-0.5 rounded">
+                      <span className="text-[11px] font-medium bg-[#101014] text-gray-300 px-2 py-0.5 rounded">
                         {currentStream.category}
                       </span>
-                      <span className="text-[11px] font-medium bg-[#1f2433] text-gray-400 px-2 py-0.5 rounded">
+                      <span className="text-[11px] font-medium bg-[#101014] text-gray-400 px-2 py-0.5 rounded">
                         {currentStream.language}
                       </span>
                     </div>
@@ -342,7 +342,7 @@ export function HomePage() {
                         onClick={() => setCurrentSlide(index)}
                         className={`transition-all rounded-full cursor-pointer ${
                           currentSlide === index
-                            ? 'w-6 h-1.5 bg-[#00f0ff]'
+                            ? 'w-6 h-1.5 bg-[#ff2b42]'
                             : 'w-1.5 h-1.5 bg-gray-600 hover:bg-gray-400'
                         }`}
                         aria-label={`Slide ${index + 1}`}
@@ -356,7 +356,7 @@ export function HomePage() {
                       type="button"
                       onClick={handlePrevSlide}
                       aria-label="Previous slide"
-                      className="w-8 h-8 rounded-lg bg-[#151822] hover:bg-[#1f2433] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#232838] cursor-pointer"
+                      className="w-8 h-8 rounded-lg bg-[#101014] hover:bg-[#18181f] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#1f1f26] cursor-pointer"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
@@ -364,7 +364,7 @@ export function HomePage() {
                       type="button"
                       onClick={handleNextSlide}
                       aria-label="Next slide"
-                      className="w-8 h-8 rounded-lg bg-[#151822] hover:bg-[#1f2433] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#232838] cursor-pointer"
+                      className="w-8 h-8 rounded-lg bg-[#101014] hover:bg-[#18181f] text-gray-300 hover:text-white flex items-center justify-center transition border border-[#1f1f26] cursor-pointer"
                     >
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -376,10 +376,10 @@ export function HomePage() {
                     onClick={() => {
                       toast.info(`Đang phát: ${currentStream.title}`)
                     }}
-                    className="px-5 py-2.5 bg-[#00f0ff] hover:bg-[#00c8d6] text-black font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 neon-glow-cyan transition cursor-pointer"
+                    className="px-5 py-2.5 bg-[#ff2b42] hover:bg-[#e02237] text-white font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 neon-glow-red transition cursor-pointer"
                   >
                     <span>Watch now</span>
-                    <Play className="w-2.5 h-2.5 fill-black" />
+                    <Play className="w-2.5 h-2.5 fill-white" />
                   </button>
                 </div>
               </div>
@@ -387,11 +387,11 @@ export function HomePage() {
           </div>
 
           {/* Embedded Live Chat (Right 3 cols) */}
-          <div className="xl:col-span-3 bg-[#0f1118] border border-[#232838] rounded-xl flex flex-col justify-between h-[460px] md:h-[500px] overflow-hidden shadow-xl">
+          <div className="xl:col-span-3 bg-[#08080a] border border-[#1f1f26] rounded-xl flex flex-col justify-between h-[460px] md:h-[500px] overflow-hidden shadow-xl">
             {/* Chat Header */}
-            <div className="px-4 py-3 border-b border-[#232838] flex items-center justify-between bg-[#151822]/50">
+            <div className="px-4 py-3 border-b border-[#1f1f26] flex items-center justify-between bg-[#101014]/50">
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-[#00f0ff]" />
+                <MessageSquare className="w-4 h-4 text-[#ff2b42]" />
                 <h3 className="text-sm font-bold text-white tracking-wide">
                   Stream Chat
                 </h3>
@@ -453,7 +453,7 @@ export function HomePage() {
             </div>
 
             {/* Chat Input Bar */}
-            <div className="p-3 border-t border-[#232838] bg-[#0c0d14]">
+            <div className="p-3 border-t border-[#1f1f26] bg-[#050507]">
               <form
                 onSubmit={handleSendMessage}
                 className="relative flex items-center"
@@ -467,7 +467,7 @@ export function HomePage() {
                       ? 'Send a message...'
                       : 'Log in to send a message'
                   }
-                  className="w-full bg-[#151822] text-xs text-gray-200 placeholder-gray-500 pl-3 pr-16 py-2 rounded-lg border border-[#232838] focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff]"
+                  className="w-full bg-[#101014] text-xs text-gray-200 placeholder-gray-500 pl-3 pr-16 py-2 rounded-lg border border-[#1f1f26] focus:outline-none focus:border-[#ff2b42] focus:ring-1 focus:ring-[#ff2b42]"
                 />
                 <div className="absolute right-2 flex items-center gap-1.5 text-gray-400">
                   <button
@@ -480,7 +480,7 @@ export function HomePage() {
                   <button
                     type="submit"
                     aria-label="Send"
-                    className="hover:text-[#00f0ff] transition cursor-pointer"
+                    className="hover:text-[#ff2b42] transition cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -506,13 +506,13 @@ export function HomePage() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-white tracking-wide font-outfit">
-              <span className="text-[#00f0ff]">Streams</span> For You
+              <span className="text-[#ff2b42]">Streams</span> For You
             </h2>
-            <span className="w-2 h-2 rounded-full bg-[#00f0ff]" />
+            <span className="w-2 h-2 rounded-full bg-[#ff2b42]" />
           </div>
           <a
             href="#viewall"
-            className="text-xs font-semibold text-gray-400 hover:text-[#00f0ff] transition flex items-center gap-1"
+            className="text-xs font-semibold text-gray-400 hover:text-[#ff2b42] transition flex items-center gap-1"
           >
             <span>View all</span>
             <ChevronRight className="w-3 h-3" />
@@ -527,7 +527,7 @@ export function HomePage() {
               onClick={() => {
                 toast.info(`Xem stream: ${stream.title}`)
               }}
-              className="bg-[#0f1118] border border-[#232838] rounded-xl overflow-hidden hover:border-[#00f0ff]/50 transition duration-200 flex flex-col group cursor-pointer"
+              className="bg-[#08080a] border border-[#1f1f26] rounded-xl overflow-hidden hover:border-[#ff2b42]/50 transition duration-200 flex flex-col group cursor-pointer"
             >
               <div className="relative aspect-video w-full overflow-hidden bg-gray-900">
                 <img
@@ -540,7 +540,7 @@ export function HomePage() {
                     LIVE
                   </span>
                   <span className="bg-black/80 backdrop-blur-sm text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 flex items-center gap-1">
-                    <Eye className="w-2.5 h-2.5 text-[#00f0ff]" />
+                    <Eye className="w-2.5 h-2.5 text-[#ff2b42]" />
                     {stream.viewers}
                   </span>
                 </div>
@@ -549,22 +549,22 @@ export function HomePage() {
               <div className="p-3.5 flex gap-3 flex-1">
                 <img
                   alt={stream.channel}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#232838]"
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-[#1f1f26]"
                   src={stream.avatar}
                 />
                 <div className="min-w-0 flex-1">
                   <h3
-                    className="text-sm font-semibold text-white truncate group-hover:text-[#00f0ff] transition"
+                    className="text-sm font-semibold text-white truncate group-hover:text-[#ff2b42] transition"
                     title={stream.title}
                   >
                     {stream.title}
                   </h3>
                   <p className="text-xs text-gray-400 truncate mt-0.5 flex items-center gap-1">
                     {stream.channel}
-                    <CheckCircle2 className="w-2.5 h-2.5 text-[#00f0ff]" />
+                    <CheckCircle2 className="w-2.5 h-2.5 text-[#ff2b42]" />
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    <span className="text-[11px] font-medium bg-[#151822] text-gray-300 px-2 py-0.5 rounded border border-[#232838]">
+                    <span className="text-[11px] font-medium bg-[#101014] text-gray-300 px-2 py-0.5 rounded border border-[#1f1f26]">
                       {stream.category}
                     </span>
                   </div>
