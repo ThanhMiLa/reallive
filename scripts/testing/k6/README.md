@@ -7,8 +7,8 @@ k6 run scripts/testing/k6/register-and-follow.js
 ```
 
 The script first registers 100 new users sequentially in `setup()`. Only after
-all registrations succeed does it send 100 follow requests using 10 concurrent
-virtual users. Each registered user follows the target channel exactly once.
+all registrations succeed does it send all 100 follow requests in one parallel
+`http.batch()` call. Each registered user follows the target channel exactly once.
 Registration returns the access token through `Set-Cookie`, not the JSON body.
 Each follow request uses its user's token in an isolated cookie jar.
 
@@ -19,16 +19,20 @@ Defaults:
 | `BASE_URL` | `http://localhost:8888` |
 | `CHANNEL_ID` | `239c8ef3-47e4-457b-a7b0-797fa6ae8f6d` |
 | `USER_COUNT` | `100` |
-| `VUS` | `10` (or `USER_COUNT` if smaller) |
 | `ACCESS_TOKEN_COOKIE_NAME` | `access_token` |
 | `TEST_PASSWORD` | Generated username for each user |
 | `EMAIL_DOMAIN` | `example.com` |
 
-For 100 virtual users, each making one follow request:
+One VU executes one iteration containing the whole batch. `batch` and
+`batchPerHost` both equal `USER_COUNT`, allowing all 100 follow requests to be
+in flight together. The summary therefore shows **1 VU and 1 iteration**, while
+HTTP totals remain **200 requests and 400 checks**. The former `VUS` environment
+variable is no longer used. Client scheduling, TCP connections and the network
+can still cause small differences in request start and arrival times; this does
+not guarantee all requests reach the server at the exact same instant.
 
-```bash
-k6 run -e VUS=100 scripts/testing/k6/register-and-follow.js
-```
+See the [k6 batch documentation](https://grafana.com/docs/k6/latest/javascript-api/k6-http/batch/)
+and [batch limits](https://grafana.com/docs/k6/latest/using-k6/k6-options/reference/#batch-per-host).
 
 If the application is configured to name its cookie `accessToken` instead:
 
