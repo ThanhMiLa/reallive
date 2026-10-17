@@ -27,7 +27,7 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
     @Transactional
     public boolean followChannel(UUID userId, UUID channelId) {
         ChannelEntity channel = findChannel(userId, channelId);
-        if(userId.equals(channel.getUserId())) {
+        if (userId.equals(channel.getUserId())) {
             throw new AppException(ErrorCode.CANNOT_FOLLOW_OWN_CHANNEL);
         }
         if (channel.getStatus() != ChannelStatus.ACTIVE) {
@@ -35,6 +35,9 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
         }
         if (channelFollowerRepository.insertFollowIfAbsent(channelId, userId) == 0) {
             throw new AppException(ErrorCode.CHANNEL_ALREADY_FOLLOWED);
+        }
+        if (channelRepository.incrementFollowerCount(channelId) != 1) {
+            throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
         }
         return true;
     }
@@ -45,6 +48,9 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
         findChannel(userId, channelId);
         if (channelFollowerRepository.deleteFollow(channelId, userId) == 0) {
             throw new AppException(ErrorCode.CHANNEL_NOT_FOLLOWED);
+        }
+        if (channelRepository.decrementFollowerCount(channelId) != 1) {
+            throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
         }
         return true;
     }

@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -87,7 +88,7 @@ class ChannelPersistenceTest {
     @Test
     void migrationCreatesAllTablesAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("3", flyway.info().current().getVersion().toString());
+        assertEquals("4", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         for (String name : List.of("channels", "categories", "channel_categories", "channel_followers")) {
             assertNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM " + table(name), Integer.class));
@@ -109,7 +110,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(2, upgraded.migrate().migrationsExecuted);
+            assertEquals(3, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             assertEquals(0L, jdbc.queryForObject("SELECT follower_count FROM " + channelsTable
                     + " WHERE id = ?", Long.class, channelId));
@@ -136,7 +137,7 @@ class ChannelPersistenceTest {
             Map<String, Object> before = jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId);
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
-                    .schemas(schema).defaultSchema(schema).load();
+                    .schemas(schema).defaultSchema(schema).target("3").load();
             assertEquals(1, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             Map<String, Object> after = jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId);
@@ -145,6 +146,46 @@ class ChannelPersistenceTest {
             }
             assertNull(jdbc.queryForObject("SELECT user_id FROM " + channelsTable + " WHERE id = ?",
                     UUID.class, channelId));
+        } finally {
+            jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
+        }
+    }
+
+    @Test
+    void counterMigrationRecalculatesLegacyCountsAndPreservesOtherChannelColumns() {
+        String schema = "channel_counter_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway initial = Flyway.configure().dataSource(jdbc.getDataSource())
+                .schemas(schema).defaultSchema(schema).target("3").load();
+        try {
+            initial.migrate();
+            String channelsTable = "\"" + schema + "\".channels";
+            String followersTable = "\"" + schema + "\".channel_followers";
+            Map<UUID, Map<String, Object>> expectedRows = new HashMap<>();
+            for (int count = 0; count < 4; count++) {
+                UUID channelId = UUID.randomUUID();
+                jdbc.update("INSERT INTO " + channelsTable
+                                + " (id, streamer_id, name, slug, status, follower_count, deleted_at) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        channelId, UUID.randomUUID(), "Existing channel", channelId.toString(),
+                        count == 2 ? "BANNED" : "ACTIVE", count == 1 ? 0L : 123L,
+                        count == 3 ? LocalDateTime.of(2026, 1, 2, 3, 4, 5) : null);
+                for (int index = 0; index < count; index++) {
+                    jdbc.update("INSERT INTO " + followersTable + " (channel_id, user_id) VALUES (?, ?)",
+                            channelId, UUID.randomUUID());
+                }
+                Map<String, Object> expected = jdbc.queryForMap("SELECT * FROM " + channelsTable
+                        + " WHERE id = ?", channelId);
+                expected.put("follower_count", (long) count);
+                expectedRows.put(channelId, expected);
+            }
+
+            Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
+                    .schemas(schema).defaultSchema(schema).load();
+            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            upgraded.validate();
+            expectedRows.forEach((channelId, expected) -> assertEquals(expected,
+                    jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId)));
+            assertEquals(0, upgraded.migrate().migrationsExecuted);
         } finally {
             jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
         }

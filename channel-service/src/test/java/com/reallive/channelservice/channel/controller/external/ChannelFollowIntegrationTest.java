@@ -5,6 +5,7 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.service.ChannelFollowService;
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.channelservice.common.exception.AppException;
@@ -28,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.LinkedCaseInsensitiveMap;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -70,6 +72,8 @@ class ChannelFollowIntegrationTest {
     @Autowired
     private ChannelFollowService service;
     @Autowired
+    private ChannelRepository channels;
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @MockitoBean
@@ -103,10 +107,10 @@ class ChannelFollowIntegrationTest {
         UUID otherUser = UUID.randomUUID();
         UUID channelId = insertChannel("ACTIVE");
         UUID otherChannel = insertChannel("ACTIVE");
-        Map<String, Object> profile = channelRow(channelId);
-        Map<String, Object> otherProfile = channelRow(otherChannel);
         insertFollow(channelId, otherUser);
         insertFollow(otherChannel, userId);
+        Map<String, Object> profile = channelRow(channelId);
+        Map<String, Object> otherProfile = channelRow(otherChannel);
 
         mvc.perform(authenticatedRequest("PUT", channelId, userId).param("userId", otherUser.toString()))
                 .andExpect(status().isOk())
@@ -116,6 +120,7 @@ class ChannelFollowIntegrationTest {
                 .andExpect(jsonPath("$.result").value(true))
                 .andExpect(jsonPath("$.timestamp").isNotEmpty());
         assertEquals(1, membershipCount(channelId, userId));
+        assertCounterChange(profile, channelId, 1);
         assertNotNull(jdbc.queryForObject("SELECT followed_at FROM " + table("channel_followers")
                 + " WHERE channel_id = ? AND user_id = ?", Object.class, channelId, userId));
         assertFollowingListContains(channelId, userId, 1);
@@ -159,9 +164,9 @@ class ChannelFollowIntegrationTest {
         UUID otherUser = UUID.randomUUID();
         UUID channelId = insertChannel(channelStatus);
         jdbc.update("UPDATE " + table("channels") + " SET user_id = ? WHERE id = ?", userId, channelId);
-        Map<String, Object> profile = channelRow(channelId);
         insertFollow(channelId, userId);
         insertFollow(channelId, otherUser);
+        Map<String, Object> profile = channelRow(channelId);
 
         mvc.perform(authenticatedRequest("DELETE", channelId, userId))
                 .andExpect(status().isOk())
@@ -169,7 +174,7 @@ class ChannelFollowIntegrationTest {
 
         assertEquals(0, membershipCount(channelId, userId));
         assertEquals(1, membershipCount(channelId, otherUser));
-        assertEquals(profile, channelRow(channelId));
+        assertCounterChange(profile, channelId, -1);
     }
 
     @Test
@@ -177,6 +182,7 @@ class ChannelFollowIntegrationTest {
         UUID userId = UUID.randomUUID();
         UUID channelId = insertChannel("ACTIVE");
         insertFollow(channelId, userId);
+        Map<String, Object> profile = channelRow(channelId);
         Map<String, Object> before = jdbc.queryForMap("SELECT * FROM " + table("channel_followers")
                 + " WHERE channel_id = ? AND user_id = ?", channelId, userId);
 
@@ -186,6 +192,7 @@ class ChannelFollowIntegrationTest {
                 .andExpect(jsonPath("$.result").value(nullValue()));
         assertEquals(before, jdbc.queryForMap("SELECT * FROM " + table("channel_followers")
                 + " WHERE channel_id = ? AND user_id = ?", channelId, userId));
+        assertEquals(profile, channelRow(channelId));
     }
 
     @Test
@@ -198,6 +205,7 @@ class ChannelFollowIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(1020));
         assertEquals(1, membershipCount(channelId, otherUser));
+        assertEquals(1L, followerCount(channelId));
 
         insertFollow(channelId, userId);
         mvc.perform(authenticatedRequest("DELETE", channelId, userId)).andExpect(status().isOk());
@@ -205,6 +213,7 @@ class ChannelFollowIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(1020));
         assertEquals(1, membershipCount(channelId, otherUser));
+        assertEquals(1L, followerCount(channelId));
     }
 
     @Test
@@ -269,25 +278,47 @@ class ChannelFollowIntegrationTest {
     void concurrentRequestsForOneUserHaveOneSuccessAndBusinessConflicts(String method) throws Exception {
         UUID channelId = insertChannel("ACTIVE");
         UUID userId = UUID.randomUUID();
-        Map<String, Object> profile = channelRow(channelId);
         if (method.equals("DELETE")) {
             insertFollow(channelId, userId);
         }
+        Map<String, Object> profile = channelRow(channelId);
         List<Integer> statuses = concurrentRequests(method, channelId, Collections.nCopies(8, userId));
         assertEquals(1, Collections.frequency(statuses, 200));
         assertEquals(7, Collections.frequency(statuses, 409));
         assertEquals(method.equals("PUT") ? 1 : 0, membershipCount(channelId, userId));
-        assertEquals(profile, channelRow(channelId));
+        assertCounterChange(profile, channelId, method.equals("PUT") ? 1 : -1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PUT", "DELETE"})
+    void differentUsersCanFollowAndUnfollowTheSameChannelConcurrentlyWithoutLosingUpdates(String method)
+            throws Exception {
+        UUID channelId = insertChannel("ACTIVE");
+        List<UUID> users = IntStream.range(0, 8).mapToObj(index -> UUID.randomUUID()).toList();
+        if (method.equals("DELETE")) {
+            users.forEach(user -> insertFollow(channelId, user));
+        }
+        Map<String, Object> profile = channelRow(channelId);
+        assertEquals(8, Collections.frequency(concurrentRequests(method, channelId, users), 200));
+        for (UUID user : users) {
+            assertEquals(method.equals("PUT") ? 1 : 0, membershipCount(channelId, user));
+        }
+        assertCounterChange(profile, channelId, method.equals("PUT") ? users.size() : -users.size());
     }
 
     @Test
-    void differentUsersCanFollowTheSameChannelConcurrentlyWithoutChangingTheChannel() throws Exception {
+    void simultaneousFollowsAndUnfollowsKeepTheCounterConsistent() throws Exception {
         UUID channelId = insertChannel("ACTIVE");
-        Map<String, Object> profile = channelRow(channelId);
         List<UUID> users = IntStream.range(0, 8).mapToObj(index -> UUID.randomUUID()).toList();
-        assertEquals(8, Collections.frequency(concurrentRequests("PUT", channelId, users), 200));
-        for (UUID user : users) {
-            assertEquals(1, membershipCount(channelId, user));
+        users.subList(0, 4).forEach(user -> insertFollow(channelId, user));
+        List<String> methods = IntStream.range(0, users.size())
+                .mapToObj(index -> index < 4 ? "DELETE" : "PUT").toList();
+        Map<String, Object> profile = channelRow(channelId);
+
+        assertEquals(8, Collections.frequency(concurrentRequests(methods, channelId, users), 200));
+
+        for (int index = 0; index < users.size(); index++) {
+            assertEquals(index < 4 ? 0 : 1, membershipCount(channelId, users.get(index)));
         }
         assertEquals(profile, channelRow(channelId));
     }
@@ -299,15 +330,74 @@ class ChannelFollowIntegrationTest {
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
         transaction.executeWithoutResult(status -> {
             assertTrue(service.followChannel(userId, channelId));
+            assertEquals(1L, followerCount(channelId));
             status.setRollbackOnly();
         });
         assertEquals(0, membershipCount(channelId, userId));
+        assertEquals(0L, followerCount(channelId));
         insertFollow(channelId, userId);
         transaction.executeWithoutResult(status -> {
             assertTrue(service.unfollowChannel(userId, channelId));
+            assertEquals(0L, followerCount(channelId));
             status.setRollbackOnly();
         });
         assertEquals(1, membershipCount(channelId, userId));
+        assertEquals(1L, followerCount(channelId));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PUT", "DELETE"})
+    void counterUpdateFailureRollsBackTheFollowerChange(String method) throws Exception {
+        UUID channelId = insertChannel("ACTIVE");
+        UUID userId = UUID.randomUUID();
+        if (method.equals("DELETE")) {
+            insertFollow(channelId, userId);
+        }
+        Map<String, Object> profile = channelRow(channelId);
+        String constraint = "ck_counter_failure_" + channelId.toString().replace("-", "");
+        jdbc.execute("ALTER TABLE " + table("channels") + " ADD CONSTRAINT " + constraint
+                + " CHECK (id <> '" + channelId + "' OR follower_count = " + followerCount(channelId) + ")");
+        try {
+            mvc.perform(authenticatedRequest(method, channelId, userId))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value(1003))
+                    .andExpect(jsonPath("$.result").value(false));
+
+            assertEquals(method.equals("PUT") ? 0 : 1, membershipCount(channelId, userId));
+            assertEquals(profile, channelRow(channelId));
+        } finally {
+            jdbc.execute("ALTER TABLE " + table("channels") + " DROP CONSTRAINT " + constraint);
+        }
+    }
+
+    @Test
+    void unfollowRejectsAnInconsistentZeroCounterAndRestoresTheFollow() throws Exception {
+        UUID channelId = insertChannel("ACTIVE");
+        UUID userId = UUID.randomUUID();
+        insertFollow(channelId, userId);
+        jdbc.update("UPDATE " + table("channels") + " SET follower_count = 0 WHERE id = ?", channelId);
+
+        mvc.perform(authenticatedRequest("DELETE", channelId, userId))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(1003));
+
+        assertEquals(1, membershipCount(channelId, userId));
+        assertEquals(0L, followerCount(channelId));
+    }
+
+    @Test
+    void counterUpdatesClearPreviouslyLoadedChannelState() {
+        UUID channelId = insertChannel("ACTIVE");
+        UUID userId = UUID.randomUUID();
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        transaction.executeWithoutResult(status -> {
+            assertEquals(0L, channels.findById(channelId).orElseThrow().getFollowerCount());
+            service.followChannel(userId, channelId);
+            assertEquals(1L, channels.findById(channelId).orElseThrow().getFollowerCount());
+            service.unfollowChannel(userId, channelId);
+            assertEquals(0L, channels.findById(channelId).orElseThrow().getFollowerCount());
+        });
     }
 
     @ParameterizedTest
@@ -330,11 +420,17 @@ class ChannelFollowIntegrationTest {
     }
 
     private List<Integer> concurrentRequests(String method, UUID channelId, List<UUID> users) throws Exception {
+        return concurrentRequests(Collections.nCopies(users.size(), method), channelId, users);
+    }
+
+    private List<Integer> concurrentRequests(List<String> methods, UUID channelId, List<UUID> users) throws Exception {
         CountDownLatch ready = new CountDownLatch(users.size());
         CountDownLatch start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(users.size())) {
             List<Future<Integer>> responses = new ArrayList<>();
-            for (UUID user : users) {
+            for (int index = 0; index < users.size(); index++) {
+                UUID user = users.get(index);
+                String method = methods.get(index);
                 responses.add(executor.submit(() -> {
                     ready.countDown();
                     assertTrue(start.await(10, TimeUnit.SECONDS));
@@ -369,23 +465,39 @@ class ChannelFollowIntegrationTest {
     }
 
     private void assertFollowingListContains(UUID channelId, UUID userId, int count) throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel").cookie(accessCookie(userId.toString()))
+        var response = mvc.perform(get(PATH).contextPath("/channel").cookie(accessCookie(userId.toString()))
                         .param("following", "true").param("keyword", channelId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.totalElements").value(count));
+        if (count > 0) {
+            response.andExpect(jsonPath("$.result.content[0].numberOfFollower").value(followerCount(channelId)));
+        }
     }
 
     private UUID insertChannel(String status) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO " + table("channels")
                 + " (id, streamer_id, name, slug, status, follower_count) VALUES (?, ?, ?, ?, ?, ?)",
-                id, UUID.randomUUID(), "Channel " + id, id.toString(), status, 123L);
+                id, UUID.randomUUID(), "Channel " + id, id.toString(), status, 0L);
         return id;
     }
 
     private void insertFollow(UUID channelId, UUID userId) {
         jdbc.update("INSERT INTO " + table("channel_followers") + " (channel_id, user_id) VALUES (?, ?)",
                 channelId, userId);
+        jdbc.update("UPDATE " + table("channels") + " SET follower_count = follower_count + 1 WHERE id = ?", channelId);
+    }
+
+    private long followerCount(UUID channelId) {
+        return jdbc.queryForObject("SELECT follower_count FROM " + table("channels") + " WHERE id = ?",
+                Long.class, channelId);
+    }
+
+    private void assertCounterChange(Map<String, Object> before, UUID channelId, long delta) {
+        Map<String, Object> expected = new LinkedCaseInsensitiveMap<>();
+        expected.putAll(before);
+        expected.put("follower_count", ((Number) before.get("follower_count")).longValue() + delta);
+        assertEquals(expected, channelRow(channelId));
     }
 
     private int membershipCount(UUID channelId, UUID userId) {

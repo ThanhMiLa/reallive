@@ -5,6 +5,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,4 +33,19 @@ public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID>, J
     boolean existsByStreamerIdIncludingDeleted(@Param("streamerId") UUID streamerId);
 
     boolean existsBySlug(String slug);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value =
+            "UPDATE {h-schema}channels " +
+            "SET follower_count = follower_count + 1 " +
+            "WHERE id = :channelId AND deleted_at IS NULL",
+            nativeQuery = true)
+    int incrementFollowerCount(@Param("channelId") UUID channelId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value =
+            "UPDATE {h-schema}channels " +
+            "SET follower_count = follower_count - 1 " +
+            "WHERE id = :channelId AND deleted_at IS NULL AND follower_count > 0", nativeQuery = true)
+    int decrementFollowerCount(@Param("channelId") UUID channelId);
 }

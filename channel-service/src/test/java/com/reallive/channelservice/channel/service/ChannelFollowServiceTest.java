@@ -51,15 +51,17 @@ class ChannelFollowServiceTest {
     }
 
     @Test
-    void anotherUserCanFollowAnActiveChannelWithoutChangingItsCounter() {
+    void anotherUserCanFollowAnActiveChannelUsingAnAtomicCounterIncrement() {
         ChannelEntity channel = givenChannel(UUID.randomUUID(), ChannelStatus.ACTIVE);
         when(channelFollowerRepository.insertFollowIfAbsent(channelId, userId)).thenReturn(1);
+        when(channelRepository.incrementFollowerCount(channelId)).thenReturn(1);
 
         assertTrue(service.followChannel(userId, channelId));
 
         assertEquals(123L, channel.getFollowerCount());
         verify(channelRepository).findById(channelId);
         verify(channelFollowerRepository).insertFollowIfAbsent(channelId, userId);
+        verify(channelRepository).incrementFollowerCount(channelId);
         verifyNoMoreInteractions(channelRepository, channelFollowerRepository);
     }
 
@@ -67,6 +69,7 @@ class ChannelFollowServiceTest {
     void legacyChannelWithoutAnOwnerCanBeFollowedWithoutANullPointerException() {
         givenChannel(null, ChannelStatus.ACTIVE);
         when(channelFollowerRepository.insertFollowIfAbsent(channelId, userId)).thenReturn(1);
+        when(channelRepository.incrementFollowerCount(channelId)).thenReturn(1);
 
         assertTrue(service.followChannel(userId, channelId));
 
@@ -91,6 +94,8 @@ class ChannelFollowServiceTest {
         AppException exception = assertThrows(AppException.class, () -> service.followChannel(userId, channelId));
 
         assertEquals(ErrorCode.CHANNEL_ALREADY_FOLLOWED, exception.getErrorCode());
+        verify(channelRepository).findById(channelId);
+        verifyNoMoreInteractions(channelRepository);
     }
 
     @ParameterizedTest
@@ -98,11 +103,13 @@ class ChannelFollowServiceTest {
     void ownerCanRemoveALegacySelfFollowRegardlessOfStatus(ChannelStatus status) {
         ChannelEntity channel = givenChannel(userId, status);
         when(channelFollowerRepository.deleteFollow(channelId, userId)).thenReturn(1);
+        when(channelRepository.decrementFollowerCount(channelId)).thenReturn(1);
 
         assertTrue(service.unfollowChannel(userId, channelId));
 
         assertEquals(123L, channel.getFollowerCount());
         verify(channelFollowerRepository).deleteFollow(channelId, userId);
+        verify(channelRepository).decrementFollowerCount(channelId);
         verifyNoMoreInteractions(channelFollowerRepository);
     }
 
@@ -114,6 +121,30 @@ class ChannelFollowServiceTest {
         AppException exception = assertThrows(AppException.class, () -> service.unfollowChannel(userId, channelId));
 
         assertEquals(ErrorCode.CHANNEL_NOT_FOLLOWED, exception.getErrorCode());
+        verify(channelRepository).findById(channelId);
+        verifyNoMoreInteractions(channelRepository);
+    }
+
+    @Test
+    void failedCounterIncrementRejectsTheFollow() {
+        givenChannel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        when(channelFollowerRepository.insertFollowIfAbsent(channelId, userId)).thenReturn(1);
+        when(channelRepository.incrementFollowerCount(channelId)).thenReturn(0);
+
+        AppException exception = assertThrows(AppException.class, () -> service.followChannel(userId, channelId));
+
+        assertEquals(ErrorCode.CHANNEL_DATA_UNAVAILABLE, exception.getErrorCode());
+    }
+
+    @Test
+    void failedCounterDecrementRejectsTheUnfollow() {
+        givenChannel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        when(channelFollowerRepository.deleteFollow(channelId, userId)).thenReturn(1);
+        when(channelRepository.decrementFollowerCount(channelId)).thenReturn(0);
+
+        AppException exception = assertThrows(AppException.class, () -> service.unfollowChannel(userId, channelId));
+
+        assertEquals(ErrorCode.CHANNEL_DATA_UNAVAILABLE, exception.getErrorCode());
     }
 
     private ChannelEntity givenChannel(UUID ownerId, ChannelStatus status) {
