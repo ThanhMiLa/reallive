@@ -31,5 +31,25 @@ export const channelApi = {
     )
     return response.data.result
   },
+
+  /**
+   * Follow a channel by ID.
+   */
+  followChannel: async (channelId: string): Promise<boolean> => {
+    const response = await apiClient.put<ApiResponse<boolean>>(
+      `/channel/api/channels/${channelId}/follow`,
+    )
+    return response.data.result
+  },
+
+  /**
+   * Unfollow a channel by ID.
+   */
+  unfollowChannel: async (channelId: string): Promise<boolean> => {
+    const response = await apiClient.delete<ApiResponse<boolean>>(
+      `/channel/api/channels/${channelId}/follow`,
+    )
+    return response.data.result
+  },
 }
 

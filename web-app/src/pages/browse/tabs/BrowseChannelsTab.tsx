@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, RefreshCw, LogIn, Users } from 'lucide-react'
+import { isAxiosError } from 'axios'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, RefreshCw, LogIn, Users, UserPlus, UserMinus } from 'lucide-react'
+import { toast } from 'sonner'
 import { channelApi } from '@/api/channel.api'
 import { useAuthStore } from '@/stores/auth.store'
+import type { ApiResponse } from '@/types/auth.types'
 import type { ChannelListItem } from '@/types/channel.types'
 
 const BANNER_GRADIENTS = [
@@ -23,7 +26,19 @@ function formatFollowers(count: number): string {
   return `${count} ${count === 1 ? 'Follower' : 'Followers'}`
 }
 
-function ChannelCard({ channel }: { channel: ChannelListItem }) {
+interface ChannelCardProps {
+  channel: ChannelListItem
+  actionType?: 'follow' | 'unfollow'
+  onAction?: (channel: ChannelListItem) => void
+  isActionLoading?: boolean
+}
+
+function ChannelCard({
+  channel,
+  actionType,
+  onAction,
+  isActionLoading = false,
+}: ChannelCardProps) {
   const [avatarError, setAvatarError] = useState(false)
   const [bannerError, setBannerError] = useState(false)
 
@@ -87,20 +102,71 @@ function ChannelCard({ channel }: { channel: ChannelListItem }) {
           </div>
         </div>
 
-        {/* Channel Name */}
-        <div className="flex items-center gap-1.5 mb-1">
-          <h3
-            title={channel.name}
-            className="text-white text-base sm:text-lg font-bold truncate group-hover:text-[#00f0ff] transition-colors"
-          >
-            {channel.name}
-          </h3>
-        </div>
+        {/* Channel Info & Action */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3
+              title={channel.name}
+              className="text-white text-base sm:text-lg font-bold truncate group-hover:text-[#00f0ff] transition-colors"
+            >
+              {channel.name}
+            </h3>
+            <p className="text-sm font-medium text-gray-400">
+              {formatFollowers(channel.numberOfFollower)}
+            </p>
+          </div>
 
-        {/* Followers Count below Name */}
-        <p className="text-sm font-medium text-gray-400">
-          {formatFollowers(channel.numberOfFollower)}
-        </p>
+          {actionType === 'follow' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAction?.(channel)
+              }}
+              disabled={isActionLoading}
+              className="flex-shrink-0 flex items-center gap-1.5 bg-[#00f0ff] hover:bg-[#00d0dd] active:scale-95 text-black font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-cyan-500/20 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isActionLoading ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <UserPlus className="w-3.5 h-3.5" />
+              )}
+              <span>Follow</span>
+            </button>
+          )}
+
+          {actionType === 'unfollow' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onAction?.(channel)
+              }}
+              disabled={isActionLoading}
+              className="flex-shrink-0 flex items-center gap-1.5 bg-[#161a26] hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/40 text-gray-300 border border-[#232838] font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isActionLoading ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <UserMinus className="w-3.5 h-3.5" />
+              )}
+              <span>Unfollow</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ChannelSkeleton() {
+  return (
+    <div className="flex flex-col animate-pulse">
+      <div className="h-32 sm:h-36 w-full rounded-2xl bg-[#151822]" />
+      <div className="px-2 pt-0 pb-2 flex flex-col flex-1">
+        <div className="-mt-8 mb-2 w-16 h-16 rounded-full bg-[#1b2030] ring-4 ring-[#08090d]" />
+        <div className="h-4 w-32 bg-[#151822] rounded mb-2" />
+        <div className="h-3.5 w-20 bg-[#151822] rounded" />
       </div>
     </div>
   )
@@ -108,56 +174,120 @@ function ChannelCard({ channel }: { channel: ChannelListItem }) {
 
 export function BrowseChannelsTab() {
   const { isAuthenticated, isCheckingAuth, openAuthModal } = useAuthStore()
+  const queryClient = useQueryClient()
 
+  // Following channels query (following: true)
   const {
-    data: channelsPage,
-    isLoading,
-    isError,
-    refetch,
-    isFetching,
+    data: followingPage,
+    isLoading: isFollowingLoading,
+    isError: isFollowingError,
+    refetch: refetchFollowing,
+    isFetching: isFollowingFetching,
   } = useQuery({
     queryKey: ['channels', 'following', 'browse'],
     queryFn: () => channelApi.getChannels({ following: true }),
     enabled: isAuthenticated,
   })
 
-  const channels = channelsPage?.content || []
-  const showLoading = isCheckingAuth || (isAuthenticated && isLoading)
+  // Recommended / Unfollowed channels query (following: false)
+  const {
+    data: recommendedPage,
+    isLoading: isRecommendedLoading,
+    isError: isRecommendedError,
+    refetch: refetchRecommended,
+    isFetching: isRecommendedFetching,
+  } = useQuery({
+    queryKey: ['channels', 'recommended', 'browse'],
+    queryFn: () => channelApi.getChannels({ following: false }),
+    enabled: isAuthenticated,
+  })
 
-  return (
-    <div className="pb-12">
-      {/* Section Title: Following */}
-      <div className="mb-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
-          Following
-        </h2>
-      </div>
+  // Follow channel mutation
+  const followMutation = useMutation({
+    mutationFn: (channel: ChannelListItem) =>
+      channelApi.followChannel(channel.id),
+    onSuccess: (_, channel) => {
+      toast.success(`Followed ${channel.name} successfully!`)
+      queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+    onError: (error: unknown) => {
+      let message = 'Failed to follow channel'
+      if (
+        isAxiosError<ApiResponse<unknown>>(error) &&
+        error.response?.data?.message
+      ) {
+        message = error.response.data.message
+      }
+      toast.error(message)
+    },
+  })
 
-      {/* Loading Skeleton */}
-      {showLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {Array.from({ length: 8 }).map((_, idx) => (
-            <div key={idx} className="flex flex-col animate-pulse">
-              <div className="h-32 sm:h-36 w-full rounded-2xl bg-[#151822]" />
-              <div className="px-2 pt-0 pb-2 flex flex-col flex-1">
-                <div className="-mt-8 mb-2 w-16 h-16 rounded-full bg-[#1b2030] ring-4 ring-[#08090d]" />
-                <div className="h-4 w-32 bg-[#151822] rounded mb-2" />
-                <div className="h-3.5 w-20 bg-[#151822] rounded" />
-              </div>
-            </div>
-          ))}
+  // Unfollow channel mutation
+  const unfollowMutation = useMutation({
+    mutationFn: (channel: ChannelListItem) =>
+      channelApi.unfollowChannel(channel.id),
+    onSuccess: (_, channel) => {
+      toast.success(`Unfollowed ${channel.name} successfully!`)
+      queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+    onError: (error: unknown) => {
+      let message = 'Failed to unfollow channel'
+      if (
+        isAxiosError<ApiResponse<unknown>>(error) &&
+        error.response?.data?.message
+      ) {
+        message = error.response.data.message
+      }
+      toast.error(message)
+    },
+  })
+
+  const followingChannels = followingPage?.content || []
+  const recommendedChannels = recommendedPage?.content || []
+
+  if (isCheckingAuth) {
+    return (
+      <div className="pb-12 space-y-12">
+        <div>
+          <div className="mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
+              Following
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <ChannelSkeleton key={idx} />
+            ))}
+          </div>
         </div>
-      ) : !isAuthenticated ? (
-        /* Not Logged In State */
+        <div>
+          <div className="mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
+              Recommended
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <ChannelSkeleton key={idx} />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="pb-12">
         <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
           <div className="w-12 h-12 rounded-full bg-cyan-500/10 flex items-center justify-center text-[#00f0ff] mb-4">
             <LogIn className="w-6 h-6" />
           </div>
           <h3 className="text-lg font-bold text-white mb-1.5">
-            Sign in to view followed channels
+            Sign in to view channels
           </h3>
           <p className="text-xs text-gray-400 mb-5 max-w-sm">
-            Log in to view all the channels you are following, track their status, and support your favorite creators.
+            Log in to view channels you are following and discover recommended creators.
           </p>
           <button
             type="button"
@@ -167,47 +297,137 @@ export function BrowseChannelsTab() {
             Log In
           </button>
         </div>
-      ) : isError ? (
-        /* Error State */
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
-          <AlertCircle className="w-10 h-10 text-rose-500 mb-3" />
-          <h3 className="text-base font-semibold text-gray-200 mb-1">
-            Failed to load channels
-          </h3>
-          <p className="text-xs text-gray-400 mb-4 max-w-sm">
-            Could not fetch followed channels from server. Please check your connection and try again.
-          </p>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="flex items-center gap-2 bg-[#1b2032] hover:bg-[#232a42] text-[#00f0ff] border border-[#1f2639] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`}
-            />
-            Retry
-          </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="pb-12 space-y-12">
+      {/* Section 1: Following Channels */}
+      <section>
+        <div className="mb-6">
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
+            Following
+          </h2>
         </div>
-      ) : channels.length === 0 ? (
-        /* Empty State */
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
-          <Users className="w-10 h-10 text-gray-600 mb-3" />
-          <h3 className="text-base font-semibold text-gray-200 mb-1">
-            No followed channels yet
-          </h3>
-          <p className="text-xs text-gray-400">
-            You haven't followed any channels yet. Explore categories and streams to find streamers you like!
-          </p>
+
+        {isFollowingLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <ChannelSkeleton key={idx} />
+            ))}
+          </div>
+        ) : isFollowingError ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+            <AlertCircle className="w-9 h-9 text-rose-500 mb-2.5" />
+            <h3 className="text-sm font-semibold text-gray-200 mb-1">
+              Failed to load followed channels
+            </h3>
+            <p className="text-xs text-gray-400 mb-4 max-w-sm">
+              Could not fetch followed channels from server. Please check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetchFollowing()}
+              disabled={isFollowingFetching}
+              className="flex items-center gap-2 bg-[#1b2032] hover:bg-[#232a42] text-[#00f0ff] border border-[#1f2639] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${isFollowingFetching ? 'animate-spin' : ''}`}
+              />
+              Retry
+            </button>
+          </div>
+        ) : followingChannels.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+            <Users className="w-9 h-9 text-gray-600 mb-2.5" />
+            <h3 className="text-sm font-semibold text-gray-200 mb-1">
+              No followed channels yet
+            </h3>
+            <p className="text-xs text-gray-400">
+              You haven't followed any channels yet. Check out recommended channels below!
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {followingChannels.map((channel) => (
+              <ChannelCard
+                key={channel.id}
+                channel={channel}
+                actionType="unfollow"
+                onAction={(c) => unfollowMutation.mutate(c)}
+                isActionLoading={
+                  unfollowMutation.isPending &&
+                  unfollowMutation.variables?.id === channel.id
+                }
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Section 2: Recommended / Unfollowed Channels */}
+      <section>
+        <div className="mb-6">
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
+            Recommended
+          </h2>
         </div>
-      ) : (
-        /* Channels Grid */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {channels.map((channel) => (
-            <ChannelCard key={channel.id} channel={channel} />
-          ))}
-        </div>
-      )}
+
+        {isRecommendedLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <ChannelSkeleton key={idx} />
+            ))}
+          </div>
+        ) : isRecommendedError ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+            <AlertCircle className="w-9 h-9 text-rose-500 mb-2.5" />
+            <h3 className="text-sm font-semibold text-gray-200 mb-1">
+              Failed to load recommended channels
+            </h3>
+            <p className="text-xs text-gray-400 mb-4 max-w-sm">
+              Could not fetch recommended channels from server. Please check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetchRecommended()}
+              disabled={isRecommendedFetching}
+              className="flex items-center gap-2 bg-[#1b2032] hover:bg-[#232a42] text-[#00f0ff] border border-[#1f2639] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${isRecommendedFetching ? 'animate-spin' : ''}`}
+              />
+              Retry
+            </button>
+          </div>
+        ) : recommendedChannels.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f2639] rounded-xl bg-[#0e111b] px-4">
+            <Users className="w-9 h-9 text-gray-600 mb-2.5" />
+            <h3 className="text-sm font-semibold text-gray-200 mb-1">
+              No recommended channels
+            </h3>
+            <p className="text-xs text-gray-400">
+              There are no additional channels available right now.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {recommendedChannels.map((channel) => (
+              <ChannelCard
+                key={channel.id}
+                channel={channel}
+                actionType="follow"
+                onAction={(c) => followMutation.mutate(c)}
+                isActionLoading={
+                  followMutation.isPending &&
+                  followMutation.variables?.id === channel.id
+                }
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
