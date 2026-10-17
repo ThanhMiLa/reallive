@@ -22,25 +22,12 @@ const tabs = [
 export function BrowsePage() {
   return (
     <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 select-none">
-      {/* Top Section: Header & Live Metrics */}
+      {/* Top Section: Header */}
       <div className="flex flex-col gap-6 mb-6">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-outfit">
-              Browse
-            </h1>
-          </div>
-
-          {/* Live Status Pill */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-[#151822] border border-[#232838] px-3.5 py-1.5 rounded-full text-xs text-gray-300">
-              <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-pulse" />
-              <span>
-                <strong className="text-white font-semibold">1,482</strong>{' '}
-                Channels Broadcasting
-              </span>
-            </div>
-          </div>
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-outfit">
+            Browse
+          </h1>
         </div>
 
         {/* Navigation Tabs (Livestreams / Categories / Channels) */}
