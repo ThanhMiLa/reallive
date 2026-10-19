@@ -378,6 +378,35 @@ class CategoryPreferenceControllerTest {
         assertEquals(Set.of(cat1, cat2), persistedIds);
     }
 
+    @Test
+    void internalLookupReadsPreferencesWithoutCookiesAndDoesNotCallChannelService() throws Exception {
+        UserEntity user = createUser("internaluser", UserStatus.ACTIVE);
+        UUID category = UUID.randomUUID();
+        userCategoryPreferenceRepository.saveAndFlush(UserCategoryPreferenceEntity.builder()
+                .id(UserCategoryPreferenceId.builder().userId(user.getId()).categoryId(category).build())
+                .user(user).build());
+        mockMvc.perform(get("/internal/api/users/{userId}/category-preferences", user.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.result.categoryIds[0]").value(category.toString()));
+        verifyNoInteractions(channelClientResolver, jwtDecoder);
+    }
+
+    @Test
+    void internalLookupDistinguishesEmptyPreferencesMissingUserAndInvalidUuid() throws Exception {
+        UserEntity user = createUser("internalempty", UserStatus.ACTIVE);
+        mockMvc.perform(get("/internal/api/users/{userId}/category-preferences", user.getId()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.categoryIds", hasSize(0)));
+        mockMvc.perform(get("/internal/api/users/{userId}/category-preferences", UUID.randomUUID()))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(1004));
+        mockMvc.perform(get("/internal/api/users/not-a-uuid/category-preferences"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(put("/internal/api/users/{userId}/category-preferences", user.getId()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/users/me/category-preferences"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(channelClientResolver);
+    }
+
     private UserEntity createUser(String username, UserStatus status) {
         return userRepository.saveAndFlush(UserEntity.builder()
                 .username(username)

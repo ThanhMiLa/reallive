@@ -201,9 +201,17 @@ Registration does not replace the current JWT. The client can use the existing a
 
 Run `./mvnw -Pbecome-streamer-coverage clean verify` to enforce 100% line and branch coverage for `StreamerRegistrationController` and `StreamerRegistrationServiceImpl`. The HTML report is `target/site/jacoco/index.html`; coverage of the rest of User Service is outside this feature-specific check.
 
+## Internal category preference lookup
+
+`GET /user/internal/api/users/{userId}/category-preferences` exposes the current preference IDs to trusted backend services. Channel Service calls it only for unfollowed channel discovery without explicit keyword/category filters. The Gateway route `/user/api/**` does not expose this endpoint; backend access relies on the private-network restrictions already required by the internal APIs.
+
+The UUID path parameter selects a user through `CategoryPreferenceService.getCategoryPreferences`. HTTP 200 returns the standard `ApiResponse` with `code: 1000` and `result: { "categoryIds": [...] }`. An existing user without preferences gets an empty list. Unknown users return HTTP 404 / code `1004`; malformed UUIDs return HTTP 400 / code `4000`. The lookup is read-only and does not call Channel Service, validate current category activity remotely or repeat Gateway account-status checks. Channel Service checks active category membership locally when ranking.
+
+Only this GET path is added to the internal security allowlist. Other methods and the public `/api/users/me/category-preferences` endpoint keep their existing authentication requirements. `CategoryPreferenceControllerTest` covers internal reads with/without preferences, missing users, malformed UUIDs, public protection and the absence of remote category calls.
+
 ## Internal active streamer lookup
 
-`GET /user/internal/api/streamers/by-user/{userId}/active` is called directly by trusted backend services, including Channel Service. The configured gateway route `/user/api/**` does not expose this internal path. Only this GET path is permitted without an access cookie; access to backend ports relies on the private-network restrictions described below.
+`GET /user/internal/api/streamers/by-user/{userId}/active` is called directly by trusted backend services, including Channel Service. The configured gateway route `/user/api/**` does not expose this internal path. This GET path is explicitly allowlisted without an access cookie alongside the internal category-preference lookup; access to backend ports relies on the private-network restrictions described below.
 
 `userId` must be a UUID. `StreamerService` reads the corresponding record from `streamers` by `user_id` and returns its ID only when its current database status is `ACTIVE`. The read-only lookup does not create records, modify status, or check channel existence. Channel Service supplies the user ID from its authenticated principal and checks channel ownership separately.
 

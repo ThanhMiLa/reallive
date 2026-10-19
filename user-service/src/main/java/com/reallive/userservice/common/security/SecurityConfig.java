@@ -31,7 +31,8 @@ public class SecurityConfig {
     };
 
     private static final String[] INTERNAL_ENDPOINTS_GET = {
-            "/internal/api/streamers/by-user/*/active"
+            "/internal/api/streamers/by-user/*/active",
+            "/internal/api/users/*/category-preferences"
     };
 
     private static final String[] PUBLIC_ENDPOINTS_POST = {
