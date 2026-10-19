@@ -1,8 +1,6 @@
-package com.reallive.userservice.user.controller;
+package com.reallive.userservice.user.controller.external;
 
 import com.reallive.userservice.common.dto.ApiResponse;
-import com.reallive.userservice.common.exception.AppException;
-import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.util.AuthenticationUserId;
 import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
@@ -26,7 +24,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.beans.PropertyEditorSupport;
 import java.time.LocalDate;
-import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
