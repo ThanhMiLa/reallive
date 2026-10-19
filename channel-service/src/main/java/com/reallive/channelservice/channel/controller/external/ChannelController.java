@@ -1,7 +1,7 @@
 package com.reallive.channelservice.channel.controller.external;
 
-import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
+import com.reallive.channelservice.channel.dto.request.UnfollowedChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
@@ -75,11 +75,11 @@ public class ChannelController {
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<PageResponse<ChannelListResponse>>> getChannels(
-            @Valid @ModelAttribute("channelListRequest") ChannelListRequest request,
+    public ResponseEntity<ApiResponse<PageResponse<ChannelListResponse>>> getUnfollowedChannels(
+            @Valid @ModelAttribute("unfollowedChannelListRequest") UnfollowedChannelListRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         UUID userId = AuthenticationUserId.getAuthenticatedUserId(jwt);
-        PageResponse<ChannelListResponse> channels = channelService.getChannels(userId, request);
+        PageResponse<ChannelListResponse> channels = channelService.getUnfollowedChannels(userId, request);
         return ResponseEntity.ok(ApiResponse.<PageResponse<ChannelListResponse>>builder()
                 .status(200)
                 .code(1000)

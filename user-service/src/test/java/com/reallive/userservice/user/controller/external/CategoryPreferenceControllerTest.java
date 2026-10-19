@@ -1,4 +1,4 @@
-package com.reallive.userservice.user.controller;
+package com.reallive.userservice.user.controller.external;
 
 import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.UserEntity;

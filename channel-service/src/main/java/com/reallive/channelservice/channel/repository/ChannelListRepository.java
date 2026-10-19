@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Set;
 import java.util.UUID;
 
 public interface ChannelListRepository {
@@ -14,4 +15,6 @@ public interface ChannelListRepository {
     Page<ChannelEntity> findFollowingChannels(Specification<ChannelEntity> specification, UUID userId,
             FollowingSortBy sortBy, Sort.Direction direction, Pageable pageable);
 
+    Page<ChannelEntity> findUnfollowedChannels(Specification<ChannelEntity> specification,
+            Set<UUID> interestCategoryIds, Pageable pageable);
 }

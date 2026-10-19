@@ -1,7 +1,7 @@
 package com.reallive.channelservice.channel.service.impl;
 
-import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
+import com.reallive.channelservice.channel.dto.request.UnfollowedChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -22,6 +22,7 @@ import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.channel.util.BannerValidator.BannerImage;
 import com.reallive.channelservice.channel.util.BannerValidator;
 import com.reallive.channelservice.client.streamer.ActiveStreamerResolver;
+import com.reallive.channelservice.client.user.UserCategoryPreferenceResolver;
 import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
@@ -35,7 +36,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,64 +60,29 @@ public class ChannelServiceImpl implements ChannelService {
     ChannelCategoryRepository channelCategoryRepository;
     ActiveStreamerResolver activeStreamerResolver;
     ChannelMapper channelMapper;
+    UserCategoryPreferenceResolver userCategoryPreferenceResolver;
     R2StorageService r2StorageService;
 
     @Override
-    @Transactional(readOnly = true)
-    public PageResponse<ChannelListResponse> getChannels(UUID userId, ChannelListRequest request) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
-        if ((long) request.getPage() * request.getSize() > Integer.MAX_VALUE) {
-            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
-        }
-
-        // Build Sorted
-        Sort sort = Sort.by(new Sort.Order(request.getSortDirection(), "followerCount"),
-                Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-
-        // Build Specification
-        Specification<ChannelEntity> specification = ChannelSpecifications.isActive()
-                .and(ChannelSpecifications.notOwnedBy(userId))
-                .and(ChannelSpecifications.inActiveCategories(request.getCategoryIds()))
-                .and(ChannelSpecifications.matchesKeyword(request.getKeyword()))
-                .and(ChannelSpecifications.matchesFollowing(userId, request.getFollowing()));
-
-        //Query db base sorted, specification and map to dto response
-        Page<ChannelListResponse> channels = channelRepository
-                .findAll(specification, PageRequest.of(request.getPage(), request.getSize(), sort))
-                .map(channelMapper::toListResponse);
-
-        return PageResponse.<ChannelListResponse>builder()
-                .content(channels.getContent())
-                .page(channels.getNumber())
-                .size(channels.getSize())
-                .totalElements(channels.getTotalElements())
-                .totalPages(channels.getTotalPages())
-                .build();
+    public PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request) {
+        validateListIdentityAndOffset(userId, request.getPage(), request.getSize());
+        Page<ChannelEntity> channels = channelRepository.findFollowingChannels(
+                eligibleChannels(userId, true), userId, request.getSortBy(), request.getSortDirection(),
+                PageRequest.of(request.getPage(), request.getSize()));
+        return toListPage(channels);
     }
 
     @Override
-    public PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
-        if ((long) request.getPage() * request.getSize() > Integer.MAX_VALUE) {
-            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
-        }
-        Specification<ChannelEntity> specification = ChannelSpecifications.isActive()
-                .and(ChannelSpecifications.notOwnedBy(userId))
-                .and(ChannelSpecifications.matchesFollowing(userId, true));
-        Page<ChannelListResponse> channels = channelRepository.findFollowingChannels(specification,
-                userId, request.getSortBy(), request.getSortDirection(),
-                PageRequest.of(request.getPage(), request.getSize())).map(channelMapper::toListResponse);
-        return PageResponse.<ChannelListResponse>builder()
-                .content(channels.getContent())
-                .page(channels.getNumber())
-                .size(channels.getSize())
-                .totalElements(channels.getTotalElements())
-                .totalPages(channels.getTotalPages())
-                .build();
+    public PageResponse<ChannelListResponse> getUnfollowedChannels(UUID userId, UnfollowedChannelListRequest request) {
+        validateListIdentityAndOffset(userId, request.getPage(), request.getSize());
+        boolean hasFilters = request.getCategoryIds() != null ||
+                (request.getKeyword() != null && !request.getKeyword().isBlank());
+        Set<UUID> interests = hasFilters ? Set.of() : userCategoryPreferenceResolver.getInterestCategoryIds(userId);
+        Specification<ChannelEntity> specification = eligibleChannels(userId, false)
+                .and(ChannelSpecifications.inActiveCategories(request.getCategoryIds()))
+                .and(ChannelSpecifications.matchesKeyword(request.getKeyword()));
+        return toListPage(channelRepository.findUnfollowedChannels(specification, interests,
+                PageRequest.of(request.getPage(), request.getSize())));
     }
 
     @Override
@@ -186,6 +151,31 @@ public class ChannelServiceImpl implements ChannelService {
         }
         channelRepository.save(channel);
         return true;
+    }
+
+    private void validateListIdentityAndOffset(UUID userId, int page, int size) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        if ((long) page * size > Integer.MAX_VALUE) {
+            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
+        }
+    }
+
+    private Specification<ChannelEntity> eligibleChannels(UUID userId, boolean following) {
+        return ChannelSpecifications.isActive()
+                .and(ChannelSpecifications.notOwnedBy(userId))
+                .and(ChannelSpecifications.matchesFollowing(userId, following));
+    }
+
+    private PageResponse<ChannelListResponse> toListPage(Page<ChannelEntity> channels) {
+        return PageResponse.<ChannelListResponse>builder()
+                .content(channels.getContent().stream().map(channelMapper::toListResponse).toList())
+                .page(channels.getNumber())
+                .size(channels.getSize())
+                .totalElements(channels.getTotalElements())
+                .totalPages(channels.getTotalPages())
+                .build();
     }
 
     private void updateBanner(ChannelEntity channel, MultipartFile banner) {

@@ -27,7 +27,8 @@ public enum ErrorCode {
     UNSUPPORTED_MEDIA_TYPE(1017, "Unsupported media type", HttpStatus.UNSUPPORTED_MEDIA_TYPE),
     CHANNEL_ALREADY_FOLLOWED(1019, "Channel already followed", HttpStatus.CONFLICT),
     CHANNEL_NOT_FOLLOWED(1020, "Channel is not followed", HttpStatus.CONFLICT),
-    CANNOT_FOLLOW_OWN_CHANNEL(1021, "Cannot follow own channel", HttpStatus.CONFLICT);
+    CANNOT_FOLLOW_OWN_CHANNEL(1021, "Cannot follow own channel", HttpStatus.CONFLICT),
+    USER_NOT_FOUND(1022, "User not found", HttpStatus.NOT_FOUND);
 
     private final int code;
     private final String message;

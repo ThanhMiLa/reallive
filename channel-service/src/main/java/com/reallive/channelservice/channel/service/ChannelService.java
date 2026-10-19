@@ -1,7 +1,7 @@
 package com.reallive.channelservice.channel.service;
 
-import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
+import com.reallive.channelservice.channel.dto.request.UnfollowedChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -13,33 +13,6 @@ import com.reallive.channelservice.common.exception.AppException;
 import java.util.UUID;
 
 public interface ChannelService {
-
-    /**
-     * Retrieves a filtered page of active, non-deleted channels for public discovery.
-     *
-     * <p>An optional category filter matches membership in any selected active category. Missing or
-     * inactive categories contribute no matches; an omitted category set disables category filtering.
-     * A supplied category set must contain at least one non-null UUID.
-     * An optional keyword matches a literal substring of the name,
-     * description or slug, ignoring case. All supplied filters are combined with AND.
-     * The required following flag selects channels currently followed ({@code true}) or not followed
-     * ({@code false}) by the authenticated user, defaulting to {@code false} when omitted from the request.
-     * Channels owned by that user are excluded from both following groups, including legacy self-follows.
-     * Legacy channels whose owner user ID is null remain eligible under the other filters.
-     * Ownership is filtered before pagination and included in pagination totals.
-     * Blank keywords disable text filtering. Channels are ordered by the requested follower-count
-     * direction (descending by default), then creation time and ID descending for ties.
-     * Follower totals are read from the stored channel counter without counting follower records.
-     * An authenticated user ID is required. No remote service call is required,
-     * and no data is changed.</p>
-     *
-     * @param userId the required authenticated user UUID
-     * @param request the validated optional nonempty set of category UUIDs, keyword of at most 255 characters,
-     *                non-null following flag, follower sort direction, zero-based page and page size from 1 through 100
-     * @return the channel summaries and pagination totals; content is empty when the page has no results
-     * @throws AppException if the page offset exceeds {@link Integer#MAX_VALUE} or the authenticated user ID is missing
-     */
-    PageResponse<ChannelListResponse> getChannels(UUID userId, ChannelListRequest request);
 
     /**
      * Retrieves active, non-deleted channels followed by the authenticated user, excluding their own channels.
@@ -55,6 +28,25 @@ public interface ChannelService {
      * @throws AppException if the identity is missing or the page offset exceeds the supported integer range
      */
     PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request);
+
+    /**
+     * Retrieves active, non-deleted channels not followed by the authenticated user, excluding their own channels.
+     *
+     * <p>Supplied keyword and active-category filters combine with AND; categories use any-match.
+     * Null or blank keywords disable text filtering. With either filter present, only matching
+     * channels are returned, ordered by follower count descending without reading user interests.
+     * With no filters, User Service supplies interests and matching channels precede all other
+     * eligible channels. Interests never exclude channels. Empty interests or a temporary upstream
+     * outage use follower order alone. Each group uses follower count descending, then creation time
+     * and ID descending. Ordering precedes pagination; totals include all eligible channels.
+     * Legacy channels with a null owner remain eligible. This operation changes no data.</p>
+     *
+     * @param userId the required authenticated user UUID
+     * @param request the validated optional filters, DESC direction, zero-based page and page size from 1 to 100
+     * @return the channel summaries and pagination totals, including an empty page when filters have no matches
+     * @throws AppException if the identity or offset is invalid, the user is missing, or the upstream response is invalid
+     */
+    PageResponse<ChannelListResponse> getUnfollowedChannels(UUID userId, UnfollowedChannelListRequest request);
 
     /**
      * Creates an active channel with a deterministic slug for the supplied streamer and owner user.

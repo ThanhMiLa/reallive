@@ -1,5 +1,6 @@
 package com.reallive.channelservice.channel.dto.request;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -10,7 +11,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
-import org.springframework.data.domain.Sort;
 
 import java.util.Set;
 import java.util.UUID;
@@ -20,22 +20,17 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class ChannelListRequest {
+public class UnfollowedChannelListRequest {
 
     @Size(min = 1)
     Set<@NotNull UUID> categoryIds;
 
     @Size(max = 255)
-
     String keyword;
 
     @NotNull
     @Builder.Default
-    Boolean following = false;
-
-    @NotNull
-    @Builder.Default
-    Sort.Direction sortDirection = Sort.Direction.DESC;
+    UnfollowedSortDirection sortDirection = UnfollowedSortDirection.DESC;
 
     @NotNull
     @Min(0)
@@ -47,4 +42,9 @@ public class ChannelListRequest {
     @Max(100)
     @Builder.Default
     Integer size = 20;
+
+    @AssertTrue(message = "Page offset exceeds the supported range")
+    public boolean isOffsetValid() {
+        return page == null || size == null || (long) page * size <= Integer.MAX_VALUE;
+    }
 }

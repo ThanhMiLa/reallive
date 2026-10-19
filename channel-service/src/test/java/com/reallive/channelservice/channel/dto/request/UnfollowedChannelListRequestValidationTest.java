@@ -14,7 +14,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ChannelListRequestValidationTest {
+class UnfollowedChannelListRequestValidationTest {
 
     private static ValidatorFactory validatorFactory;
     private static Validator validator;
@@ -32,7 +32,7 @@ class ChannelListRequestValidationTest {
 
     @Test
     void categoryIdsMayBeNullButMustContainAtLeastOneElementWhenSupplied() {
-        ChannelListRequest request = new ChannelListRequest();
+        UnfollowedChannelListRequest request = new UnfollowedChannelListRequest();
         assertTrue(validator.validate(request).isEmpty());
 
         request.setCategoryIds(Set.of());
@@ -45,27 +45,21 @@ class ChannelListRequestValidationTest {
 
     @Test
     void categoryIdsRejectNullElements() {
-        ChannelListRequest request = ChannelListRequest.builder().categoryIds(Collections.singleton(null)).build();
+        UnfollowedChannelListRequest request = UnfollowedChannelListRequest.builder().categoryIds(Collections.singleton(null)).build();
         assertTrue(validator.validate(request).stream()
                 .anyMatch(violation -> violation.getPropertyPath().toString().startsWith("categoryIds")));
     }
 
     @Test
-    void followingDefaultsToFalseWithBothNoArgsConstructionAndBuilder() {
-        assertFalse(new ChannelListRequest().getFollowing());
-        assertFalse(ChannelListRequest.builder().build().getFollowing());
-    }
-
-    @Test
-    void followingRejectsExplicitNull() {
-        ChannelListRequest request = ChannelListRequest.builder().following(null).build();
-        assertTrue(validator.validate(request).stream()
-                .anyMatch(violation -> violation.getPropertyPath().toString().equals("following")));
+    void unfollowedRequestsValidateOffsetsAndDefaults() {
+        assertTrue(validator.validate(new UnfollowedChannelListRequest()).isEmpty());
+        assertTrue(validator.validate(UnfollowedChannelListRequest.builder().build()).isEmpty());
+        assertFalse(validator.validate(UnfollowedChannelListRequest.builder().page(Integer.MAX_VALUE).build()).isEmpty());
     }
 
     @Test
     void keywordLengthConstraintAppliesToTheRawFieldIncludingWhitespace() {
-        ChannelListRequest request = new ChannelListRequest();
+        UnfollowedChannelListRequest request = new UnfollowedChannelListRequest();
         assertTrue(validator.validate(request).isEmpty());
 
         request.setKeyword("a".repeat(255));
