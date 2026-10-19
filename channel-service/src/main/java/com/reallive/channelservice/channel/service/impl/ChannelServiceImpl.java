@@ -1,6 +1,7 @@
 package com.reallive.channelservice.channel.service.impl;
 
 import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
+import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -87,6 +88,29 @@ public class ChannelServiceImpl implements ChannelService {
                 .findAll(specification, PageRequest.of(request.getPage(), request.getSize(), sort))
                 .map(channelMapper::toListResponse);
 
+        return PageResponse.<ChannelListResponse>builder()
+                .content(channels.getContent())
+                .page(channels.getNumber())
+                .size(channels.getSize())
+                .totalElements(channels.getTotalElements())
+                .totalPages(channels.getTotalPages())
+                .build();
+    }
+
+    @Override
+    public PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        if ((long) request.getPage() * request.getSize() > Integer.MAX_VALUE) {
+            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
+        }
+        Specification<ChannelEntity> specification = ChannelSpecifications.isActive()
+                .and(ChannelSpecifications.notOwnedBy(userId))
+                .and(ChannelSpecifications.matchesFollowing(userId, true));
+        Page<ChannelListResponse> channels = channelRepository.findFollowingChannels(specification,
+                userId, request.getSortBy(), request.getSortDirection(),
+                PageRequest.of(request.getPage(), request.getSize())).map(channelMapper::toListResponse);
         return PageResponse.<ChannelListResponse>builder()
                 .content(channels.getContent())
                 .page(channels.getNumber())

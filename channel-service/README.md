@@ -96,6 +96,33 @@ Authenticated frontend clients can request `following=true` and `following=false
 
 `ChannelFollowingIntegrationTest` runs the real cookie authentication and method-security stack, verifying both following states, user isolation, independent pagination, users with no follows, combined filters, current membership after follow/unfollow and invalid credentials or inputs. It also accepts the disposable PostgreSQL test properties documented below.
 
+## List followed channels
+
+`GET /channel/api/channels/following` returns the authenticated user's active, non-deleted followed channels and excludes channels owned by that user, including legacy self-follows. The existing `/channel/api/channels` endpoint and its filters remain available until the separate discovery change is released.
+
+This endpoint binds exactly these request-model fields:
+
+| Parameter | Default | Rules |
+|---|---|---|
+| `sortBy` | `FOLLOWER_COUNT` | One enum value: `FOLLOWER_COUNT` or `FOLLOWED_AT`. |
+| `sortDirection` | `DESC` | `ASC` or `DESC`, applied to the selected criterion only. |
+| `page` | `0` | At least zero; page offset must fit a signed 32-bit integer. |
+| `size` | `20` | From 1 through 100. |
+
+Keyword and category filtering are not supported. Extra query parameters are ignored by Spring binding; strict raw-query validation is deferred. Invalid values of the four bound fields, including comma-separated multiple sort criteria, return HTTP 400 / code `1004`. An authenticated UUID subject is required; user identity never comes from query parameters.
+
+Default ordering is stored follower count descending. `FOLLOWED_AT` uses the authenticated user's `channel_followers.followed_at`: ASC means oldest follow first, DESC means newest first. Selecting `FOLLOWED_AT` without a direction uses DESC. Unfollow/follow creates a new timestamp. Exactly one business criterion is used; channel creation time descending and channel ID descending only break ties. Follower sort never uses follow time as a secondary criterion or vice versa.
+
+The custom Criteria repository applies selection, ordering and pagination in the database, with the same eligibility predicates in the count query. It does not read interests, call User Service or count follower rows for each channel. The response remains `ApiResponse<PageResponse<ChannelListResponse>>` with the existing five summary fields and 64-bit follower count.
+
+```shell
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels/following'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels/following?sortBy=FOLLOWER_COUNT&sortDirection=ASC'
+curl -b cookies.txt 'http://localhost:8888/channel/api/channels/following?sortBy=FOLLOWED_AT&sortDirection=DESC&page=0&size=20'
+```
+
+`ChannelFollowingIntegrationTest` verifies the dedicated endpoint's sort modes/directions, defaults, user isolation, eligibility, authentication, binding validation, pagination and timestamp changes after HTTP unfollow/follow. The suite accepts the disposable PostgreSQL properties documented below.
+
 ## Follow and unfollow a channel
 
 Each authenticated request targets exactly one channel UUID in the path, with no request body:

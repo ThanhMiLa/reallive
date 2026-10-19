@@ -1,6 +1,7 @@
 package com.reallive.channelservice.channel.service;
 
 import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
+import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
@@ -39,6 +40,21 @@ public interface ChannelService {
      * @throws AppException if the page offset exceeds {@link Integer#MAX_VALUE} or the authenticated user ID is missing
      */
     PageResponse<ChannelListResponse> getChannels(UUID userId, ChannelListRequest request);
+
+    /**
+     * Retrieves active, non-deleted channels followed by the authenticated user, excluding their own channels.
+     *
+     * <p>Exactly one business sort is applied: follower count (descending by default) or the current
+     * user's follow timestamp, in either direction. Creation time and ID descending break ties.
+     * Keyword, category and interest filtering are not supported. Pagination totals include the same
+     * eligibility and ownership rules. No remote service is called and no data is changed.</p>
+     *
+     * @param userId the required authenticated user UUID
+     * @param request the validated single sort criterion, direction, zero-based page and page size from 1 to 100
+     * @return the channel summaries and pagination totals, including an empty page when no channels match
+     * @throws AppException if the identity is missing or the page offset exceeds the supported integer range
+     */
+    PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request);
 
     /**
      * Creates an active channel with a deterministic slug for the supplied streamer and owner user.

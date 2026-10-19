@@ -1,6 +1,7 @@
 package com.reallive.channelservice.channel.controller.external;
 
 import com.reallive.channelservice.channel.dto.request.ChannelListRequest;
+import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
@@ -79,6 +80,22 @@ public class ChannelController {
             @AuthenticationPrincipal Jwt jwt) {
         UUID userId = AuthenticationUserId.getAuthenticatedUserId(jwt);
         PageResponse<ChannelListResponse> channels = channelService.getChannels(userId, request);
+        return ResponseEntity.ok(ApiResponse.<PageResponse<ChannelListResponse>>builder()
+                .status(200)
+                .code(1000)
+                .message("Channels retrieved successfully")
+                .result(channels)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
+
+    @GetMapping("/following")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<PageResponse<ChannelListResponse>>> getFollowingChannels(
+            @Valid @ModelAttribute("followingChannelListRequest") FollowingChannelListRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        PageResponse<ChannelListResponse> channels = channelService.getFollowingChannels(
+                AuthenticationUserId.getAuthenticatedUserId(jwt), request);
         return ResponseEntity.ok(ApiResponse.<PageResponse<ChannelListResponse>>builder()
                 .status(200)
                 .code(1000)

@@ -11,6 +11,7 @@ import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
 import jakarta.servlet.http.Cookie;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -465,13 +466,18 @@ class ChannelFollowIntegrationTest {
     }
 
     private void assertFollowingListContains(UUID channelId, UUID userId, int count) throws Exception {
-        var response = mvc.perform(get(PATH).contextPath("/channel").cookie(accessCookie(userId.toString()))
-                        .param("following", "true").param("keyword", channelId.toString()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.totalElements").value(count));
-        if (count > 0) {
-            response.andExpect(jsonPath("$.result.content[0].numberOfFollower").value(followerCount(channelId)));
+        String body = mvc.perform(get(PATH + "/following").contextPath("/channel").cookie(accessCookie(userId.toString())))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var content = new ObjectMapper().readTree(body).path("result").path("content");
+        int matches = 0;
+        for (int index = 0; index < content.size(); index++) {
+            var item = content.path(index);
+            if (channelId.toString().equals(item.path("id").asString())) {
+                matches++;
+                assertEquals(followerCount(channelId), item.path("numberOfFollower").asLong());
+            }
         }
+        assertEquals(count, matches);
     }
 
     private UUID insertChannel(String status) {
