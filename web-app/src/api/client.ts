@@ -8,6 +8,9 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  paramsSerializer: {
+    indexes: null,
+  },
 })
 
 // Track ongoing refresh promise to prevent duplicate refresh calls

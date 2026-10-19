@@ -79,16 +79,26 @@ const recommendedStreamers: StreamerItem[] = [
 
 export function Sidebar() {
   const { isSidebarCollapsed } = useUiStore()
-  const { isAuthenticated, isCheckingAuth, openAuthModal } = useAuthStore()
+  const { user, isAuthenticated, isCheckingAuth, openAuthModal } = useAuthStore()
+  const userId = user?.userId
 
   const {
     data: channelsPage,
     isLoading: isChannelsLoading,
     isError,
   } = useQuery({
-    queryKey: ['channels', 'following'],
-    queryFn: () => channelApi.getChannels({ following: true }),
-    enabled: isAuthenticated,
+    queryKey: [
+      'channels',
+      'following',
+      userId,
+      { sortBy: 'FOLLOWER_COUNT', sortDirection: 'DESC', page: 0, size: 20 },
+    ],
+    queryFn: ({ signal }) =>
+      channelApi.getFollowingChannels(
+        { sortBy: 'FOLLOWER_COUNT', sortDirection: 'DESC', page: 0, size: 20 },
+        signal,
+      ),
+    enabled: isAuthenticated && !isCheckingAuth && Boolean(userId),
   })
 
   const followedChannels = channelsPage?.content || []

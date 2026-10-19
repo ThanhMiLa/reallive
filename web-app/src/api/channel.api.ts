@@ -3,21 +3,68 @@ import type { ApiResponse } from '@/types/auth.types'
 import type {
   CategoryItem,
   ChannelListItem,
-  ChannelListParams,
+  FollowingChannelListParams,
   PageResponse,
+  UnfollowedChannelListParams,
 } from '@/types/channel.types'
 
 export const channelApi = {
   /**
-   * Fetch paginated list of channels (supports following=true/false filter).
+   * Fetch paginated list of followed channels.
+   * Endpoint: GET /channel/api/channels/following
    */
-  getChannels: async (
-    params?: ChannelListParams,
+  getFollowingChannels: async (
+    params?: FollowingChannelListParams,
+    signal?: AbortSignal,
   ): Promise<PageResponse<ChannelListItem>> => {
+    const cleanParams: Record<string, unknown> = {
+      sortBy: params?.sortBy ?? 'FOLLOWER_COUNT',
+      sortDirection: params?.sortDirection ?? 'DESC',
+      page: params?.page ?? 0,
+      size: params?.size ?? 20,
+    }
+
+    const response = await apiClient.get<
+      ApiResponse<PageResponse<ChannelListItem>>
+    >('/channel/api/channels/following', {
+      params: cleanParams,
+      signal,
+    })
+    return response.data.result
+  },
+
+  /**
+   * Fetch paginated list of unfollowed / discover channels.
+   * Endpoint: GET /channel/api/channels
+   */
+  getUnfollowedChannels: async (
+    params?: UnfollowedChannelListParams,
+    signal?: AbortSignal,
+  ): Promise<PageResponse<ChannelListItem>> => {
+    const cleanParams: Record<string, unknown> = {
+      sortDirection: 'DESC',
+      page: params?.page ?? 0,
+      size: params?.size ?? 20,
+    }
+
+    if (params?.keyword && params.keyword.trim().length > 0) {
+      cleanParams.keyword = params.keyword.trim()
+    }
+
+    if (params?.categoryIds && params.categoryIds.length > 0) {
+      const uniqueCategoryIds = Array.from(
+        new Set(params.categoryIds.filter(Boolean)),
+      )
+      if (uniqueCategoryIds.length > 0) {
+        cleanParams.categoryIds = uniqueCategoryIds
+      }
+    }
+
     const response = await apiClient.get<
       ApiResponse<PageResponse<ChannelListItem>>
     >('/channel/api/channels', {
-      params,
+      params: cleanParams,
+      signal,
     })
     return response.data.result
   },
@@ -25,9 +72,10 @@ export const channelApi = {
   /**
    * Fetch all active categories.
    */
-  getCategories: async (): Promise<CategoryItem[]> => {
+  getCategories: async (signal?: AbortSignal): Promise<CategoryItem[]> => {
     const response = await apiClient.get<ApiResponse<CategoryItem[]>>(
       '/channel/api/categories',
+      { signal },
     )
     return response.data.result
   },

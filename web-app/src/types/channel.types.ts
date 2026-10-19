@@ -14,11 +14,22 @@ export interface PageResponse<T> {
   totalPages: number
 }
 
-export interface ChannelListParams {
-  categoryIds?: string[]
+export type FollowingSortBy = 'FOLLOWER_COUNT' | 'FOLLOWED_AT'
+export type SortDirection = 'ASC' | 'DESC'
+
+export interface FollowingChannelListParams {
+  sortBy?: FollowingSortBy
+  sortDirection?: SortDirection
+  page?: number
+  size?: number
+}
+
+export type UnfollowedSortDirection = 'DESC'
+
+export interface UnfollowedChannelListParams {
   keyword?: string
-  following?: boolean
-  sortDirection?: 'ASC' | 'DESC'
+  categoryIds?: string[]
+  sortDirection?: UnfollowedSortDirection
   page?: number
   size?: number
 }
