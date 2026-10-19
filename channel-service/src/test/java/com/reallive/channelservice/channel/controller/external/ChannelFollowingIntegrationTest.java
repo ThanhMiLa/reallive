@@ -30,6 +30,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -100,12 +101,19 @@ class ChannelFollowingIntegrationTest {
         UUID other = UUID.randomUUID();
         UUID popular = insertChannel("Popular", 300);
         UUID smaller = insertChannel("Smaller", 100);
+        jdbc.update("UPDATE channels SET banner_url = ?, avatar_url = ? WHERE id = ?",
+                "https://example.com/banner.png", "https://example.com/avatar.png", popular);
         follow(popular, user, TIME);
         follow(smaller, user, TIME.plusDays(1));
         follow(popular, other, TIME.plusDays(2));
         follow(smaller, other, TIME);
         mvc.perform(list(user)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.content[0].name").value("Popular"));
+                .andExpect(jsonPath("$.result.content[0]", aMapWithSize(4)))
+                .andExpect(jsonPath("$.result.content[0].id").value(popular.toString()))
+                .andExpect(jsonPath("$.result.content[0].name").value("Popular"))
+                .andExpect(jsonPath("$.result.content[0].avatarUrl").value("https://example.com/avatar.png"))
+                .andExpect(jsonPath("$.result.content[0].numberOfFollower").value(300))
+                .andExpect(jsonPath("$.result.content[0].bannerUrl").doesNotExist());
         mvc.perform(list(user).param("sortDirection", "ASC")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].name").value("Smaller"));
         mvc.perform(list(user).param("sortBy", "FOLLOWED_AT")).andExpect(status().isOk())

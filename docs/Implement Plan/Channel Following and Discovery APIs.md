@@ -22,7 +22,7 @@ Tham số `following` của API cũ được loại khỏi contract đích. Cả
 ### 1.2. Quy tắc chung
 
 - Chỉ trả channel active, chưa soft-delete và không thuộc chính user đang đăng nhập. Giữ cách xử lý channel legacy có owner null như hiện tại.
-- Giữ `ApiResponse<PageResponse<ChannelListResponse>>`, các trường item `id`, `name`, `bannerUrl`, `avatarUrl`, `numberOfFollower` và kiểu số follower hiện tại.
+- Giữ `ApiResponse<PageResponse<ChannelListResponse>>`, bốn trường item `id`, `name`, `avatarUrl`, `numberOfFollower` và kiểu số follower hiện tại.
 - Số follower để sort lấy từ `channels.follower_count`, không đếm lại follower cho từng channel.
 - `page` mặc định `0`, `size` mặc định `20`; `page >= 0`, `1 <= size <= 100`, giữ giới hạn offset hiện tại.
 - Query params là đầu vào của hai API GET; không chuyển thành GET có request body.
@@ -468,3 +468,10 @@ Theo yêu cầu mới, đã xóa annotation/validator raw-query tự viết và 
 - `CategoryPreferenceControllerTest`: 19 trường hợp tại package external, bao gồm public và internal preference APIs.
 
 Kết quả `./mvnw -q clean verify`: Channel Service có 475 test thành công, không failure/error/skip; User Service có 672 test thực chạy thành công và 36 test Redis/integration tùy chọn bị skip, không failure/error. Mọi test của chức năng danh sách channel và preference API đều đã chạy. Lần rà soát này chạy H2 và HTTP stub; không chạy lại PostgreSQL hoặc deploy Gateway. Không commit/push thêm trong lần cập nhật test này.
+
+
+### Đồng bộ DTO danh sách channel ngày 2026-10-19
+
+Đã bỏ `bannerUrl` khỏi `ChannelListResponse` của cả hai API following/unfollowed. Item chỉ còn `id`, `name`, `avatarUrl`, `numberOfFollower`; MapStruct sinh lại mapper theo DTO mới. Regression test kiểm tra đúng bốn field và không có key bannerUrl, kể cả khi channel lưu banner URL trong database. Phần banner của entity, API cập nhật/detail và storage không đổi. Phạm vi thay đổi tiếp tục chỉ gồm backend và tài liệu.
+
+Kiểm chứng sau khi bỏ bannerUrl: `./mvnw -q clean verify` tại Channel Service thành công với 475 test, không failure/error/skip; mapper sinh lại không ánh xạ banner vào list nhưng vẫn giữ banner trong ChannelResponse.

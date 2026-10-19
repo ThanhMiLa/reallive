@@ -1,7 +1,6 @@
 export interface ChannelListItem {
   id: string
   name: string
-  bannerUrl: string | null
   avatarUrl: string | null
   numberOfFollower: number
 }

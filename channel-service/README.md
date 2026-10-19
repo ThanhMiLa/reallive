@@ -87,7 +87,7 @@ The dedicated Feign client `userCategoryPreferences` uses a 2-second connect tim
 
 The offset `page * size` must fit a signed 32-bit integer. Explicitly empty required parameters, malformed bound values, unsupported sort values and DTO validation failures return HTTP 400 / code `1004`. Missing authentication or invalid user subjects return 401 / code `1001`. Channel database failures return 503 / code `1003`. Out-of-range pages return HTTP 200 with empty content and the correct totals.
 
-The response remains `ApiResponse<PageResponse<ChannelListResponse>>`. Each item has exactly `id`, `name`, `bannerUrl`, `avatarUrl` and the 64-bit `numberOfFollower`; null image values are preserved. No timestamp or ranking field is added.
+The response remains `ApiResponse<PageResponse<ChannelListResponse>>`. Each item has exactly four fields: `id`, `name`, `avatarUrl` and the 64-bit `numberOfFollower`. A null avatar URL is preserved. `bannerUrl` is omitted from both list endpoints; the channel detail/update response continues to expose it. No timestamp or ranking field is added.
 
 Specifications compose eligibility, ownership, literal keyword, active-category membership and follow membership. Category and follow checks use EXISTS/NOT EXISTS to avoid duplicate rows. `ChannelListRepositoryImpl` applies follow-time ordering or a CASE/EXISTS interest priority in the database, followed by pagination. The count query uses the same selection predicates without ordering or interest exclusion. Follower counts use the stored counter; no categories are loaded per item. Concurrent follower, membership or preference changes can shift offset page boundaries.
 

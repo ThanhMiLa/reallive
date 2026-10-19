@@ -18,7 +18,6 @@ public class ChannelListResponse {
 
     UUID id;
     String name;
-    String bannerUrl;
     String avatarUrl;
     long numberOfFollower;
 }
