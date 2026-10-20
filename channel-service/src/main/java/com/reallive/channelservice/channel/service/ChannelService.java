@@ -32,19 +32,23 @@ public interface ChannelService {
     /**
      * Retrieves active, non-deleted channels not followed by the authenticated user, excluding their own channels.
      *
+     * <p>When the user ID is null, all active, non-deleted channels are eligible and user interests
+     * are not read. Optional keyword and category filters still apply, with follower order alone.</p>
+     *
      * <p>Supplied keyword and active-category filters combine with AND; categories use any-match.
      * Null or blank keywords disable text filtering. With either filter present, only matching
      * channels are returned, ordered by follower count descending without reading user interests.
-     * With no filters, User Service supplies interests and matching channels precede all other
+     * With no filters and an authenticated user, User Service supplies interests and matching channels precede all other
      * eligible channels. Interests never exclude channels. Empty interests or a temporary upstream
      * outage use follower order alone. Each group uses follower count descending, then creation time
      * and ID descending. Ordering precedes pagination; totals include all eligible channels.
      * Legacy channels with a null owner remain eligible. This operation changes no data.</p>
      *
-     * @param userId the required authenticated user UUID
+     * @param userId the authenticated user UUID, or {@code null} for an anonymous request
      * @param request the validated optional filters, DESC direction, zero-based page and page size from 1 to 100
      * @return the channel summaries and pagination totals, including an empty page when filters have no matches
-     * @throws AppException if the identity or offset is invalid, the user is missing, or the upstream response is invalid
+     * @throws AppException if the offset is invalid, the authenticated user is missing,
+     *                      or the upstream response is invalid
      */
     PageResponse<ChannelListResponse> getUnfollowedChannels(UUID userId, UnfollowedChannelListRequest request);
 

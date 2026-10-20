@@ -74,11 +74,11 @@ public class ChannelController {
     }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<ApiResponse<PageResponse<ChannelListResponse>>> getUnfollowedChannels(
             @Valid @ModelAttribute("unfollowedChannelListRequest") UnfollowedChannelListRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        UUID userId = AuthenticationUserId.getAuthenticatedUserId(jwt);
+        UUID userId = jwt == null ? null : AuthenticationUserId.getAuthenticatedUserId(jwt);
         PageResponse<ChannelListResponse> channels = channelService.getUnfollowedChannels(userId, request);
         return ResponseEntity.ok(ApiResponse.<PageResponse<ChannelListResponse>>builder()
                 .status(200)

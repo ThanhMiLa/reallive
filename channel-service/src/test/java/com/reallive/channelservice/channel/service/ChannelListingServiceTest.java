@@ -115,11 +115,27 @@ class ChannelListingServiceTest {
     }
 
     @Test
-    void bothServicesRejectMissingIdentityWithoutCallingDependencies() {
+    void followingRejectsMissingIdentityWithoutCallingDependencies() {
         assertEquals(ErrorCode.UNAUTHENTICATED, assertThrows(AppException.class,
                 () -> service.getFollowingChannels(null, new FollowingChannelListRequest())).getErrorCode());
-        assertEquals(ErrorCode.UNAUTHENTICATED, assertThrows(AppException.class,
-                () -> service.getUnfollowedChannels(null, new UnfollowedChannelListRequest())).getErrorCode());
+        verifyNoInteractions(channels, interests, mapper);
+    }
+
+    @Test
+    void anonymousUnfollowedListNeverReadsInterests() {
+        when(channels.findUnfollowedChannels(any(), eq(Set.of()), any())).thenReturn(Page.empty());
+
+        service.getUnfollowedChannels(null, new UnfollowedChannelListRequest());
+
+        verify(channels).findUnfollowedChannels(any(), eq(Set.of()), eq(PageRequest.of(0, 20)));
+        verifyNoInteractions(interests);
+    }
+
+    @Test
+    void anonymousUnfollowedListRejectsOffsetOverflowBeforeCallingDependencies() {
+        assertEquals(ErrorCode.CHANNEL_REQUEST_INVALID, assertThrows(AppException.class,
+                () -> service.getUnfollowedChannels(null,
+                        UnfollowedChannelListRequest.builder().page(Integer.MAX_VALUE).build())).getErrorCode());
         verifyNoInteractions(channels, interests, mapper);
     }
 }

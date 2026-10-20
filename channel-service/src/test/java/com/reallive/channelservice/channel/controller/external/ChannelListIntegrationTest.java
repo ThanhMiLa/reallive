@@ -1,5 +1,10 @@
 package com.reallive.channelservice.channel.controller.external;
 
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.channelservice.client.user.UserCategoryPreferenceResolver;
 import com.reallive.channelservice.common.exception.AppException;
@@ -24,7 +29,9 @@ import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -450,6 +457,8 @@ class ChannelListIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(get(PATH + "/me").contextPath("/channel"))
                 .andExpect(status().isUnauthorized());
+        mvc.perform(get(PATH + "/following").contextPath("/channel"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -583,8 +592,65 @@ class ChannelListIntegrationTest {
     }
 
     @Test
-    void unfollowedListRequiresAuthentication() throws Exception {
-        mvc.perform(get(PATH).contextPath("/channel")).andExpect(status().isUnauthorized());
+    void anonymousListReturnsAllActiveChannelsInFollowerOrderWithoutReadingInterests() throws Exception {
+        UUID owned = insertChannel("Owned", 500, CREATED_AT);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", VIEWER_ID, owned);
+        UUID followed = insertChannel("Followed", 1000, CREATED_AT);
+        jdbc.update("INSERT INTO channel_followers (channel_id, user_id) VALUES (?, ?)", followed, VIEWER_ID);
+        insertChannel("Legacy owner", 100, CREATED_AT);
+        insertChannel("Banned", "BANNED", false, CREATED_AT);
+        insertChannel("Deleted", "ACTIVE", true, CREATED_AT);
+
+        mvc.perform(get(PATH).contextPath("/channel").param("size", "2"))
+                .andExpect(status().isOk()).andExpect(names(List.of("Followed", "Owned")))
+                .andExpect(jsonPath("$.result.totalElements").value(3))
+                .andExpect(jsonPath("$.result.totalPages").value(2));
+        mvc.perform(get(PATH).contextPath("/channel").param("size", "2").param("page", "1"))
+                .andExpect(status().isOk()).andExpect(names(List.of("Legacy owner")))
+                .andExpect(jsonPath("$.result.totalElements").value(3));
+        Mockito.verifyNoInteractions(interests, authAuthoritiesReader);
+    }
+
+    @Test
+    void anonymousListStillCombinesExplicitCategoryAndKeywordFilters() throws Exception {
+        UUID category = insertCategory("ACTIVE");
+        assignCategory(insertChannel("Gaming popular", 1000, CREATED_AT), category);
+        assignCategory(insertChannel("Gaming smaller", 100, CREATED_AT), category);
+        assignCategory(insertChannel("Other topic", 2000, CREATED_AT), category);
+        insertChannel("Gaming outside category", 3000, CREATED_AT);
+
+        mvc.perform(get(PATH).contextPath("/channel").param("categoryIds", category.toString())
+                        .param("keyword", "gaming"))
+                .andExpect(status().isOk()).andExpect(names(List.of("Gaming popular", "Gaming smaller")))
+                .andExpect(jsonPath("$.result.totalElements").value(2));
+        Mockito.verifyNoInteractions(interests, authAuthoritiesReader);
+    }
+
+    @Test
+    void accessCookieAuthenticatesAndPreservesPersonalization() throws Exception {
+        UUID category = insertCategory("ACTIVE");
+        assignCategory(insertChannel("Preferred", 10, CREATED_AT), category);
+        insertChannel("Popular", 1000, CREATED_AT);
+        UUID owned = insertChannel("Owned", 5000, CREATED_AT);
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", VIEWER_ID, owned);
+        UUID followed = insertChannel("Followed", 9000, CREATED_AT);
+        jdbc.update("INSERT INTO channel_followers (channel_id, user_id) VALUES (?, ?)", followed, VIEWER_ID);
+        Mockito.when(interests.getInterestCategoryIds(VIEWER_ID)).thenReturn(Set.of(category));
+        Instant now = Instant.now();
+        SignedJWT token = new SignedJWT(new JWSHeader(JWSAlgorithm.HS512), new JWTClaimsSet.Builder()
+                .subject(VIEWER_ID.toString()).issueTime(Date.from(now))
+                .expirationTime(Date.from(now.plusSeconds(900))).build());
+        token.sign(new MACSigner("channel-list-test-secret-".repeat(4)));
+
+        mvc.perform(get(PATH).contextPath("/channel").cookie(new Cookie("access_token", token.serialize())))
+                .andExpect(status().isOk()).andExpect(names(List.of("Preferred", "Popular")))
+                .andExpect(jsonPath("$.result.totalElements").value(2));
+        Mockito.verify(interests).getInterestCategoryIds(VIEWER_ID);
+        Mockito.verify(authAuthoritiesReader).read(VIEWER_ID);
+    }
+
+    @Test
+    void unfollowedListRejectsMalformedAccessCookie() throws Exception {
         mvc.perform(get(PATH).contextPath("/channel").cookie(new Cookie("access_token", "malformed-token")))
                 .andExpect(status().isUnauthorized());
         Mockito.verifyNoInteractions(interests);

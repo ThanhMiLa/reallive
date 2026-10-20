@@ -120,10 +120,28 @@ class GatewayAuthenticationTest {
     }
 
     @Test
-    void channelListRequiresAuthenticationBeforeAccountStatusLookup() {
-        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isUnauthorized();
-        assertEquals(0, BACKEND_CALLS.get());
+    void channelListWithoutCookiesReachesBackendWithoutAccountStatusLookup() {
+        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isOk();
+        assertEquals(1, BACKEND_CALLS.get());
         verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void channelListForwardsValidAccessCookieWithoutAccountStatusLookup() throws Exception {
+        Token access = token("ACCESS");
+        client.get().uri("/channel/api/channels").cookie("access_token", access.value())
+                .exchange().expectStatus().isOk();
+        assertEquals(1, BACKEND_CALLS.get());
+        assertTrue(LAST_REQUEST.get().cookies().contains("access_token=" + access.value()));
+        verify(redisTemplate).hasKey("auth:revoked:access:" + access.jti());
+        Mockito.verify(redisTemplate.opsForValue(), Mockito.never()).get(anyString());
+    }
+
+    @Test
+    void channelListRejectsInvalidAccessCookie() {
+        client.get().uri("/channel/api/channels").cookie("access_token", "malformed-token")
+                .exchange().expectStatus().isUnauthorized();
+        assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
@@ -131,6 +149,7 @@ class GatewayAuthenticationTest {
         request(HttpMethod.POST, "/channel/api/channels").exchange().expectStatus().isUnauthorized();
         request(HttpMethod.PATCH, "/channel/api/channels/me").exchange().expectStatus().isUnauthorized();
         client.get().uri("/channel/api/channels/me").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/channel/api/channels/following").exchange().expectStatus().isUnauthorized();
         assertEquals(0, BACKEND_CALLS.get());
     }
 

@@ -2,7 +2,7 @@
 
 ## Ownership and request flow
 
-User Service owns account status, roles, permissions and all writes to auth-state keys. API Gateway verifies signed JWTs and token revocation before reading the authenticated account's status. Each protected downstream request loads current authorities from Redis and applies Spring method authorization. Business services do not check `users.status`.
+User Service owns account status, roles, permissions and all writes to auth-state keys. API Gateway verifies signed JWTs and token revocation before reading the authenticated account's status on protected endpoints. Downstream services authenticate any supplied access-token cookie and load current authorities from Redis, including on public endpoints. Spring method authorization applies the endpoint's access rules. Business services do not check `users.status`.
 
 JWTs contain `sub`, `iss`, `iat`, `exp`, `jti` and `type` (`ACCESS` or `REFRESH`). They carry no role or permission claims. Existing signed tokens containing `scope` remain usable, but their scope is ignored.
 
@@ -27,7 +27,9 @@ The three account keys share a minimum lifetime of `AUTH_REFRESH_TOKEN_TTL + AUT
 | Insufficient authorities | 403 | Downstream method authorization rejects the operation |
 | Redis error, timeout, missing or corrupt auth state | 503 | Reject without executing the business operation; retain valid cookies |
 
-Public endpoints skip account status and authorities lookup. Gateway still validates token cookies supplied on public requests according to its cookie contract. Token issuance uses a centralized eligibility policy; public password recovery performs its own OTP/reset-token checks without an account-active business validator. Internal infrastructure endpoints do not require a user authorities lookup.
+Public endpoints allow requests without an access-token cookie and do not require an account-status lookup at Gateway. Supplied token cookies are still validated by Gateway according to its cookie contract. Downstream cookie resolvers do not skip public or internal paths: when an access token is supplied, it is decoded and current authorities are loaded from Redis so the JWT principal is available to the endpoint. Without an access token, no authorities lookup is performed. Invalid supplied tokens are rejected; unavailable authorities return 503 even on public endpoints. Token issuance uses a centralized eligibility policy; public password recovery performs its own OTP/reset-token checks without an account-active business validator.
+
+`GET /channel/api/channels` supports optional authentication through the same filter chain as other Channel Service endpoints. Without an access-token cookie it lists active, non-deleted channels without ownership/follow exclusions or user-interest lookup. With a valid access token it retains the user's ownership/follow exclusions and interest-based ordering when no explicit filters are supplied. `GET /channel/api/channels/following` remains protected.
 
 Normal requests never fetch auth state from User Service on a Redis miss. Login or refresh republishes it. Dependent services must use the same Redis host, logical database and key serialization. Development backends bind to `127.0.0.1` by default through `BACKEND_BIND_ADDRESS`. If overridden for deployment, backend ports must remain restricted to trusted callers because downstream JWT decoders trust gateway validation.
 

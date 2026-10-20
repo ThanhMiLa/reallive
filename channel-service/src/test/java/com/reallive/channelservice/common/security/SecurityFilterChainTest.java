@@ -25,6 +25,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
@@ -39,6 +41,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -236,6 +239,42 @@ class SecurityFilterChainTest {
                 .andExpect(MockMvcResultMatchers.header().doesNotExist("Set-Cookie"));
     }
 
+
+    @Test
+    void publicEndpointWithoutCookieRemainsAnonymous() throws Exception {
+        mvc.perform(get("/channel/api/categories").contextPath("/channel"))
+                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
+        Mockito.verifyNoInteractions(authAuthoritiesReader);
+    }
+
+    @Test
+    void publicEndpointWithAccessCookieReceivesJwtIdentity() throws Exception {
+        mvc.perform(get("/channel/api/categories").contextPath("/channel")
+                        .cookie(new Cookie("channel_access", token("ROLE_USER"))))
+                .andExpect(status().isOk()).andExpect(content().string("00000000-0000-0000-0000-000000000001"));
+        Mockito.verify(authAuthoritiesReader).read(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+    }
+
+    @Test
+    void publicEndpointRejectsMalformedAccessCookie() throws Exception {
+        mvc.perform(get("/channel/api/categories").contextPath("/channel")
+                        .cookie(new Cookie("channel_access", "malformed-token")))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
+        Mockito.verifyNoInteractions(authAuthoritiesReader);
+    }
+
+    @Test
+    void publicEndpointWithUnavailableAuthoritiesReturns503() throws Exception {
+        String access = token("ROLE_USER");
+        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
+                .thenThrow(new AppException(ErrorCode.AUTH_STATE_UNAVAILABLE));
+        mvc.perform(get("/channel/api/categories").contextPath("/channel")
+                        .cookie(new Cookie("channel_access", access)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(MockMvcResultMatchers.header().doesNotExist("Set-Cookie"));
+    }
+
     private String token(String scope) throws Exception {
         Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
                 .thenReturn(Arrays.stream(scope.split(" ")).filter(value -> !value.isBlank())
@@ -254,6 +293,11 @@ class SecurityFilterChainTest {
     @TestComponent
     @RestController
     public static class TestController {
+
+        @GetMapping("/api/categories")
+        public String publicIdentity(@AuthenticationPrincipal Jwt jwt) {
+            return jwt == null ? "anonymous" : jwt.getSubject();
+        }
 
         @GetMapping("/test/identity")
         public String identity(Authentication authentication) {

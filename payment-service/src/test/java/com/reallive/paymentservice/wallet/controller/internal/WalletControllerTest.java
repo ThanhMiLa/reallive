@@ -120,10 +120,10 @@ class WalletControllerTest {
     }
 
     @Test
-    void internalEndpointDoesNotAuthenticateUserCookies() throws Exception {
+    void internalEndpointRejectsInvalidUserCookies() throws Exception {
         mvc.perform(endpoint(UUID.randomUUID()).cookie(new Cookie("access_token", "invalid")))
-                .andExpect(status().isOk());
-        Mockito.verify(service).createWallet(ArgumentMatchers.any());
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
+        verifyNoInteractions(service, authAuthoritiesReader);
     }
 
     private MockHttpServletRequestBuilder endpoint(UUID userId) {

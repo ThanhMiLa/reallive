@@ -2,7 +2,6 @@ package com.reallive.channelservice.common.security;
 
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -18,9 +17,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.util.AntPathMatcher;
-
-import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
@@ -34,6 +30,7 @@ public class SecurityConfig {
     JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
     private static final String[] PUBLIC_ENDPOINTS_GET = {
+            "/api/channels",
             "/api/categories"
     };
 
@@ -76,9 +73,6 @@ public class SecurityConfig {
     @Bean
     BearerTokenResolver bearerTokenResolver(@Value("${auth.cookie.access-token.name}") String accessTokenName) {
         return request -> {
-            if (isPublicRequest(request)) {
-                return null;
-            }
             Cookie[] cookies = request.getCookies();
 
             if (cookies == null) {
@@ -100,21 +94,5 @@ public class SecurityConfig {
     @Bean
     RedisJwtAuthenticationConverter jwtAuthenticationConverter() {
         return new RedisJwtAuthenticationConverter(authoritiesReader);
-    }
-
-    private boolean isPublicRequest(HttpServletRequest request) {
-        String path = request.getRequestURI().substring(request.getContextPath().length());
-        String method = request.getMethod();
-        AntPathMatcher matcher = new AntPathMatcher();
-        if ("GET".equals(method) && Arrays.stream(PUBLIC_ENDPOINTS_GET).anyMatch(pattern -> matcher.match(pattern, path))) {
-            return true;
-        }
-        if ("POST".equals(method) && Arrays.stream(PUBLIC_ENDPOINTS_POST).anyMatch(pattern -> matcher.match(pattern, path))) {
-            return true;
-        }
-        if ("PATCH".equals(method) && Arrays.stream(PUBLIC_ENDPOINTS_PATCH).anyMatch(pattern -> matcher.match(pattern, path))) {
-            return true;
-        }
-        return false;
     }
 }

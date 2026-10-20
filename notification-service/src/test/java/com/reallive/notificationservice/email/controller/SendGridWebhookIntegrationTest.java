@@ -199,15 +199,15 @@ class SendGridWebhookIntegrationTest {
     }
 
     @Test
-    void webhookAuthenticationDoesNotDependOnUserCookiesOrContextPath() throws Exception {
+    void webhookRejectsInvalidUserCookieEvenWithValidProviderSignature() throws Exception {
         byte[] body = event("delivered", "cookie-independent", 1700000000).getBytes(StandardCharsets.UTF_8);
         mvc.perform(post("/notification" + PATH).contextPath("/notification").servletPath(PATH)
                         .cookie(new Cookie("access_token", "invalid-user-cookie"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("X-Twilio-Email-Event-Webhook-Signature", sign(body))
                         .header("X-Twilio-Email-Event-Webhook-Timestamp", TIMESTAMP).content(body))
-                .andExpect(status().isOk());
-        assertEquals(1, deliveryEvents.count());
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
+        assertEquals(0, deliveryEvents.count());
     }
 
     @Test

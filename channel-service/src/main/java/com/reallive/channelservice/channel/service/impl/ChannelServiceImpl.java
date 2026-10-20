@@ -65,7 +65,10 @@ public class ChannelServiceImpl implements ChannelService {
 
     @Override
     public PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request) {
-        validateListIdentityAndOffset(userId, request.getPage(), request.getSize());
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        validateListOffset(request.getPage(), request.getSize());
         Page<ChannelEntity> channels = channelRepository.findFollowingChannels(
                 eligibleChannels(userId, true), userId, request.getSortBy(), request.getSortDirection(),
                 PageRequest.of(request.getPage(), request.getSize()));
@@ -74,10 +77,11 @@ public class ChannelServiceImpl implements ChannelService {
 
     @Override
     public PageResponse<ChannelListResponse> getUnfollowedChannels(UUID userId, UnfollowedChannelListRequest request) {
-        validateListIdentityAndOffset(userId, request.getPage(), request.getSize());
+        validateListOffset(request.getPage(), request.getSize());
         boolean hasFilters = request.getCategoryIds() != null ||
                 (request.getKeyword() != null && !request.getKeyword().isBlank());
-        Set<UUID> interests = hasFilters ? Set.of() : userCategoryPreferenceResolver.getInterestCategoryIds(userId);
+        Set<UUID> interests = userId == null || hasFilters
+                ? Set.of() : userCategoryPreferenceResolver.getInterestCategoryIds(userId);
         Specification<ChannelEntity> specification = eligibleChannels(userId, false)
                 .and(ChannelSpecifications.inActiveCategories(request.getCategoryIds()))
                 .and(ChannelSpecifications.matchesKeyword(request.getKeyword()));
@@ -153,16 +157,16 @@ public class ChannelServiceImpl implements ChannelService {
         return true;
     }
 
-    private void validateListIdentityAndOffset(UUID userId, int page, int size) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
+    private void validateListOffset(int page, int size) {
         if ((long) page * size > Integer.MAX_VALUE) {
             throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         }
     }
 
     private Specification<ChannelEntity> eligibleChannels(UUID userId, boolean following) {
+        if (userId == null) {
+            return ChannelSpecifications.isActive();
+        }
         return ChannelSpecifications.isActive()
                 .and(ChannelSpecifications.notOwnedBy(userId))
                 .and(ChannelSpecifications.matchesFollowing(userId, following));

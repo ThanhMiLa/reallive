@@ -1,12 +1,18 @@
 package com.reallive.userservice.common.security;
 
+import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
+
 import java.text.ParseException;
 
+/**
+ * Reads JWT claims after authentication by the trusted API Gateway.
+ */
 @Component
 public class CustomJwtDecoder implements JwtDecoder {
 
@@ -14,14 +20,15 @@ public class CustomJwtDecoder implements JwtDecoder {
     public Jwt decode(String token) throws JwtException {
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
+            JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
             return new Jwt(
                     token,
-                    signedJWT.getJWTClaimsSet().getIssueTime().toInstant(),
-                    signedJWT.getJWTClaimsSet().getExpirationTime().toInstant(),
+                    claims.getIssueTime().toInstant(),
+                    claims.getExpirationTime().toInstant(),
                     signedJWT.getHeader().toJSONObject(),
-                    signedJWT.getJWTClaimsSet().toJSONObject());
-        } catch (ParseException e) {
-            throw new JwtException("Invalid JWT token");
+                    claims.toJSONObject());
+        } catch (ParseException exception) {
+            throw new BadJwtException("Invalid JWT token");
         }
     }
 }
