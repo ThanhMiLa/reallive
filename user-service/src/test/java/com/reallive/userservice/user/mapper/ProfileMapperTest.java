@@ -4,6 +4,8 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 
 import java.time.LocalDate;
@@ -17,9 +19,11 @@ class ProfileMapperTest {
 
     private final ProfileMapper mapper = Mappers.getMapper(ProfileMapper.class);
 
-    @Test
-    void mapsAccountIdentityAndCreationTimeAlongsideProfileDetails() {
-        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).email("viewer@example.com").build();
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void mapsAccountIdentityAndCreationTimeAlongsideProfileDetails(boolean emailVerified) {
+        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).email("viewer@example.com")
+                .emailVerified(emailVerified).build();
         user.setCreatedAt(LocalDateTime.of(2026, 10, 1, 8, 30));
         ProfileEntity profile = ProfileEntity.builder()
                 .id(UUID.randomUUID()).user(user).displayName("Viewer")
@@ -30,6 +34,7 @@ class ProfileMapperTest {
 
         assertEquals(user.getId(), response.getUserId());
         assertEquals(user.getEmail(), response.getEmail());
+        assertEquals(emailVerified, response.isEmailVerified());
         assertEquals(user.getCreatedAt(), response.getCreatedAt());
         assertEquals(profile.getDisplayName(), response.getDisplayName());
         assertEquals(profile.getAvatarUrl(), response.getAvatarUrl());

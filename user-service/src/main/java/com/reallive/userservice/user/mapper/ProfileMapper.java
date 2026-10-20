@@ -15,6 +15,7 @@ public interface ProfileMapper {
 
     @Mapping(target = "userId", source = "user.id")
     @Mapping(target = "email", source = "user.email")
+    @Mapping(target = "emailVerified", source = "user.emailVerified")
     @Mapping(target = "createdAt", source = "user.createdAt")
     UserProfileResponse toResponse(ProfileEntity profile);
 }

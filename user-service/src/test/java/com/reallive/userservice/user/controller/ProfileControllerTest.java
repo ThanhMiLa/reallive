@@ -151,25 +151,32 @@ class ProfileControllerTest {
         userRepository.deleteAll();
     }
 
-    @Test
-    void getMyProfileReturnsExactlyTheRequestedFields() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void getMyProfileReturnsExactlyTheRequestedFields(boolean emailVerified) throws Exception {
         UserEntity user = createUser("viewer");
+        user.setEmailVerified(emailVerified);
+        userRepository.saveAndFlush(user);
         profileRepository.saveAndFlush(ProfileEntity.builder()
                 .user(user)
                 .displayName("Viewer")
                 .avatarUrl("https://example.com/avatar.png")
                 .dob(LocalDate.of(2000, 1, 1))
                 .build());
-        authenticate(user.getId().toString());
+        when(jwtDecoder.decode("valid-access-token")).thenReturn(Jwt.withTokenValue("valid-access-token")
+                .header("alg", "HS512").subject(user.getId().toString())
+                .claim("scope", "ROLE_USER").claim("emailVerified", !emailVerified).build());
 
         mockMvc.perform(get("/api/users/me").cookie(accessCookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.code").value(1000))
-                .andExpect(jsonPath("$.result.length()").value(6))
+                .andExpect(jsonPath("$.result.length()").value(7))
                 .andExpect(jsonPath("$.result.userId").value(user.getId().toString()))
                 .andExpect(jsonPath("$.result.displayName").value("Viewer"))
                 .andExpect(jsonPath("$.result.email").value("viewer@example.com"))
+                .andExpect(jsonPath("$.result.emailVerified").isBoolean())
+                .andExpect(jsonPath("$.result.emailVerified").value(emailVerified))
                 .andExpect(jsonPath("$.result.avatarUrl").value("https://example.com/avatar.png"))
                 .andExpect(jsonPath("$.result.dob").value("2000-01-01"))
                 .andExpect(jsonPath("$.result.create_at").value(DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(user.getCreatedAt())));
@@ -266,13 +273,15 @@ class ProfileControllerTest {
                         .param("dob", "2001-02-03")
                         .param("userId", other.getId().toString())
                         .param("email", "hacker@example.com")
+                        .param("emailVerified", "true")
                         .param("avatarUrl", "https://untrusted.example.com/image.png")
                         .param("create_at", "2000-01-01T00:00:00")
                         .cookie(accessCookie()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.length()").value(6))
+                .andExpect(jsonPath("$.result.length()").value(7))
                 .andExpect(jsonPath("$.result.userId").value(user.getId().toString()))
                 .andExpect(jsonPath("$.result.email").value("viewer@example.com"))
+                .andExpect(jsonPath("$.result.emailVerified").value(false))
                 .andExpect(jsonPath("$.result.displayName").value("New Viewer"))
                 .andExpect(jsonPath("$.result.dob").value("2001-02-03"))
                 .andExpect(jsonPath("$.result.create_at").value(DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(user.getCreatedAt())))

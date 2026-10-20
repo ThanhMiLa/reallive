@@ -21,6 +21,7 @@ public class UserProfileResponse {
     UUID userId;
     String displayName;
     String email;
+    boolean emailVerified;
     String avatarUrl;
     LocalDate dob;
 
