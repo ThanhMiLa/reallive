@@ -2,11 +2,24 @@ import apiClient from './client'
 import type {
   ApiResponse,
   AuthRequest,
+  ChangePasswordRequest,
   RegisterRequest,
   UserProfile,
 } from '@/types/auth.types'
 
 export const authApi = {
+  changePassword: async (payload: ChangePasswordRequest): Promise<void> => {
+    await apiClient.post('/user/api/auth/change-password', payload)
+  },
+
+  updateProfile: async (payload: FormData): Promise<UserProfile> => {
+    const response = await apiClient.patch<ApiResponse<UserProfile>>(
+      '/user/api/users/me', payload,
+      { headers: { 'Content-Type': undefined } },
+    )
+    return response.data.result
+  },
+
   /**
    * Log in user with username and password.
    * Gateway sets access_token and refresh_token HttpOnly cookies.

@@ -4,13 +4,16 @@ import {
   Routes,
   Route,
   Navigate,
+  Outlet,
   useLocation,
   useNavigate,
 } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { Header } from '@/components/layout/Header'
+import { AccountLayout } from '@/components/layout/AccountLayout'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { ProfilePage } from '@/pages/profile/ProfilePage'
 import { HomePage } from '@/pages/HomePage'
 import { BrowsePage } from '@/pages/browse/BrowsePage'
 import { BrowseLivestreamsTab } from '@/pages/browse/tabs/BrowseLivestreamsTab'
@@ -27,6 +30,40 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+function SiteLayout() {
+  return (
+    <>
+      <Header />
+      <div className="flex-1 flex overflow-hidden">
+        <Sidebar />
+        <Outlet />
+      </div>
+    </>
+  )
+}
+
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route element={<AccountLayout />}>
+        <Route path="/profile" element={<ProfilePage />} />
+      </Route>
+      <Route element={<SiteLayout />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<HomePage />} />
+        <Route path="/register" element={<HomePage />} />
+        <Route path="/browse" element={<BrowsePage />}>
+          <Route index element={<Navigate to="livestreams" replace />} />
+          <Route path="livestreams" element={<BrowseLivestreamsTab />} />
+          <Route path="categories" element={<BrowseCategoriesTab />} />
+          <Route path="channels" element={<BrowseChannelsTab />} />
+        </Route>
+        <Route path="*" element={<HomePage />} />
+      </Route>
+    </Routes>
+  )
+}
 
 function AppContent() {
   const location = useLocation()
@@ -59,25 +96,7 @@ function AppContent() {
 
   return (
     <div className="bg-[#000000] text-gray-100 font-sans min-h-screen flex flex-col antialiased selection:bg-[#ff2b42] selection:text-white overflow-x-hidden">
-      {/* Top Navigation Header */}
-      <Header />
-
-      {/* Main Layout Area: Left Sidebar + Page Content */}
-      <div className="flex-1 flex overflow-hidden">
-        <Sidebar />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<HomePage />} />
-          <Route path="/register" element={<HomePage />} />
-          <Route path="/browse" element={<BrowsePage />}>
-            <Route index element={<Navigate to="livestreams" replace />} />
-            <Route path="livestreams" element={<BrowseLivestreamsTab />} />
-            <Route path="categories" element={<BrowseCategoriesTab />} />
-            <Route path="channels" element={<BrowseChannelsTab />} />
-          </Route>
-          <Route path="*" element={<HomePage />} />
-        </Routes>
-      </div>
+      <AppRoutes />
 
       {/* Global Auth Modal Popup (Dimming and blurring the background) */}
       <AuthModal />

@@ -24,7 +24,9 @@ apiClient.interceptors.response.use(
     }
 
     const requestUrl = originalRequest?.url || ''
-    const isAuthRoute = requestUrl.includes('/user/api/auth/')
+    const isAuthRoute =
+      requestUrl.includes('/user/api/auth/') &&
+      !requestUrl.endsWith('/change-password')
 
     // If unauthorized and not an auth route (login/register/refresh/logout), attempt token refresh
     if (

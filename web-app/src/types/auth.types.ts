@@ -28,3 +28,9 @@ export interface UserProfile {
 }
 
 export type AuthTab = 'login' | 'register'
+
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}

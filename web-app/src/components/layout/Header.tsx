@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Search, Menu, Bell, LogOut, User as UserIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth.store'
@@ -7,39 +7,26 @@ import { useUiStore } from '@/stores/ui.store'
 export function Header() {
   const { user, isAuthenticated, openAuthModal, logout } = useAuthStore()
   const { toggleSidebar } = useUiStore()
-  const [showUserMenu, setShowUserMenu] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  // Close user dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowUserMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  const navigate = useNavigate()
 
   const handleNotificationClick = () => {
-    toast.info('Bạn không có thông báo mới.')
+    toast.info('You have no new notifications.')
   }
 
   const handleAvatarClick = () => {
     if (!isAuthenticated) {
       openAuthModal('login')
     } else {
-      setShowUserMenu(!showUserMenu)
+      navigate('/profile')
     }
   }
 
   const handleLogout = async () => {
-    setShowUserMenu(false)
     try {
       await logout()
-      toast.success('Đã đăng xuất thành công!')
+      toast.success('Logged out successfully!')
     } catch {
-      toast.error('Có lỗi xảy ra khi đăng xuất')
+      toast.error('Unable to log out. Please try again.')
     }
   }
 
@@ -47,7 +34,7 @@ export function Header() {
     <header className="h-[62px] bg-[#08080a] border-b border-[#1f1f26] flex items-center justify-between px-4 sticky top-0 z-40 select-none">
       {/* Left: 3-bar Hamburger Menu & Brand Name (Text Only) */}
       <div className="flex items-center gap-3">
-        {/* Dấu 3 gạch để bật tắt navbar */}
+        {/* Toggle the sidebar */}
         <button
           type="button"
           onClick={toggleSidebar}
@@ -57,7 +44,7 @@ export function Header() {
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Chữ RealLive - Không dùng logo icon như template */}
+        {/* RealLive wordmark */}
         <a href="/" className="flex items-center group">
           <span className="text-[34px] sm:text-[43px] font-black tracking-tight leading-none bg-gradient-to-r from-white via-slate-100 to-[#ff2b42] bg-clip-text text-transparent font-outfit">
             Real<span className="text-[#ff2b42]">Live</span>
@@ -81,7 +68,7 @@ export function Header() {
 
       {/* Right: Notification Bell & User Avatar */}
       <div className="flex items-center gap-3">
-        {/* Hình chuông thông báo */}
+        {/* Notifications */}
         <button
           type="button"
           onClick={handleNotificationClick}
@@ -92,13 +79,19 @@ export function Header() {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#ff2b42] rounded-full ring-2 ring-[#08080a]" />
         </button>
 
-        {/* Logo avatar của user */}
-        <div className="relative" ref={menuRef}>
+        {isAuthenticated && (
+          <button type="button" onClick={handleLogout} aria-label="Log out" title="Log out"
+            className="p-2 text-gray-400 hover:text-[#ff2b42] rounded-lg focus-visible:outline-2 focus-visible:outline-[#ff2b42] cursor-pointer">
+            <LogOut className="w-4 h-4" />
+          </button>
+        )}
+        {/* User avatar */}
+        <div className="relative">
           <button
             type="button"
             onClick={handleAvatarClick}
             aria-label="User profile"
-            className="relative flex items-center rounded-full p-0.5 focus:outline-none hover:ring-2 hover:ring-[#ff2b42]/50 transition cursor-pointer"
+            className="relative flex items-center rounded-full p-0.5 focus-visible:ring-2 focus-visible:ring-[#ff2b42] hover:ring-2 hover:ring-[#ff2b42]/50 transition cursor-pointer"
           >
             {user?.avatarUrl ? (
               <img
@@ -118,28 +111,6 @@ export function Header() {
             {/* Online Green Indicator Dot */}
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-[#08080a] rounded-full" />
           </button>
-
-          {/* User Dropdown Menu (If authenticated) */}
-          {showUserMenu && isAuthenticated && (
-            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-[#0e0e12] border border-[#1f1f26] py-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-3 py-2 border-b border-[#1f1f26]">
-                <p className="text-xs font-bold text-white truncate">
-                  {user?.displayName || 'Streamer'}
-                </p>
-                <p className="text-[11px] text-gray-400 truncate">
-                  {user?.email}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-[#18181f] hover:text-red-300 flex items-center gap-2 transition cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Đăng xuất</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </header>
