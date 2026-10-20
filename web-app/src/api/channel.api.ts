@@ -34,7 +34,8 @@ export const channelApi = {
   },
 
   /**
-   * Fetch paginated list of unfollowed / discover channels.
+   * Fetch paginated discover channels, including for guests.
+   * Authenticated sessions exclude followed channels and can use user preferences.
    * Endpoint: GET /channel/api/channels
    */
   getUnfollowedChannels: async (

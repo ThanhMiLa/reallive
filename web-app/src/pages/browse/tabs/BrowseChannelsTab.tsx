@@ -9,7 +9,6 @@ import {
 import {
   AlertCircle,
   RefreshCw,
-  LogIn,
   Users,
   UserPlus,
   UserMinus,
@@ -323,7 +322,7 @@ function parseHttpError(error: unknown): {
 
 export function BrowseChannelsTab() {
   const { user, isAuthenticated, isCheckingAuth, openAuthModal } = useAuthStore()
-  const userId = user?.userId
+  const userId = isAuthenticated ? user?.userId : undefined
   const queryClient = useQueryClient()
 
   // --- Following List State ---
@@ -416,7 +415,11 @@ export function BrowseChannelsTab() {
         signal,
       ),
     enabled: isAuthenticated && !isCheckingAuth && Boolean(userId),
-    placeholderData: keepPreviousData,
+    // Keep pagination smooth without carrying data across login/logout.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2] === userId
+        ? keepPreviousData(previousData)
+        : undefined,
   })
 
   // Normalize keyword & validate category UUIDs for Unfollowed query
@@ -465,9 +468,12 @@ export function BrowseChannelsTab() {
         },
         signal,
       ),
-    enabled:
-      isAuthenticated && !isCheckingAuth && Boolean(userId) && isKeywordValid,
-    placeholderData: keepPreviousData,
+    enabled: !isCheckingAuth && isKeywordValid,
+    // Keep pagination smooth without carrying data across login/logout.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2] === userId
+        ? keepPreviousData(previousData)
+        : undefined,
   })
 
   // Adjust page if after follow/unfollow the current page exceeds valid totalPages
@@ -592,63 +598,6 @@ export function BrowseChannelsTab() {
     cat.name.toLowerCase().includes(categorySearchQuery.trim().toLowerCase()),
   )
 
-  // --- Auth Checks ---
-  if (isCheckingAuth) {
-    return (
-      <div className="pb-12 space-y-12">
-        <div>
-          <div className="mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
-              Following
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 4 }).map((_, idx) => (
-              <ChannelSkeleton key={idx} />
-            ))}
-          </div>
-        </div>
-        <div>
-          <div className="mb-6">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
-              Recommended
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <ChannelSkeleton key={idx} />
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="pb-12">
-        <div className="flex flex-col items-center justify-center py-16 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
-          <div className="w-12 h-12 rounded-full bg-rose-500/10 flex items-center justify-center text-[#ff2b42] mb-4">
-            <LogIn className="w-6 h-6" />
-          </div>
-          <h3 className="text-lg font-bold text-white mb-1.5">
-            Sign in to view channels
-          </h3>
-          <p className="text-xs text-gray-400 mb-5 max-w-sm">
-            Log in to view channels you are following and discover recommended creators.
-          </p>
-          <button
-            type="button"
-            onClick={() => openAuthModal('login')}
-            className="bg-[#ff2b42] hover:bg-[#e02237] text-white font-semibold text-xs px-5 py-2.5 rounded-lg transition-colors cursor-pointer shadow-md shadow-rose-950/40"
-          >
-            Log In
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   const followingErrorDetails = followingError
     ? parseHttpError(followingError)
     : null
@@ -661,115 +610,117 @@ export function BrowseChannelsTab() {
       {/* =========================================================================
           SECTION 1: Following Channels
           ========================================================================= */}
-      <section>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
-              Following
-            </h2>
-            {isFollowingFetching && !isFollowingLoading && (
-              <span title="Updating...">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-gray-400" />
-              </span>
-            )}
-          </div>
-
-          {/* Business sort dropdown (Mutually exclusive criteria) */}
-          <div className="flex items-center gap-2.5">
-            <label
-              htmlFor="following-sort-select"
-              className="text-xs font-medium text-gray-400 select-none"
-            >
-              Sort by:
-            </label>
-            <select
-              id="following-sort-select"
-              value={followingSortOption}
-              onChange={(e) => {
-                setFollowingSortOption(e.target.value as FollowingSortOption)
-                setFollowingPage(0)
-              }}
-              className="bg-[#101014] text-gray-200 border border-[#1f1f26] hover:border-gray-700 rounded-lg px-3 py-1.5 text-xs font-medium focus:border-[#ff2b42] focus:outline-none transition-colors cursor-pointer"
-            >
-              {FOLLOWING_SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value} className="bg-[#101014] text-gray-200">
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {isFollowingLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 4 }).map((_, idx) => (
-              <ChannelSkeleton key={idx} />
-            ))}
-          </div>
-        ) : isFollowingError ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
-            <AlertCircle className="w-9 h-9 text-rose-500 mb-2.5" />
-            <h3 className="text-sm font-semibold text-gray-200 mb-1">
-              {followingErrorDetails?.title || 'Failed to load followed channels'}
-            </h3>
-            <p className="text-xs text-gray-400 mb-4 max-w-sm">
-              {followingErrorDetails?.description ||
-                'Could not fetch followed channels from server. Please try again.'}
-            </p>
-            {followingErrorDetails?.canRetry && (
-              <button
-                type="button"
-                onClick={() => refetchFollowing()}
-                disabled={isFollowingFetching}
-                className="flex items-center gap-2 bg-[#101014] hover:bg-[#18181f] text-[#ff2b42] border border-[#1f1f26] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
-              >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${isFollowingFetching ? 'animate-spin' : ''}`}
-                />
-                Retry
-              </button>
-            )}
-          </div>
-        ) : followingChannels.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
-            <Users className="w-9 h-9 text-gray-600 mb-2.5" />
-            <h3 className="text-sm font-semibold text-gray-200 mb-1">
-              No followed channels yet
-            </h3>
-            <p className="text-xs text-gray-400">
-              You haven't followed any channels yet. Check out recommended channels below!
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {followingChannels.map((channel) => (
-                <ChannelCard
-                  key={channel.id}
-                  channel={channel}
-                  actionType="unfollow"
-                  onAction={(c) => unfollowMutation.mutate(c)}
-                  isActionLoading={
-                    unfollowMutation.isPending &&
-                    unfollowMutation.variables?.id === channel.id
-                  }
-                />
-              ))}
+      {isAuthenticated && !isCheckingAuth && (
+        <section>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide">
+                Following
+              </h2>
+              {isFollowingFetching && !isFollowingLoading && (
+                <span title="Updating...">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                </span>
+              )}
             </div>
 
-            {followingPageData && (
-              <Pagination
-                currentPage={followingPage}
-                totalPages={followingPageData.totalPages}
-                totalElements={followingPageData.totalElements}
-                pageSize={followingPageSize}
-                onPageChange={(newPage) => setFollowingPage(newPage)}
-                disabled={isFollowingFetching}
-              />
-            )}
-          </>
-        )}
-      </section>
+            {/* Business sort dropdown (Mutually exclusive criteria) */}
+            <div className="flex items-center gap-2.5">
+              <label
+                htmlFor="following-sort-select"
+                className="text-xs font-medium text-gray-400 select-none"
+              >
+                Sort by:
+              </label>
+              <select
+                id="following-sort-select"
+                value={followingSortOption}
+                onChange={(e) => {
+                  setFollowingSortOption(e.target.value as FollowingSortOption)
+                  setFollowingPage(0)
+                }}
+                className="bg-[#101014] text-gray-200 border border-[#1f1f26] hover:border-gray-700 rounded-lg px-3 py-1.5 text-xs font-medium focus:border-[#ff2b42] focus:outline-none transition-colors cursor-pointer"
+              >
+                {FOLLOWING_SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value} className="bg-[#101014] text-gray-200">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {isCheckingAuth || isFollowingLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <ChannelSkeleton key={idx} />
+              ))}
+            </div>
+          ) : isFollowingError ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
+              <AlertCircle className="w-9 h-9 text-rose-500 mb-2.5" />
+              <h3 className="text-sm font-semibold text-gray-200 mb-1">
+                {followingErrorDetails?.title || 'Failed to load followed channels'}
+              </h3>
+              <p className="text-xs text-gray-400 mb-4 max-w-sm">
+                {followingErrorDetails?.description ||
+                  'Could not fetch followed channels from server. Please try again.'}
+              </p>
+              {followingErrorDetails?.canRetry && (
+                <button
+                  type="button"
+                  onClick={() => refetchFollowing()}
+                  disabled={isFollowingFetching}
+                  className="flex items-center gap-2 bg-[#101014] hover:bg-[#18181f] text-[#ff2b42] border border-[#1f1f26] text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${isFollowingFetching ? 'animate-spin' : ''}`}
+                  />
+                  Retry
+                </button>
+              )}
+            </div>
+          ) : followingChannels.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center border border-[#1f1f26] rounded-xl bg-[#08080a] px-4">
+              <Users className="w-9 h-9 text-gray-600 mb-2.5" />
+              <h3 className="text-sm font-semibold text-gray-200 mb-1">
+                No followed channels yet
+              </h3>
+              <p className="text-xs text-gray-400">
+                You haven't followed any channels yet. Check out recommended channels below!
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {followingChannels.map((channel) => (
+                  <ChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    actionType="unfollow"
+                    onAction={(c) => unfollowMutation.mutate(c)}
+                    isActionLoading={
+                      unfollowMutation.isPending &&
+                      unfollowMutation.variables?.id === channel.id
+                    }
+                  />
+                ))}
+              </div>
+
+              {followingPageData && (
+                <Pagination
+                  currentPage={followingPage}
+                  totalPages={followingPageData.totalPages}
+                  totalElements={followingPageData.totalElements}
+                  pageSize={followingPageSize}
+                  onPageChange={(newPage) => setFollowingPage(newPage)}
+                  disabled={isFollowingFetching}
+                />
+              )}
+            </>
+          )}
+        </section>
+      )}
 
       {/* =========================================================================
           SECTION 2: Unfollowed / Recommended Channels
@@ -960,7 +911,7 @@ export function BrowseChannelsTab() {
           )}
         </div>
 
-        {isUnfollowedLoading ? (
+        {isCheckingAuth || isUnfollowedLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {Array.from({ length: 8 }).map((_, idx) => (
               <ChannelSkeleton key={idx} />
@@ -999,7 +950,7 @@ export function BrowseChannelsTab() {
                   No channels match your filters
                 </h3>
                 <p className="text-xs text-gray-400 mb-4 max-w-sm">
-                  We couldn't find any unfollowed channels matching your search keyword or selected categories.
+                  We couldn't find any channels matching your search keyword or selected categories.
                 </p>
                 <button
                   type="button"
@@ -1031,7 +982,13 @@ export function BrowseChannelsTab() {
                   key={channel.id}
                   channel={channel}
                   actionType="follow"
-                  onAction={(c) => followMutation.mutate(c)}
+                  onAction={(channel) => {
+                    if (!isAuthenticated) {
+                      openAuthModal('login')
+                      return
+                    }
+                    followMutation.mutate(channel)
+                  }}
                   isActionLoading={
                     followMutation.isPending &&
                     followMutation.variables?.id === channel.id
