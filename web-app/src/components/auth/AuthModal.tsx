@@ -33,7 +33,7 @@ export function AuthModal() {
   if (!isAuthModalOpen) return null
 
   const handleGoogleAuth = () => {
-    toast.info('Tính năng đăng nhập với Google đang được hoàn thiện.')
+    toast.info('Google sign-in is coming soon.')
   }
 
   return (
@@ -75,8 +75,8 @@ export function AuthModal() {
           </div>
           <p className="text-xs text-gray-400">
             {authModalTab === 'login'
-              ? 'Đăng nhập vào tài khoản của bạn để tiếp tục'
-              : 'Tạo tài khoản mới để trải nghiệm RealLive'}
+              ? 'Log in to your account to continue'
+              : 'Create an account to experience RealLive'}
           </p>
         </div>
 

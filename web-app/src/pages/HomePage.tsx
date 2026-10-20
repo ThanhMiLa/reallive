@@ -374,7 +374,7 @@ export function HomePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      toast.info(`Đang phát: ${currentStream.title}`)
+                      toast.info(`Now playing: ${currentStream.title}`)
                     }}
                     className="px-5 py-2.5 bg-[#ff2b42] hover:bg-[#e02237] text-white font-bold text-xs uppercase tracking-wider rounded-lg flex items-center gap-2 neon-glow-red transition cursor-pointer"
                   >
@@ -490,7 +490,7 @@ export function HomePage() {
                 <span>Slow mode: 3s</span>
                 <button
                   type="button"
-                  onClick={() => toast.info('Kênh đang bật quy tắc trò chuyện văn minh.')}
+                  onClick={() => toast.info('This channel requires respectful chat.')}
                   className="hover:text-gray-300 cursor-pointer"
                 >
                   Rules

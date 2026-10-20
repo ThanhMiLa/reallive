@@ -31,28 +31,28 @@ export function LoginForm() {
     setErrorMessage(null)
     try {
       await login(data)
-      toast.success('Đăng nhập thành công! Chào mừng bạn trở lại.')
+      toast.success('Logged in successfully! Welcome back.')
     } catch (error) {
       if (isAxiosError<ApiResponse<unknown>>(error)) {
         const responseData = error.response?.data
         if (responseData?.code === 1001) {
-          setErrorMessage('Tên đăng nhập hoặc mật khẩu không chính xác')
+          setErrorMessage('Incorrect username or password')
         } else if (responseData?.message) {
           setErrorMessage(responseData.message)
         } else if (error.message.includes('Network Error')) {
-          setErrorMessage('Không thể kết nối đến máy chủ API Gateway (Port 8888)')
+          setErrorMessage('Unable to connect to the server. Please try again.')
         } else {
-          setErrorMessage('Đăng nhập thất bại. Vui lòng thử lại sau.')
+          setErrorMessage('Unable to log in. Please try again later.')
         }
       } else {
-        setErrorMessage('Đã xảy ra lỗi không xác định')
+        setErrorMessage('An unexpected error occurred')
       }
     }
   }
 
   const handleForgotPassword = (e: React.MouseEvent) => {
     e.preventDefault()
-    toast.info('Tính năng quên mật khẩu đang được xử lý.')
+    toast.info('Password recovery is coming soon.')
   }
 
   return (

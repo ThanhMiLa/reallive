@@ -33,25 +33,25 @@ export function RegisterForm() {
     setErrorMessage(null)
     try {
       await registerUser(data)
-      toast.success('Đăng ký tài khoản thành công! Chào mừng bạn gia nhập RealLive.')
+      toast.success('Account created successfully! Welcome to RealLive.')
     } catch (error) {
       if (isAxiosError<ApiResponse<unknown>>(error)) {
         const responseData = error.response?.data
         if (responseData?.code === 1005) {
-          setErrorMessage('Tên đăng nhập đã tồn tại, vui lòng chọn tên khác')
+          setErrorMessage('This username is already taken. Please choose another.')
         } else if (responseData?.code === 1006) {
-          setErrorMessage('Email này đã được sử dụng')
+          setErrorMessage('This email address is already in use')
         } else if (responseData?.code === 1007) {
-          setErrorMessage('Mật khẩu xác nhận không khớp')
+          setErrorMessage('Passwords do not match')
         } else if (responseData?.message) {
           setErrorMessage(responseData.message)
         } else if (error.message.includes('Network Error')) {
-          setErrorMessage('Không thể kết nối đến máy chủ API Gateway (Port 8888)')
+          setErrorMessage('Unable to connect to the server. Please try again.')
         } else {
-          setErrorMessage('Đăng ký thất bại. Vui lòng kiểm tra lại thông tin.')
+          setErrorMessage('Unable to create your account. Please check your details.')
         }
       } else {
-        setErrorMessage('Đã xảy ra lỗi không xác định')
+        setErrorMessage('An unexpected error occurred')
       }
     }
   }

@@ -3,12 +3,12 @@ import { z } from 'zod'
 export const loginSchema = z.object({
   username: z
     .string()
-    .min(1, 'Vui lòng nhập tên đăng nhập')
-    .min(5, 'Tên đăng nhập phải có ít nhất 5 ký tự'),
+    .min(1, 'Please enter your username')
+    .min(5, 'Username must contain at least 5 characters'),
   password: z
     .string()
-    .min(1, 'Vui lòng nhập mật khẩu')
-    .min(5, 'Mật khẩu phải có ít nhất 5 ký tự'),
+    .min(1, 'Please enter your password')
+    .min(5, 'Password must contain at least 5 characters'),
 })
 
 export type LoginFormData = z.infer<typeof loginSchema>
@@ -17,27 +17,27 @@ export const registerSchema = z
   .object({
     email: z
       .string()
-      .min(1, 'Vui lòng nhập email')
-      .email('Email không đúng định dạng'),
+      .min(1, 'Please enter your email')
+      .email('Please enter a valid email address'),
     username: z
       .string()
-      .min(1, 'Vui lòng nhập tên đăng nhập')
-      .min(5, 'Tên đăng nhập phải có ít nhất 5 ký tự')
+      .min(1, 'Please enter your username')
+      .min(5, 'Username must contain at least 5 characters')
       .regex(
         /^[a-zA-Z0-9_.-]+$/,
-        'Tên đăng nhập chỉ chứa chữ cái, số, dấu gạch dưới, gạch ngang hoặc chấm',
+        'Username can only contain letters, numbers, underscores, hyphens or periods',
       ),
     password: z
       .string()
-      .min(1, 'Vui lòng tạo mật khẩu')
-      .min(5, 'Mật khẩu phải có ít nhất 5 ký tự'),
+      .min(1, 'Please create a password')
+      .min(5, 'Password must contain at least 5 characters'),
     confirmPassword: z
       .string()
-      .min(1, 'Vui lòng xác nhận mật khẩu')
-      .min(5, 'Mật khẩu xác nhận phải có ít nhất 5 ký tự'),
+      .min(1, 'Please confirm your password')
+      .min(5, 'Password confirmation must contain at least 5 characters'),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: 'Mật khẩu xác nhận không khớp',
+    message: 'Passwords do not match',
     path: ['confirmPassword'],
   })
 
