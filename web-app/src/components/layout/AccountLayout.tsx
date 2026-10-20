@@ -1,4 +1,4 @@
-import { ArrowLeft, UserRound } from 'lucide-react'
+import { ArrowLeft, Gamepad2, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -18,7 +18,7 @@ export function AccountLayout() {
           </Link>
         </div>
 
-        <nav aria-label="Account navigation" className="px-3 pb-4 md:flex-1">
+        <nav aria-label="Account navigation" className="space-y-1 px-3 pb-4 md:flex-1">
           <NavLink
             to="/profile"
             end
@@ -32,6 +32,19 @@ export function AccountLayout() {
           >
             <UserRound className="h-4 w-4 shrink-0" />
             Profile
+          </NavLink>
+          <NavLink
+            to="/category-preferences"
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
+                isActive
+                  ? 'border-[#ff2b42] bg-[#121216] font-semibold text-[#ff2b42]'
+                  : 'border-transparent text-gray-400 hover:bg-[#121216] hover:text-white'
+              }`
+            }
+          >
+            <Gamepad2 className="h-4 w-4 shrink-0" />
+            Category Interests
           </NavLink>
         </nav>
 

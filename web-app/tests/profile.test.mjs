@@ -159,7 +159,8 @@ test('profile uses its own account navigation without the browsing header or sid
   assert.match(html, /Back to home/)
   assert.doesNotMatch(html, /Toggle navigation|Search streams|>Browse<|FOLLOWING/)
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/s)?.[1]
-  assert.equal((nav?.match(/<a /g) || []).length, 1)
+  assert.equal((nav?.match(/<a /g) || []).length, 2)
+  assert.match(nav, /href="\/category-preferences"/)
 })
 
 test('browse routes retain the original site navigation', () => {

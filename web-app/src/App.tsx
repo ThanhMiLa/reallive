@@ -13,6 +13,7 @@ import { Toaster } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { AccountLayout } from '@/components/layout/AccountLayout'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { CategoryPreferencesPage } from '@/pages/category-preferences/CategoryPreferencesPage'
 import { ProfilePage } from '@/pages/profile/ProfilePage'
 import { HomePage } from '@/pages/HomePage'
 import { BrowsePage } from '@/pages/browse/BrowsePage'
@@ -48,6 +49,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AccountLayout />}>
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/category-preferences" element={<CategoryPreferencesPage />} />
       </Route>
       <Route element={<SiteLayout />}>
         <Route path="/" element={<HomePage />} />
