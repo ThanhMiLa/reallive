@@ -1,13 +1,39 @@
-import { useNavigate } from 'react-router-dom'
-import { Search, Menu, Bell, LogOut, User as UserIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Search, Menu, Bell, LayoutDashboard, LogOut, User as UserIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 
 export function Header() {
-  const { user, isAuthenticated, openAuthModal, logout } = useAuthStore()
+  const { user, isAuthenticated, isLoading, openAuthModal, logout } = useAuthStore()
   const { toggleSidebar } = useUiStore()
-  const navigate = useNavigate()
+  const [isUserMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+  const avatarRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isUserMenuOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setUserMenuOpen(false)
+        avatarRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isUserMenuOpen])
 
   const handleNotificationClick = () => {
     toast.info('You have no new notifications.')
@@ -17,11 +43,12 @@ export function Header() {
     if (!isAuthenticated) {
       openAuthModal('login')
     } else {
-      navigate('/profile')
+      setUserMenuOpen((open) => !open)
     }
   }
 
   const handleLogout = async () => {
+    setUserMenuOpen(false)
     try {
       await logout()
       toast.success('Logged out successfully!')
@@ -79,18 +106,23 @@ export function Header() {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#ff2b42] rounded-full ring-2 ring-[#08080a]" />
         </button>
 
-        {isAuthenticated && (
-          <button type="button" onClick={handleLogout} aria-label="Log out" title="Log out"
-            className="p-2 text-gray-400 hover:text-[#ff2b42] rounded-lg focus-visible:outline-2 focus-visible:outline-[#ff2b42] cursor-pointer">
-            <LogOut className="w-4 h-4" />
-          </button>
-        )}
         {/* User avatar */}
-        <div className="relative">
+        <div
+          className="relative"
+          ref={userMenuRef}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setUserMenuOpen(false)
+            }
+          }}
+        >
           <button
+            ref={avatarRef}
             type="button"
             onClick={handleAvatarClick}
-            aria-label="User profile"
+            aria-label={isAuthenticated ? 'Account options' : 'Log in'}
+            aria-expanded={isAuthenticated ? isUserMenuOpen : undefined}
+            aria-controls={isAuthenticated && isUserMenuOpen ? 'account-options' : undefined}
             className="relative flex items-center rounded-full p-0.5 focus-visible:ring-2 focus-visible:ring-[#ff2b42] hover:ring-2 hover:ring-[#ff2b42]/50 transition cursor-pointer"
           >
             {user?.avatarUrl ? (
@@ -111,6 +143,31 @@ export function Header() {
             {/* Online Green Indicator Dot */}
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-[#08080a] rounded-full" />
           </button>
+          {isAuthenticated && isUserMenuOpen && (
+            <div
+              id="account-options"
+              aria-label="Account options"
+              className="absolute right-0 z-50 mt-3 w-48 overflow-hidden rounded-xl border border-[#1f1f26] bg-[#101014] p-1.5 shadow-2xl"
+            >
+              <Link
+                to="/profile"
+                onClick={() => setUserMenuOpen(false)}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-200 hover:bg-[#18181f] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                Dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={isLoading}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-red-400 hover:bg-[#18181f] hover:text-red-300 focus-visible:outline-2 focus-visible:outline-[#ff2b42] disabled:opacity-50"
+              >
+                <LogOut className="h-4 w-4" />
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

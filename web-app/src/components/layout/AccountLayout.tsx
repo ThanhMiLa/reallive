@@ -1,21 +1,13 @@
-import { ArrowLeft, LogOut, UserRound } from 'lucide-react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
+import { ArrowLeft, UserRound } from 'lucide-react'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 
 export function AccountLayout() {
-  const { user, isAuthenticated, isLoading, logout } = useAuthStore()
-  const navigate = useNavigate()
-
-  const handleLogout = async () => {
-    await logout()
-    navigate('/', { replace: true })
-    toast.success('Logged out successfully!')
-  }
+  const { user, isAuthenticated } = useAuthStore()
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col md:flex-row">
-      <aside className="flex shrink-0 flex-col border-b border-[#1f1f26] bg-[#08080a] md:sticky md:top-0 md:h-screen md:w-64 md:border-r md:border-b-0">
+    <div className="flex h-dvh flex-none flex-col overflow-hidden md:flex-row">
+      <aside className="flex shrink-0 flex-col border-b border-[#1f1f26] bg-[#08080a] md:h-full md:w-64 md:border-r md:border-b-0">
         <div className="px-5 pt-6 pb-5 md:px-6 md:pt-8">
           <Link
             to="/"
@@ -24,7 +16,6 @@ export function AccountLayout() {
           >
             Real<span className="text-[#ff2b42]">Live</span>
           </Link>
-          <p className="mt-2 text-sm text-gray-400">Your account</p>
         </div>
 
         <nav aria-label="Account navigation" className="px-3 pb-4 md:flex-1">
@@ -58,16 +49,6 @@ export function AccountLayout() {
                 <p className="truncate text-sm font-semibold text-white">{user.displayName}</p>
                 <p className="truncate text-xs text-gray-400">{user.email}</p>
               </div>
-              <button
-                type="button"
-                aria-label="Log out"
-                title="Log out"
-                onClick={handleLogout}
-                disabled={isLoading}
-                className="shrink-0 cursor-pointer rounded p-1.5 text-gray-400 hover:text-[#ff2b42] focus-visible:outline-2 focus-visible:outline-[#ff2b42] disabled:opacity-50"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
             </div>
           )}
           <Link
@@ -79,7 +60,9 @@ export function AccountLayout() {
           </Link>
         </div>
       </aside>
-      <Outlet />
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+        <Outlet />
+      </div>
     </div>
   )
 }
