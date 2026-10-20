@@ -22,6 +22,7 @@ export interface UserProfile {
   userId: string
   displayName: string
   email: string
+  emailVerified: boolean
   avatarUrl: string | null
   dob: string | null
   create_at?: string
@@ -33,4 +34,12 @@ export interface ChangePasswordRequest {
   currentPassword: string
   newPassword: string
   confirmPassword: string
+}
+
+export interface EmailVerificationOtpResponse {
+  expiresAt: string
+}
+
+export interface EmailVerificationResponse {
+  emailVerified: boolean
 }

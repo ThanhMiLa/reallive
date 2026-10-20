@@ -30,3 +30,5 @@ export function avatarError(file: File) {
   if (!file.size || file.size > 5 * 1024 * 1024) return 'Please choose a non-empty image no larger than 5 MB.'
   return null
 }
+
+export const emailOtpSchema = z.string().regex(/^[0-9]{6}$/, 'Enter the 6-digit code from your email.')

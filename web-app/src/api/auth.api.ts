@@ -3,11 +3,27 @@ import type {
   ApiResponse,
   AuthRequest,
   ChangePasswordRequest,
+  EmailVerificationOtpResponse,
+  EmailVerificationResponse,
   RegisterRequest,
   UserProfile,
 } from '@/types/auth.types'
 
 export const authApi = {
+  requestEmailVerificationOtp: async (): Promise<EmailVerificationOtpResponse> => {
+    const response = await apiClient.post<ApiResponse<EmailVerificationOtpResponse>>(
+      '/user/api/users/me/email-verification/otp',
+    )
+    return response.data.result
+  },
+
+  verifyEmailOtp: async (otp: string): Promise<EmailVerificationResponse> => {
+    const response = await apiClient.post<ApiResponse<EmailVerificationResponse>>(
+      '/user/api/users/me/email-verification/verify', { otp },
+    )
+    return response.data.result
+  },
+
   changePassword: async (payload: ChangePasswordRequest): Promise<void> => {
     await apiClient.post('/user/api/auth/change-password', payload)
   },

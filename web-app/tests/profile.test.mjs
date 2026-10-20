@@ -169,3 +169,69 @@ test('browse routes retain the original site navigation', () => {
   assert.match(html, />Browse</)
   assert.doesNotMatch(html, /aria-label="Account navigation"/)
 })
+
+test('unverified profiles show a warning and verification action below email', () => {
+  const { html, client } = renderProfile({ userId: 'viewer-unverified', displayName: 'Viewer', email: 'viewer@example.com', emailVerified: false, dob: null, avatarUrl: null })
+  assert.match(html, /Your email is not verified\./)
+  assert.match(html, />Verify email</)
+  assert.ok(html.indexOf('id="profile-email"') < html.indexOf('Your email is not verified.'))
+  assert.doesNotMatch(html, />Email verified</)
+  client.clear()
+})
+
+test('verified profiles show their status without requesting another code', () => {
+  const { html, client } = renderProfile({ userId: 'viewer-verified', displayName: 'Viewer', email: 'viewer@example.com', emailVerified: true, dob: null, avatarUrl: null })
+  assert.match(html, />Email verified</)
+  assert.doesNotMatch(html, /Your email is not verified|>Verify email<|id="email-verification-otp"/)
+  client.clear()
+})
+
+test('OTP validation preserves leading zeros and only accepts six ASCII digits', () => {
+  assert.equal(schemas.emailOtpSchema.parse('001234'), '001234')
+  for (const code of ['', '12345', '1234567', 'abcdef', '123 45', '１２３４５６', ' 123456']) {
+    assert.equal(schemas.emailOtpSchema.safeParse(code).success, false)
+  }
+})
+
+test('email verification APIs use authenticated POSTs and read their result contracts', async () => {
+  const original = apiClient.defaults.adapter
+  const expiresAt = '2026-10-20T12:01:00Z'
+  const requests = []
+  apiClient.defaults.adapter = async (config) => {
+    requests.push(config)
+    const sending = config.url.endsWith('/otp')
+    return {
+      data: { result: sending ? { expiresAt } : { emailVerified: true } },
+      status: sending ? 202 : 200, statusText: 'OK', headers: {}, config,
+    }
+  }
+  try {
+    assert.deepEqual(await authApi.requestEmailVerificationOtp(), { expiresAt })
+    assert.deepEqual(await authApi.verifyEmailOtp('001234'), { emailVerified: true })
+    assert.equal(requests[0].url, '/user/api/users/me/email-verification/otp')
+    assert.equal(requests[0].data, undefined)
+    assert.equal(requests[1].url, '/user/api/users/me/email-verification/verify')
+    assert.deepEqual(JSON.parse(requests[1].data), { otp: '001234' })
+    for (const request of requests) {
+      assert.equal(request.method, 'post')
+      assert.equal(request.withCredentials, true)
+    }
+  } finally { apiClient.defaults.adapter = original }
+})
+
+test('verification failures are surfaced without marking the session verified', async () => {
+  const original = apiClient.defaults.adapter
+  useAuthStore.setState({ user: { userId: 'unverified-user', emailVerified: false } })
+  apiClient.defaults.adapter = async (config) => {
+    throw new axios.AxiosError('Verification failed', 'ERR_BAD_REQUEST', config, null, {
+      status: config.url.endsWith('/otp') ? 429 : 400,
+      data: { code: config.url.endsWith('/otp') ? 1021 : 1024 },
+      headers: {}, statusText: 'Error', config,
+    })
+  }
+  try {
+    await assert.rejects(authApi.requestEmailVerificationOtp(), (error) => error.response.data.code === 1021)
+    await assert.rejects(authApi.verifyEmailOtp('123456'), (error) => error.response.data.code === 1024)
+    assert.equal(useAuthStore.getState().user.emailVerified, false)
+  } finally { apiClient.defaults.adapter = original }
+})

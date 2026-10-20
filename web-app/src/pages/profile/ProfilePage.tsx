@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ApiResponse, UserProfile } from '@/types/auth.types'
+import { EmailVerification } from './EmailVerification'
 import { avatarError, passwordSchema, profileSchema, todayDate } from './profile.schema'
 
 function errorMessage(error: unknown) {
@@ -25,7 +26,11 @@ function FormError({ message }: { message: string | null }) {
   return message ? <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{message}</p> : null
 }
 
-function ProfileForm({ profile, onSaved }: { profile: UserProfile; onSaved: (profile: UserProfile) => void }) {
+function ProfileForm({ profile, onSaved, onVerified }: {
+  profile: UserProfile
+  onSaved: (profile: UserProfile) => void
+  onVerified: () => void
+}) {
   const [avatar, setAvatar] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
@@ -63,6 +68,10 @@ function ProfileForm({ profile, onSaved }: { profile: UserProfile; onSaved: (pro
     try {
       const updated = await authApi.updateProfile(payload)
       if (useAuthStore.getState().user?.userId !== profile.userId) return
+      reset({ displayName: updated.displayName || '', dob: updated.dob || '' })
+      setAvatar(null)
+      setPreview(null)
+      setImageError(null)
       onSaved(updated)
       toast.success('Profile updated successfully.')
     } catch (cause) {
@@ -74,42 +83,47 @@ function ProfileForm({ profile, onSaved }: { profile: UserProfile; onSaved: (pro
   return (
     <form onSubmit={save} className="space-y-6" noValidate>
       <FormError message={error} />
-      <fieldset disabled={isSubmitting} className="space-y-6 disabled:opacity-60">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-[#1f1f26] bg-[#18181f] flex items-center justify-center">
+      <fieldset disabled={isSubmitting} className="grid items-start gap-6 disabled:opacity-60 lg:grid-cols-[6rem_minmax(0,1fr)] lg:gap-8">
+        <div className="space-y-2">
+          <button
+            type="button"
+            aria-label="Change profile picture"
+            onClick={() => fileInput.current?.click()}
+            className="group relative flex h-24 w-24 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-[#1f1f26] bg-[#18181f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ff2b42]"
+          >
             {avatarUrl ? <img src={avatarUrl} alt="Profile picture" className="h-full w-full object-cover" /> : <UserRound className="h-10 w-10 text-gray-400" />}
-          </div>
-          <div className="space-y-2">
-            <Button type="button" variant="secondary" leftIcon={<Camera className="h-4 w-4" />} onClick={() => fileInput.current?.click()}>Change profile picture</Button>
-            <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose profile picture" className="hidden" onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (!file) return
-              const message = avatarError(file)
-              setImageError(message)
-              if (!message) {
-                setAvatar(file)
-                setPreview(URL.createObjectURL(file))
-              }
-              event.target.value = ''
-            }} />
-            <p className="text-xs text-gray-400">JPG, PNG or WebP. Up to 5 MB and 16 million pixels.</p>
-            {avatar && <p className="max-w-64 truncate text-xs text-gray-300">{avatar.name}</p>}
-            {imageError && <p role="alert" className="text-xs text-red-400">{imageError}</p>}
-          </div>
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+              <Camera className="h-6 w-6 text-white" aria-hidden="true" />
+            </span>
+          </button>
+          <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose profile picture" className="hidden" onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (!file) return
+            const message = avatarError(file)
+            setImageError(message)
+            if (!message) {
+              setAvatar(file)
+              setPreview(URL.createObjectURL(file))
+            }
+            event.target.value = ''
+          }} />
+          {imageError && <p role="alert" className="text-xs text-red-400">{imageError}</p>}
         </div>
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-5 sm:grid-cols-2">
           <Input id="profile-name" label="Display name" autoComplete="nickname" maxLength={100} error={errors.displayName?.message} {...register('displayName')} />
-          <Input id="profile-email" label="Email" type="email" value={profile.email} readOnly className="text-gray-400" />
           <div>
             <Input id="profile-dob" label="Date of birth" type="date" max={todayDate()} error={errors.dob?.message} {...register('dob')} />
-            {profile.dob && <p className="mt-2 text-xs text-gray-400">You can update your saved date of birth.</p>}
+          </div>
+          <div>
+            <Input id="profile-email" label="Email" type="email" value={profile.email} readOnly className="text-gray-400" />
+            <EmailVerification profile={profile} onVerified={onVerified} />
           </div>
           <Input id="profile-joined" label="Joined" value={profile.create_at ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(profile.create_at)) : 'Not available'} readOnly className="text-gray-400" />
         </div>
       </fieldset>
-      <div className="flex flex-wrap justify-end gap-3 border-t border-[#1f1f26] pt-5">
-        <Button type="button" variant="secondary" disabled={isSubmitting || (!isDirty && !avatar)} onClick={cancel}>Cancel changes</Button>
-        <Button type="submit" isLoading={isSubmitting} disabled={(!isDirty && !avatar) || Boolean(imageError)}>Save changes</Button>
+      <div className="flex flex-wrap justify-end gap-2 border-t border-[#1f1f26] pt-3">
+        <Button type="button" size="sm" variant="secondary" disabled={isSubmitting || (!isDirty && !avatar)} onClick={cancel}>Cancel changes</Button>
+        <Button type="submit" size="sm" isLoading={isSubmitting} disabled={(!isDirty && !avatar) || Boolean(imageError)}>Save changes</Button>
       </div>
     </form>
   )
@@ -148,7 +162,7 @@ function PasswordForm() {
           {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           {visible ? 'Hide passwords' : 'Show passwords'}
         </button>
-        <Button type="submit" isLoading={isSubmitting}>Change password</Button>
+        <Button type="submit" size="sm" isLoading={isSubmitting}>Change password</Button>
       </div>
     </form>
   )
@@ -158,7 +172,7 @@ export function ProfilePage() {
   const { user, isAuthenticated, isCheckingAuth, openAuthModal, setUser } = useAuthStore()
   const client = useQueryClient()
   const queryKey = ['profile', user?.userId]
-  const { data, isPending, isError, error, refetch, dataUpdatedAt } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey,
     queryFn: () => authApi.getProfile(),
     enabled: isAuthenticated && !isCheckingAuth,
@@ -187,9 +201,18 @@ export function ProfilePage() {
                 <UserRound className="h-5 w-5 text-[#ff2b42]" />
                 <h2 id="personal-info" className="text-lg font-bold text-white font-outfit">Personal information</h2>
               </div>
-              <ProfileForm key={`${data.userId}-${dataUpdatedAt}`} profile={data} onSaved={(updated) => {
-                setUser(updated)
-                client.setQueryData(queryKey, updated)
+              <ProfileForm key={data.userId} profile={data} onSaved={(updated) => {
+                const currentUser = useAuthStore.getState().user
+                const profile = { ...updated, emailVerified: updated.emailVerified || Boolean(currentUser?.emailVerified) }
+                setUser(profile)
+                client.setQueryData(queryKey, profile)
+              }} onVerified={() => {
+                const currentUser = useAuthStore.getState().user
+                if (currentUser?.userId !== data.userId) return
+                setUser({ ...currentUser, emailVerified: true })
+                client.setQueryData<UserProfile>(queryKey, (current) =>
+                  current ? { ...current, emailVerified: true } : current,
+                )
               }} />
             </section>
             <section aria-labelledby="password-heading" className="rounded-xl border border-[#1f1f26] bg-[#08080a] p-5 sm:p-7">
