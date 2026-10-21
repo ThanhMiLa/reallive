@@ -7,13 +7,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createServer } from 'vite'
 
-let server, schemas, authApi, apiClient, ProfilePage, useAuthStore, AppRoutes
+let server, schemas, authApi, apiClient, ProfilePage, useAuthStore, AppRoutes, BecomeStreamerPage
 before(async () => {
   server = await createServer({ server: { middlewareMode: true, watch: null, ws: false } })
   schemas = await server.ssrLoadModule('/src/pages/profile/profile.schema.ts')
   ;({ authApi } = await server.ssrLoadModule('/src/api/auth.api.ts'))
   ;({ apiClient } = await server.ssrLoadModule('/src/api/client.ts'))
   ;({ AppRoutes } = await server.ssrLoadModule('/src/App.tsx'))
+  ;({ BecomeStreamerPage } = await server.ssrLoadModule('/src/pages/become-streamer/BecomeStreamerPage.tsx'))
   ;({ ProfilePage } = await server.ssrLoadModule('/src/pages/profile/ProfilePage.tsx'))
   ;({ useAuthStore } = await server.ssrLoadModule('/src/stores/auth.store.ts'))
 })
@@ -109,12 +110,12 @@ test('change-password refreshes an expired access token once and retries the ori
   }
 })
 
-function renderProfile(user, checking = false) {
+function renderProfile(user, checking = false, component = ProfilePage) {
   useAuthStore.setState({ user, isAuthenticated: Boolean(user), isCheckingAuth: checking })
   Object.assign(useAuthStore.getInitialState(), useAuthStore.getState())
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
   if (user) client.setQueryData(['profile', user.userId], user)
-  const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ProfilePage)))
+  const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MemoryRouter, null, createElement(component))))
   const query = client.getQueryCache().getAll()[0]
   return { html, query, client }
 }
@@ -159,7 +160,7 @@ test('profile uses its own account navigation without the browsing header or sid
   assert.match(html, /Back to home/)
   assert.doesNotMatch(html, /Toggle navigation|Search streams|>Browse<|FOLLOWING/)
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/s)?.[1]
-  assert.equal((nav?.match(/<a /g) || []).length, 2)
+  assert.equal((nav?.match(/<a /g) || []).length, 3)
   assert.match(nav, /href="\/category-preferences"/)
 })
 
@@ -235,4 +236,90 @@ test('verification failures are surfaced without marking the session verified', 
     await assert.rejects(authApi.verifyEmailOtp('123456'), (error) => error.response.data.code === 1024)
     assert.equal(useAuthStore.getState().user.emailVerified, false)
   } finally { apiClient.defaults.adapter = original }
+})
+
+test('streamer signup requires explicit acceptance and shows the email requirement', () => {
+  for (const verified of [false, true]) {
+    const { html, client } = renderProfile({ userId: 'viewer-streamer', displayName: 'Viewer', email: 'viewer@example.com', emailVerified: verified, dob: null, avatarUrl: null }, false, BecomeStreamerPage)
+    const button = html.match(/<button([^>]*)>Become a streamer<\/button>/)?.[1]
+    assert.ok(button)
+    assert.match(button, /type="button"/)
+    assert.match(button, /disabled=""/)
+    const checkbox = html.match(/<input[^>]*type="checkbox"[^>]*>/)?.[0]
+    assert.ok(checkbox)
+    assert.doesNotMatch(checkbox, /checked=""/)
+    assert.match(html, /I have read and accept the streamer guidelines/)
+    assert.match(html, /Before you register/)
+    assert.match(html, /Streamer guidelines/)
+    if (verified) {
+      assert.doesNotMatch(html, /id="streamer-email-required"/)
+    } else {
+      assert.match(html, /id="streamer-email-required"/)
+    }
+    client.clear()
+  }
+})
+
+test('streamer onboarding has a dedicated dashboard route and is absent from the profile form', () => {
+  const signup = renderRoute('/become-streamer')
+  assert.match(signup, /aria-current="page"[^>]*href="\/become-streamer"/)
+  assert.match(signup, /A channel of your own/)
+  assert.match(signup, /Log in to register as a streamer/)
+  assert.doesNotMatch(signup, /Search streams|Toggle navigation/)
+  const { html, client } = renderProfile({ userId: 'viewer-streamer', emailVerified: true })
+  assert.doesNotMatch(html, /streamer-registration-heading|>Become a streamer<\/button>/)
+  client.clear()
+})
+
+test('become-streamer POST uses session cookies without accepting a user ID payload', async () => {
+  const { streamerApi } = await server.ssrLoadModule('/src/api/streamer.api.ts')
+  const original = apiClient.defaults.adapter
+  const result = { userId: 'viewer-1', streamerId: 'streamer-1', status: 'ACTIVE', roles: ['USER', 'STREAMER'] }
+  let request
+  apiClient.defaults.adapter = async (config) => {
+    request = config
+    return { data: { result }, status: 200, statusText: 'OK', headers: {}, config }
+  }
+  try {
+    assert.deepEqual(await streamerApi.becomeStreamer(), result)
+    assert.equal(request.url, '/user/api/users/me/become-streamer')
+    assert.equal(request.method, 'post')
+    assert.equal(request.withCredentials, true)
+    assert.equal(request.data, undefined)
+  } finally { apiClient.defaults.adapter = original }
+})
+
+test('registration API preserves backend constraint errors without retrying the operation', async () => {
+  const { streamerApi } = await server.ssrLoadModule('/src/api/streamer.api.ts')
+  const original = apiClient.defaults.adapter
+  let attempts = 0
+  try {
+    for (const [code, status] of [[1027, 403], [1030, 409], [1031, 500], [1037, 500], [1044, 503]]) {
+      apiClient.defaults.adapter = async (config) => {
+        attempts++
+        throw new axios.AxiosError('Registration failed', 'ERR_BAD_RESPONSE', config, null, {
+          data: { code }, status, statusText: 'Error', headers: {}, config,
+        })
+      }
+      await assert.rejects(streamerApi.becomeStreamer(), (error) => error.response.data.code === code)
+    }
+    assert.equal(attempts, 5)
+  } finally { apiClient.defaults.adapter = original }
+})
+
+
+test('existing STREAMER roles hide the signup button and acceptance checkbox on first render', () => {
+  const { html, client } = renderProfile({ userId: 'existing-streamer', displayName: 'Streamer', email: 'streamer@example.com', emailVerified: true, roles: ['USER', 'STREAMER'], dob: null, avatarUrl: null }, false, BecomeStreamerPage)
+  assert.match(html, /Your streamer registration is complete/)
+  assert.doesNotMatch(html, /<button[^>]*>Become a streamer<\/button>/)
+  assert.doesNotMatch(html, /type="checkbox"/)
+  client.clear()
+})
+
+test('users without the STREAMER role still see the signup action', () => {
+  const { html, client } = renderProfile({ userId: 'viewer-role', displayName: 'Viewer', email: 'viewer@example.com', emailVerified: true, roles: ['USER'], dob: null, avatarUrl: null }, false, BecomeStreamerPage)
+  assert.match(html, /<button[^>]*>Become a streamer<\/button>/)
+  assert.match(html, /type="checkbox"/)
+  assert.doesNotMatch(html, /Your streamer registration is complete/)
+  client.clear()
 })

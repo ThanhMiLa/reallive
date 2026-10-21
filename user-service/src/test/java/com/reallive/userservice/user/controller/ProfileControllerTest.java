@@ -1,9 +1,11 @@
 package com.reallive.userservice.user.controller;
 
 import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
+import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
+import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.AppException;
@@ -66,6 +68,7 @@ import java.util.concurrent.TimeoutException;
 import javax.imageio.ImageIO;
 
 import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -118,6 +121,9 @@ class ProfileControllerTest {
     private UserRepository userRepository;
 
     @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
     private ProfileRepository profileRepository;
 
     @Autowired
@@ -156,6 +162,10 @@ class ProfileControllerTest {
     void getMyProfileReturnsExactlyTheRequestedFields(boolean emailVerified) throws Exception {
         UserEntity user = createUser("viewer");
         user.setEmailVerified(emailVerified);
+        user.getRoles().add(roleRepository.findByName("USER")
+                .orElseGet(() -> roleRepository.saveAndFlush(RoleEntity.builder().name("USER").build())));
+        user.getRoles().add(roleRepository.findByName("STREAMER")
+                .orElseGet(() -> roleRepository.saveAndFlush(RoleEntity.builder().name("STREAMER").build())));
         userRepository.saveAndFlush(user);
         profileRepository.saveAndFlush(ProfileEntity.builder()
                 .user(user)
@@ -171,7 +181,8 @@ class ProfileControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.code").value(1000))
-                .andExpect(jsonPath("$.result.length()").value(7))
+                .andExpect(jsonPath("$.result.length()").value(8))
+                .andExpect(jsonPath("$.result.roles").value(containsInAnyOrder("USER", "STREAMER")))
                 .andExpect(jsonPath("$.result.userId").value(user.getId().toString()))
                 .andExpect(jsonPath("$.result.displayName").value("Viewer"))
                 .andExpect(jsonPath("$.result.email").value("viewer@example.com"))
@@ -278,7 +289,7 @@ class ProfileControllerTest {
                         .param("create_at", "2000-01-01T00:00:00")
                         .cookie(accessCookie()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.length()").value(7))
+                .andExpect(jsonPath("$.result.length()").value(8))
                 .andExpect(jsonPath("$.result.userId").value(user.getId().toString()))
                 .andExpect(jsonPath("$.result.email").value("viewer@example.com"))
                 .andExpect(jsonPath("$.result.emailVerified").value(false))

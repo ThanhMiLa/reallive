@@ -1,6 +1,7 @@
 package com.reallive.userservice.user.service.impl;
 
 import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.client.channel.ChannelClientResolver;
 import com.reallive.userservice.common.exception.AppException;
@@ -29,6 +30,7 @@ import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 
@@ -79,6 +81,27 @@ class ProfileServiceImplTest {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.clearSynchronization();
         }
+    }
+
+    @Test
+    void getMyProfileReturnsCurrentRoleNames() {
+        ProfileEntity profile = ProfileEntity.builder().user(user).displayName("Viewer").build();
+        user.getRoles().add(RoleEntity.builder().id(UUID.randomUUID()).name("USER").build());
+        when(profileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
+
+        assertEquals(Set.of("USER"), profileService.getMyProfile(user.getId()).getRoles());
+
+        user.getRoles().add(RoleEntity.builder().id(UUID.randomUUID()).name("STREAMER").build());
+
+        assertEquals(Set.of("USER", "STREAMER"), profileService.getMyProfile(user.getId()).getRoles());
+    }
+
+    @Test
+    void getMyProfileReturnsEmptyRolesWhenNoneAreAssigned() {
+        when(profileRepository.findByUserId(user.getId())).thenReturn(Optional.of(
+                ProfileEntity.builder().user(user).displayName("Viewer").build()));
+
+        assertEquals(Set.of(), profileService.getMyProfile(user.getId()).getRoles());
     }
 
     @Test

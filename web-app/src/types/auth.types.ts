@@ -23,6 +23,7 @@ export interface UserProfile {
   displayName: string
   email: string
   emailVerified: boolean
+  roles: string[]
   avatarUrl: string | null
   dob: string | null
   create_at?: string

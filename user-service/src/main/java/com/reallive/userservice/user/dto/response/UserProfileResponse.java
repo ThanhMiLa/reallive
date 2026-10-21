@@ -10,6 +10,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
 
 @Data
@@ -22,6 +23,7 @@ public class UserProfileResponse {
     String displayName;
     String email;
     boolean emailVerified;
+    Set<String> roles;
     String avatarUrl;
     LocalDate dob;
 

@@ -14,6 +14,7 @@ import { Header } from '@/components/layout/Header'
 import { AccountLayout } from '@/components/layout/AccountLayout'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { CategoryPreferencesPage } from '@/pages/category-preferences/CategoryPreferencesPage'
+import { BecomeStreamerPage } from '@/pages/become-streamer/BecomeStreamerPage'
 import { ProfilePage } from '@/pages/profile/ProfilePage'
 import { HomePage } from '@/pages/HomePage'
 import { BrowsePage } from '@/pages/browse/BrowsePage'
@@ -49,6 +50,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AccountLayout />}>
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/become-streamer" element={<BecomeStreamerPage />} />
         <Route path="/category-preferences" element={<CategoryPreferencesPage />} />
       </Route>
       <Route element={<SiteLayout />}>

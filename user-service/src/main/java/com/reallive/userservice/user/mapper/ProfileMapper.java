@@ -1,5 +1,6 @@
 package com.reallive.userservice.user.mapper;
 
+import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 import com.reallive.userservice.user.entity.ProfileEntity;
 import org.mapstruct.Builder;
@@ -16,6 +17,11 @@ public interface ProfileMapper {
     @Mapping(target = "userId", source = "user.id")
     @Mapping(target = "email", source = "user.email")
     @Mapping(target = "emailVerified", source = "user.emailVerified")
+    @Mapping(target = "roles", source = "user.roles")
     @Mapping(target = "createdAt", source = "user.createdAt")
     UserProfileResponse toResponse(ProfileEntity profile);
+
+    default String toRoleName(RoleEntity role) {
+        return role == null ? null : role.getName();
+    }
 }

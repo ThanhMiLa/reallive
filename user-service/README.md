@@ -17,7 +17,7 @@ Login accepts `{username, password}`. Register accepts `{username, email, passwo
 
 `GET /user/api/users/me` returns the authenticated user's profile using the `access_token` cookie. The user ID comes from the JWT subject; no user ID parameter is required.
 
-The `result` object contains `userId`, `displayName`, `email`, `emailVerified`, `avatarUrl`, `dob`, and `create_at`. `emailVerified` is a boolean read from the current account record in `users.email_verified`. `create_at` is the account creation timestamp from `users.created_at`. `avatarUrl` and `dob` may be `null`. Dates use `YYYY-MM-DD`, and creation timestamps use ISO local date-time format.
+The `result` object contains `userId`, `displayName`, `email`, `emailVerified`, `roles`, `avatarUrl`, `dob`, and `create_at`. `roles` contains the current database role names, such as `["USER", "STREAMER"]`, or an empty array when no roles are assigned. `emailVerified` is a boolean read from the current account record in `users.email_verified`. `create_at` is the account creation timestamp from `users.created_at`. `avatarUrl` and `dob` may be `null`. Dates use `YYYY-MM-DD`, and creation timestamps use ISO local date-time format.
 
 The API returns 401 for unauthenticated requests, 404 when the profile is missing, and 403 when the account is inactive.
 
@@ -29,7 +29,7 @@ The API returns 401 for unauthenticated requests, 404 when the profile is missin
 | `dob` | Optional; strict `yyyy-MM-dd`, not in the future |
 | `avatar` | Optional file; JPEG, PNG or WebP, at most 5 MiB and 16 million pixels |
 
-At least one field must be supplied. Omitted fields remain unchanged; blank values and empty uploaded files are rejected. This endpoint does not clear existing fields. User identity comes from the access cookie, and fields such as `email`, `emailVerified`, `userId`, `avatarUrl`, and `create_at` cannot be changed through this request. The response uses the same seven profile fields as GET. The server detects the image format from its content, ignoring the supplied filename and MIME type.
+At least one field must be supplied. Omitted fields remain unchanged; blank values and empty uploaded files are rejected. This endpoint does not clear existing fields. User identity comes from the access cookie, and fields such as `email`, `emailVerified`, `roles`, `userId`, `avatarUrl`, and `create_at` cannot be changed through this request. The response uses the same eight profile fields as GET. The server detects the image format from its content, ignoring the supplied filename and MIME type.
 
 Standard input constraints are declared on `UpdateProfileRequest` and triggered by `@Valid` in the controller. Date of birth binds to `LocalDate` and uses `@PastOrPresent`; display names are trimmed during form binding before `@Size` and `@Pattern` validation. The DTO contains only the three request fields and uses Lombok for accessors and construction. The service rejects updates without any fields and uses `AvatarValidator` to check image content before uploading. It also handles account status, profile persistence and storage transaction cleanup.
 
