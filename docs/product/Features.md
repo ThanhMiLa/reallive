@@ -21,11 +21,8 @@
 - Remove Channel Moderator
 
 ## III - Stream Setup
-- Create Stream Session
-- Set Title
-- Choose Category
-- Generate / Rotate Stream Key
-- Configure Stream Visibility
+- Create / Update Stream Session
+- Manage Stream Key
 
 ## IV - Go Live / Live Stream
 - Start Stream
