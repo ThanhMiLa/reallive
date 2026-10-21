@@ -6,14 +6,6 @@ import { useAuthStore } from '@/stores/auth.store'
 import { useQuery } from '@tanstack/react-query'
 import { channelApi } from '@/api/channel.api'
 
-interface StreamerItem {
-  id: string
-  name: string
-  category: string
-  avatar: string
-  isLive: boolean
-}
-
 function ChannelAvatar({
   name,
   avatarUrl,
@@ -41,41 +33,6 @@ function ChannelAvatar({
     </div>
   )
 }
-
-const recommendedStreamers: StreamerItem[] = [
-  {
-    id: '4',
-    name: 'bladeito',
-    category: 'Counter-Strike 2',
-    avatar:
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-  {
-    id: '5',
-    name: 'Astaturo',
-    category: 'GTA V',
-    avatar:
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-  {
-    id: '6',
-    name: 'FrankDimes',
-    category: 'Dota 2',
-    avatar:
-      'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-  {
-    id: '7',
-    name: 'Miken',
-    category: 'Minecraft',
-    avatar:
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=faces',
-    isLive: true,
-  },
-]
 
 export function Sidebar() {
   const { isSidebarCollapsed } = useUiStore()
@@ -259,39 +216,6 @@ export function Sidebar() {
               <span className="w-6 h-px bg-[#1f1f26]" />
             </div>
           )}
-
-          <div className="space-y-1">
-            {recommendedStreamers.map((streamer) => (
-              <div
-                key={streamer.id}
-                title={`${streamer.name} • ${streamer.category}`}
-                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#121216] transition group cursor-pointer ${
-                  isSidebarCollapsed ? 'justify-center px-0' : ''
-                }`}
-              >
-                <div className="relative flex-shrink-0">
-                  <img
-                    alt={streamer.name}
-                    className="w-8 h-8 rounded-full object-cover"
-                    src={streamer.avatar}
-                  />
-                  {streamer.isLive && (
-                    <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#08080a]" />
-                  )}
-                </div>
-                {!isSidebarCollapsed && (
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-xs font-semibold text-gray-200 truncate group-hover:text-white">
-                      {streamer.name}
-                    </span>
-                    <span className="text-[11px] text-gray-400 truncate">
-                      {streamer.category}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
