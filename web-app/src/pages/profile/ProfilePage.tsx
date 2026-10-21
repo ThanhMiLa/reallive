@@ -7,6 +7,7 @@ import { Camera, Eye, EyeOff, LockKeyhole, LogIn, UserRound } from 'lucide-react
 import { toast } from 'sonner'
 import type { z } from 'zod'
 import { authApi } from '@/api/auth.api'
+import { profileStaleTime } from '@/lib/query-client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuthStore } from '@/stores/auth.store'
@@ -176,7 +177,7 @@ export function ProfilePage() {
     queryKey,
     queryFn: () => authApi.getProfile(),
     enabled: isAuthenticated && !isCheckingAuth,
-    gcTime: 0,
+    staleTime: profileStaleTime,
     refetchOnReconnect: false,
   })
 

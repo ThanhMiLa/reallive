@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Circle, LogIn, Radio, Settings2, Users, Video } from 'lucide-react'
 import { authApi } from '@/api/auth.api'
+import { profileStaleTime } from '@/lib/query-client'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/stores/auth.store'
 import { StreamerRegistration } from './StreamerRegistration'
@@ -26,7 +27,7 @@ export function BecomeStreamerPage() {
     queryKey: ['profile', user?.userId],
     queryFn: () => authApi.getProfile(),
     enabled: isAuthenticated && !isCheckingAuth && Boolean(user?.userId),
-    gcTime: 0,
+    staleTime: profileStaleTime,
     refetchOnReconnect: false,
   })
 

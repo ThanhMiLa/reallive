@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 import { isAxiosError } from 'axios'
 import { authApi } from '@/api/auth.api'
+import { queryClient } from '@/lib/query-client'
 import type {
   AuthRequest,
   AuthTab,
   RegisterRequest,
   UserProfile,
 } from '@/types/auth.types'
+
+let authCheckPromise: Promise<void> | null = null
 
 interface AuthState {
   user: UserProfile | null
@@ -58,6 +61,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await authApi.login(payload)
       const profile = await authApi.getProfile()
+      queryClient.setQueryData(['profile', profile.userId], profile)
       set({
         user: profile,
         isAuthenticated: true,
@@ -73,6 +77,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await authApi.register(payload)
       const profile = await authApi.getProfile()
+      queryClient.setQueryData(['profile', profile.userId], profile)
       set({
         user: profile,
         isAuthenticated: true,
@@ -90,6 +95,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Even if network fails, reset client auth state
     } finally {
+      queryClient.removeQueries({ queryKey: ['profile'] })
       set({
         user: null,
         isAuthenticated: false,
@@ -98,25 +104,26 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  checkAuth: async () => {
-    set({ isCheckingAuth: true })
-    try {
-      const profile = await authApi.getProfile()
-      set({
-        user: profile,
-        isAuthenticated: true,
-      })
-    } catch (error) {
-      if (isAxiosError(error) && error.response?.status === 503) {
-        return
+  checkAuth: () => {
+    if (authCheckPromise) return authCheckPromise
+
+    authCheckPromise = (async () => {
+      set({ isCheckingAuth: true })
+      try {
+        const profile = await authApi.getProfile()
+        queryClient.setQueryData(['profile', profile.userId], profile)
+        set({ user: profile, isAuthenticated: true })
+      } catch (error) {
+        if (isAxiosError(error) && error.response?.status === 503) return
+        queryClient.removeQueries({ queryKey: ['profile'] })
+        set({ user: null, isAuthenticated: false })
+      } finally {
+        set({ isCheckingAuth: false })
       }
-      set({
-        user: null,
-        isAuthenticated: false,
-      })
-    } finally {
-      set({ isCheckingAuth: false })
-    }
+    })().finally(() => {
+      authCheckPromise = null
+    })
+    return authCheckPromise
   },
 
   setUser: (user) =>

@@ -8,7 +8,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { AccountLayout } from '@/components/layout/AccountLayout'
@@ -23,15 +23,7 @@ import { BrowseCategoriesTab } from '@/pages/browse/tabs/BrowseCategoriesTab'
 import { BrowseChannelsTab } from '@/pages/browse/tabs/BrowseChannelsTab'
 import { AuthModal } from '@/components/auth/AuthModal'
 import { useAuthStore } from '@/stores/auth.store'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-})
+import { queryClient } from '@/lib/query-client'
 
 function SiteLayout() {
   return (
