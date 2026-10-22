@@ -263,7 +263,7 @@ Composite Index:
 | category_id | UUID | NOT NULL | INDEX | Category ID from Channel Service |
 | title | VARCHAR(255) | NOT NULL | - | Stream title |
 | visibility | VARCHAR(30) | NOT NULL | INDEX | `PUBLIC, PRIVATE, UNLISTED` |
-| status | VARCHAR(30) | NOT NULL | INDEX | `CREATED, LIVE, RECONNECTING, ENDED` |
+| status | VARCHAR(30) | NOT NULL | INDEX | `READY, LIVE, RECONNECTING, ENDED` |
 | stream_key_hash | VARCHAR(255) | UNIQUE, NOT NULL | UNIQUE | Hashed stream key used by OBS |
 | playback_path | VARCHAR(500) | NOT NULL | - | HLS playback path |
 | started_at | TIMESTAMP | - | INDEX | Actual stream start time |

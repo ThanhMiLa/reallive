@@ -422,7 +422,7 @@ Kết quả build/test thực tế được ghi tại mục 11; các test tùy c
 - [Product overview](../product/Overview.md).
 - [Features](../product/Features.md).
 - [System architecture](../architecture/System%20Architecture.md).
-- [Data model](../database/Data%20Model.md).
+- [Data model](../data-model/Data%20Model.md).
 - [Channel Service README](../../channel-service/README.md).
 - [User Service README](../../user-service/README.md).
 - [Code architecture](../../.agents/skills/code-architecture/SKILL.md).

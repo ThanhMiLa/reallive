@@ -1,0 +1,72 @@
+server:
+  address: ${BACKEND_BIND_ADDRESS:127.0.0.1}
+  port: ${STREAM_SERVICE_PORT:8082}
+  servlet:
+    context-path: /stream
+
+spring:
+  application:
+    name: stream-service
+
+  datasource:
+    url: ${STREAM_DB_URL:jdbc:postgresql://localhost:5434/reallive_stream}
+    username: ${STREAM_DB_USERNAME:stream_service}
+    password: ${STREAM_DB_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_TIMEOUT:2s}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    client-id: stream-service
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 15000
+        max.block.ms: 5000
+        retry.backoff.ms: 500
+
+  cloud:
+    openfeign:
+      client:
+        config:
+          user-service:
+            connectTimeout: 2000
+            readTimeout: 5000
+          channel-service:
+            connectTimeout: 2000
+            readTimeout: 5000
+
+auth:
+  cookie:
+    access-token:
+      name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
+
+app:
+  service:
+    user: ${USER_SERVICE_BASE_URL:http://localhost:8080/user}
+    channel: ${CHANNEL_SERVICE_BASE_URL:http://localhost:8081/channel}
+
+# Add Media Server connection properties with the media adapter implementation.
