@@ -1,0 +1,11 @@
+name: reallive-streaming-fixture
+# Run from root with --project-directory .
+services:
+  mediamtx:
+    extends:
+      file: docker-compose.yml
+      service: mediamtx
+    environment:
+      MTX_AUTHJWTJWKS: http://host.docker.internal:18082/stream/api/media/jwks
+      MTX_HLSALLOWORIGINS: http://localhost:18082,http://localhost:5173
+      STREAM_MEDIA_CALLBACK_URL: http://host.docker.internal:18082/stream/api/media/events
