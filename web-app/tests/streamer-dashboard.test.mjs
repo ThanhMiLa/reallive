@@ -148,7 +148,7 @@ test('auth store login merges role returned in API response into user state', as
   }
 })
 
-test('dashboard route displays streamer setup for authenticated streamers', () => {
+test('dashboard route renders dedicated streamer layout with sidebar navbar and content frame', () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   useAuthStore.setState({
     user: {
@@ -174,10 +174,14 @@ test('dashboard route displays streamer setup for authenticated streamers', () =
       )
     )
 
+    // Dedicated Streamer Navigation sidebar
+    assert.match(html, /aria-label="Streamer navigation"/)
+    assert.match(html, /Stream Manager/)
     assert.match(html, /Streamer Dashboard/)
-    assert.match(html, /rtmp:\/\/localhost:1935\/live/)
-    assert.match(html, /OBS Stream Setup/)
-    assert.match(html, /Ready to Stream/)
+    assert.match(html, /Back to home/)
+    assert.match(html, /Streamer Dashboard Content Frame/)
+    // Must not show the browsing site header search bar
+    assert.doesNotMatch(html, /Search streams, categories, or streamers\.\.\./)
   } finally {
     client.clear()
   }

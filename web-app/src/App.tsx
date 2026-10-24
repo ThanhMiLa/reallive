@@ -12,6 +12,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { AccountLayout } from '@/components/layout/AccountLayout'
+import { StreamerDashboardLayout } from '@/components/layout/StreamerDashboardLayout'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { CategoryPreferencesPage } from '@/pages/category-preferences/CategoryPreferencesPage'
 import { BecomeStreamerPage } from '@/pages/become-streamer/BecomeStreamerPage'
@@ -46,12 +47,14 @@ export function AppRoutes() {
         <Route path="/become-streamer" element={<BecomeStreamerPage />} />
         <Route path="/category-preferences" element={<CategoryPreferencesPage />} />
       </Route>
+      <Route element={<StreamerDashboardLayout />}>
+        <Route path="/dashboard" element={<StreamerDashboardPage />} />
+        <Route path="/streamer/dashboard" element={<Navigate to="/dashboard" replace />} />
+      </Route>
       <Route element={<SiteLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<HomePage />} />
         <Route path="/register" element={<HomePage />} />
-        <Route path="/dashboard" element={<StreamerDashboardPage />} />
-        <Route path="/streamer/dashboard" element={<Navigate to="/dashboard" replace />} />
         <Route path="/browse" element={<BrowsePage />}>
           <Route index element={<Navigate to="livestreams" replace />} />
           <Route path="livestreams" element={<BrowseLivestreamsTab />} />
