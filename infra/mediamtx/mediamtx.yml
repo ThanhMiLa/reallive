@@ -1,0 +1,30 @@
+logLevel: warn
+authMethod: jwt
+authJWTJWKS: http://host.docker.internal:8888/stream/api/media/jwks
+authJWTClaimKey: mediamtx_permissions
+authJWTIssuer: reallive-stream
+authJWTAudience: reallive-media
+authJWTExclude: []
+
+api: true
+apiAddress: :9997
+rtmp: true
+rtmpAddress: :1935
+hls: true
+hlsAddress: :8888
+hlsVariant: fmp4
+hlsAllowOrigins: ['http://localhost:5173']
+
+rtsp: false
+webrtc: false
+srt: false
+moq: false
+playback: false
+
+pathDefaults:
+  source: publisher
+  overridePublisher: false
+  runOnOnline: python3 /hooks/media_hook.py online
+  runOnOffline: python3 /hooks/media_hook.py offline
+
+paths: {}

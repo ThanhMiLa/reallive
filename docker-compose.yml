@@ -1,8 +1,40 @@
 # Requires Docker Compose 2.23.1+ for inline MongoDB initialization.
 # Copy .env.example to .env, set passwords, then run: docker compose up -d --wait
+# Prepare the MediaMTX callback env first; see infra/mediamtx/README.md.
 name: reallive
 
 services:
+  mediamtx:
+    image: reallive-mediamtx:1.21.2
+    build:
+      context: .
+      dockerfile: infra/mediamtx/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${STREAM_MEDIA_ENV_FILE:-.local/streaming/mediamtx.env}
+    environment:
+      MTX_AUTHJWTJWKS: ${STREAM_MEDIAMTX_JWKS_URL:-http://host.docker.internal:8888/stream/api/media/jwks}
+      MTX_HLSALLOWORIGINS: ${STREAM_MEDIA_ALLOWED_ORIGINS:-http://localhost:5173}
+      STREAM_MEDIA_CALLBACK_URL: ${STREAM_MEDIA_CALLBACK_URL:-http://host.docker.internal:8888/stream/api/media/events}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:1935:1935"
+      - "127.0.0.1:8898:8888"
+      - "127.0.0.1:9997:9997"
+    volumes:
+      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - 'import socket; [socket.create_connection(("127.0.0.1", port), timeout=2).close() for port in (1935, 8888, 9997)]'
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   postgres-user:
     container_name: postgres-user
     image: postgres:17-alpine
