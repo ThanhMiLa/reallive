@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Menu, Bell, LayoutDashboard, LogOut, User as UserIcon } from 'lucide-react'
+import { Search, Menu, Bell, Settings, LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
+import { hasStreamerRole } from '@/lib/utils'
 
-export function Header() {
+export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean } = {}) {
   const { user, isAuthenticated, isLoading, openAuthModal, logout } = useAuthStore()
   const { toggleSidebar } = useUiStore()
-  const [isUserMenuOpen, setUserMenuOpen] = useState(false)
+  const [isUserMenuOpen, setUserMenuOpen] = useState(defaultMenuOpen)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const avatarRef = useRef<HTMLButtonElement>(null)
+  const isStreamer = hasStreamerRole(user)
 
   useEffect(() => {
     if (!isUserMenuOpen) return
@@ -147,25 +149,71 @@ export function Header() {
             <div
               id="account-options"
               aria-label="Account options"
-              className="absolute right-0 z-50 mt-3 w-48 overflow-hidden rounded-xl border border-[#1f1f26] bg-[#101014] p-1.5 shadow-2xl"
+              className="absolute right-0 z-50 mt-3 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#101014] p-3 shadow-2xl sm:w-[340px]"
             >
-              <Link
-                to="/profile"
-                onClick={() => setUserMenuOpen(false)}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-200 hover:bg-[#18181f] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                Dashboard
-              </Link>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={isLoading}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-red-400 hover:bg-[#18181f] hover:text-red-300 focus-visible:outline-2 focus-visible:outline-[#ff2b42] disabled:opacity-50"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
+              {/* Kick-inspired Profile Hero Card */}
+              <div className="rounded-xl border border-[#1f1f26] bg-[#15151c] p-2.5 pb-5 text-center">
+                <div className="h-24 w-full rounded-lg bg-gradient-to-r from-[#ff2b42]/25 via-[#1f1f2e] to-indigo-600/25 border border-white/5" />
+
+                <div className="relative mx-auto -mt-12 flex h-24 w-24 items-center justify-center rounded-full bg-[#15151c] p-1 ring-4 ring-[#15151c]">
+                  {user?.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.displayName || 'Avatar'}
+                      className="h-full w-full rounded-full object-cover border-2 border-[#ff2b42]"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded-full border-2 border-[#ff2b42] bg-gradient-to-tr from-rose-600 to-indigo-600 text-3xl font-bold text-white shadow-md">
+                      {user?.displayName ? (
+                        user.displayName.charAt(0).toUpperCase()
+                      ) : (
+                        <UserIcon className="h-10 w-10 text-white" />
+                      )}
+                    </div>
+                  )}
+                  <span className="absolute bottom-1.5 right-1.5 h-4.5 w-4.5 rounded-full border-2 border-[#15151c] bg-emerald-500" />
+                </div>
+
+                <p className="mt-3 truncate px-2 text-lg font-extrabold tracking-tight text-white font-outfit">
+                  {user?.displayName || 'User'}
+                </p>
+                {user?.email && (
+                  <p className="mt-0.5 truncate px-2 text-xs text-gray-400">
+                    {user.email}
+                  </p>
+                )}
+              </div>
+
+              {/* Menu Actions */}
+              <div className="mt-2.5 space-y-1">
+                {isStreamer && (
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-[15px] font-medium text-gray-200 transition hover:bg-[#18181f] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+                  >
+                    <LayoutDashboard className="h-5 w-5 shrink-0 text-gray-400" />
+                    Streamer Dashboard
+                  </Link>
+                )}
+                <Link
+                  to="/profile"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-[15px] font-medium text-gray-200 transition hover:bg-[#18181f] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+                >
+                  <Settings className="h-5 w-5 shrink-0 text-gray-400" />
+                  Settings
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isLoading}
+                  className="flex w-full cursor-pointer items-center gap-3.5 rounded-xl px-3.5 py-3 text-left text-[15px] font-medium text-red-400 transition hover:bg-[#18181f] hover:text-red-300 focus-visible:outline-2 focus-visible:outline-[#ff2b42] disabled:opacity-50"
+                >
+                  <LogOut className="h-5 w-5 shrink-0" />
+                  Logout
+                </button>
+              </div>
             </div>
           )}
         </div>

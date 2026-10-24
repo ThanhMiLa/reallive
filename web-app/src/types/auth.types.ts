@@ -24,6 +24,7 @@ export interface UserProfile {
   email: string
   emailVerified: boolean
   roles: string[]
+  role?: string
   avatarUrl: string | null
   dob: string | null
   create_at?: string

@@ -11,6 +11,29 @@ import type {
 
 let authCheckPromise: Promise<void> | null = null
 
+function extractRolesFromAuthResponse(response: unknown): { role?: string; roles: string[] } {
+  if (!response || typeof response !== 'object') return { roles: [] }
+  const resp = response as Record<string, unknown>
+  const result = (resp.result && typeof resp.result === 'object' ? resp.result : resp) as Record<string, unknown>
+
+  const role = typeof result.role === 'string'
+    ? result.role
+    : typeof resp.role === 'string'
+      ? resp.role
+      : undefined
+
+  const rawRoles = Array.isArray(result.roles)
+    ? result.roles
+    : Array.isArray(resp.roles)
+      ? resp.roles
+      : role
+        ? [role]
+        : []
+
+  const roles = rawRoles.filter((r): r is string => typeof r === 'string')
+  return { role, roles }
+}
+
 interface AuthState {
   user: UserProfile | null
   isAuthenticated: boolean
@@ -59,11 +82,23 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (payload: AuthRequest) => {
     set({ isLoading: true })
     try {
-      await authApi.login(payload)
+      const loginResponse = await authApi.login(payload)
       const profile = await authApi.getProfile()
-      queryClient.setQueryData(['profile', profile.userId], profile)
+
+      const { role: extraRole, roles: extraRoles } = extractRolesFromAuthResponse(loginResponse)
+      const mergedRoles = extraRoles.length > 0
+        ? Array.from(new Set([...(Array.isArray(profile.roles) ? profile.roles : []), ...extraRoles]))
+        : profile.roles
+
+      const mergedUser: UserProfile = {
+        ...profile,
+        roles: mergedRoles,
+        ...(extraRole ? { role: extraRole } : {}),
+      }
+
+      queryClient.setQueryData(['profile', profile.userId], mergedUser)
       set({
-        user: profile,
+        user: mergedUser,
         isAuthenticated: true,
         isAuthModalOpen: false,
       })
@@ -75,11 +110,23 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (payload: RegisterRequest) => {
     set({ isLoading: true })
     try {
-      await authApi.register(payload)
+      const registerResponse = await authApi.register(payload)
       const profile = await authApi.getProfile()
-      queryClient.setQueryData(['profile', profile.userId], profile)
+
+      const { role: extraRole, roles: extraRoles } = extractRolesFromAuthResponse(registerResponse)
+      const mergedRoles = extraRoles.length > 0
+        ? Array.from(new Set([...(Array.isArray(profile.roles) ? profile.roles : []), ...extraRoles]))
+        : profile.roles
+
+      const mergedUser: UserProfile = {
+        ...profile,
+        roles: mergedRoles,
+        ...(extraRole ? { role: extraRole } : {}),
+      }
+
+      queryClient.setQueryData(['profile', profile.userId], mergedUser)
       set({
-        user: profile,
+        user: mergedUser,
         isAuthenticated: true,
         isAuthModalOpen: false,
       })

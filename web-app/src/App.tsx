@@ -16,6 +16,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { CategoryPreferencesPage } from '@/pages/category-preferences/CategoryPreferencesPage'
 import { BecomeStreamerPage } from '@/pages/become-streamer/BecomeStreamerPage'
 import { ProfilePage } from '@/pages/profile/ProfilePage'
+import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { HomePage } from '@/pages/HomePage'
 import { BrowsePage } from '@/pages/browse/BrowsePage'
 import { BrowseLivestreamsTab } from '@/pages/browse/tabs/BrowseLivestreamsTab'
@@ -49,6 +50,8 @@ export function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<HomePage />} />
         <Route path="/register" element={<HomePage />} />
+        <Route path="/dashboard" element={<StreamerDashboardPage />} />
+        <Route path="/streamer/dashboard" element={<Navigate to="/dashboard" replace />} />
         <Route path="/browse" element={<BrowsePage />}>
           <Route index element={<Navigate to="livestreams" replace />} />
           <Route path="livestreams" element={<BrowseLivestreamsTab />} />
