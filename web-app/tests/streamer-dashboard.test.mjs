@@ -67,6 +67,8 @@ test('Header menu shows Streamer Dashboard only when user has streamer role', ()
   })
   assert.match(viewerHtml, />Settings</)
   assert.match(viewerHtml, />Logout</)
+  assert.match(viewerHtml, /Become Streamer/)
+  assert.match(viewerHtml, /href="\/become-streamer"/)
   assert.doesNotMatch(viewerHtml, /Streamer Dashboard/)
 
   // 2. Streamer with roles array
@@ -78,6 +80,7 @@ test('Header menu shows Streamer Dashboard only when user has streamer role', ()
   })
   assert.match(streamerHtml, /Streamer Dashboard/)
   assert.match(streamerHtml, /href="\/dashboard"/)
+  assert.doesNotMatch(streamerHtml, /Become Streamer/)
   assert.match(streamerHtml, />Settings</)
   assert.match(streamerHtml, />Logout</)
 
@@ -91,6 +94,7 @@ test('Header menu shows Streamer Dashboard only when user has streamer role', ()
   })
   assert.match(roleStreamerHtml, /Streamer Dashboard/)
   assert.match(roleStreamerHtml, /href="\/dashboard"/)
+  assert.doesNotMatch(roleStreamerHtml, /Become Streamer/)
 })
 
 test('auth store login merges role returned in API response into user state', async () => {

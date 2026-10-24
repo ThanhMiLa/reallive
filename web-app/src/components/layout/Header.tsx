@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Menu, Bell, Settings, LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react'
+import { Search, Menu, Bell, Settings, LogOut, User as UserIcon, LayoutDashboard, Radio } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -186,7 +186,7 @@ export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean 
 
               {/* Menu Actions */}
               <div className="mt-2.5 space-y-1">
-                {isStreamer && (
+                {isStreamer ? (
                   <Link
                     to="/dashboard"
                     onClick={() => setUserMenuOpen(false)}
@@ -194,6 +194,15 @@ export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean 
                   >
                     <LayoutDashboard className="h-5 w-5 shrink-0 text-gray-400" />
                     Streamer Dashboard
+                  </Link>
+                ) : (
+                  <Link
+                    to="/become-streamer"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-[15px] font-medium text-gray-200 transition hover:bg-[#18181f] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+                  >
+                    <Radio className="h-5 w-5 shrink-0 text-gray-400" />
+                    Become Streamer
                   </Link>
                 )}
                 <Link
