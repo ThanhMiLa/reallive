@@ -1,4 +1,4 @@
-import { ArrowLeft, LayoutDashboard, UserRound } from 'lucide-react'
+import { ArrowLeft, LayoutDashboard, Tv, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -32,6 +32,19 @@ export function StreamerDashboardLayout() {
           >
             <LayoutDashboard className="h-4 w-4 shrink-0" />
             Stream Manager
+          </NavLink>
+          <NavLink
+            to="/dashboard/channel"
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
+                isActive
+                  ? 'border-[#ff2b42] bg-[#121216] font-semibold text-[#ff2b42]'
+                  : 'border-transparent text-gray-400 hover:bg-[#121216] hover:text-white'
+              }`
+            }
+          >
+            <Tv className="h-4 w-4 shrink-0" />
+            My Channel
           </NavLink>
         </nav>
 

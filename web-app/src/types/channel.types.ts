@@ -40,3 +40,39 @@ export interface CategoryItem {
   thumbnailUrl: string | null
 }
 
+export interface CategorySummary {
+  id: string
+  name: string
+}
+
+export interface OwnChannel {
+  id: string
+  streamerId: string
+  name: string
+  slug: string
+  description: string | null
+  avatarUrl: string | null
+  bannerUrl: string | null
+  status: 'ACTIVE' | 'SUSPENDED' | 'DELETED' | string
+  categories: CategorySummary[]
+  numberOfFollower: number
+}
+
+export interface ChannelResponse {
+  id: string
+  streamerId: string
+  name: string
+  slug: string
+  description: string | null
+  avatarUrl: string | null
+  bannerUrl: string | null
+  status: string
+  categoryIds: string[]
+}
+
+export interface UpdateChannelPayload {
+  description?: string
+  banner?: File | null
+  categoryIds?: string[]
+}
+

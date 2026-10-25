@@ -3,9 +3,12 @@ import type { ApiResponse } from '@/types/auth.types'
 import type {
   CategoryItem,
   ChannelListItem,
+  ChannelResponse,
   FollowingChannelListParams,
+  OwnChannel,
   PageResponse,
   UnfollowedChannelListParams,
+  UpdateChannelPayload,
 } from '@/types/channel.types'
 
 export const channelApi = {
@@ -77,6 +80,53 @@ export const channelApi = {
     const response = await apiClient.get<ApiResponse<CategoryItem[]>>(
       '/channel/api/categories',
       { signal },
+    )
+    return response.data.result
+  },
+
+  /**
+   * Fetch current streamer's own channel details.
+   * Endpoint: GET /channel/api/channels/me
+   */
+  getOwnChannel: async (signal?: AbortSignal): Promise<OwnChannel> => {
+    const response = await apiClient.get<ApiResponse<OwnChannel>>(
+      '/channel/api/channels/me',
+      { signal },
+    )
+    return response.data.result
+  },
+
+  /**
+   * Update current streamer's channel (description, banner, categories).
+   * Endpoint: PATCH /channel/api/channels/me
+   */
+  updateChannel: async (
+    payload: UpdateChannelPayload,
+  ): Promise<ChannelResponse> => {
+    const formData = new FormData()
+
+    if (payload.description !== undefined && payload.description !== null) {
+      formData.append('description', payload.description)
+    }
+
+    if (payload.banner) {
+      formData.append('bannerUrl', payload.banner)
+    }
+
+    if (payload.categoryIds && payload.categoryIds.length > 0) {
+      payload.categoryIds.forEach((id) => {
+        formData.append('categoryIds', id)
+      })
+    }
+
+    const response = await apiClient.patch<ApiResponse<ChannelResponse>>(
+      '/channel/api/channels/me',
+      formData,
+      {
+        headers: {
+          'Content-Type': undefined,
+        },
+      },
     )
     return response.data.result
   },
