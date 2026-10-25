@@ -1,7 +1,8 @@
 # Kế hoạch triển khai Streaming MVP
 
 - Ngày lập: 2026-10-24.
-- Trạng thái: giai đoạn 0 đã hoàn tất STR-001–006 trên môi trường local, có bằng chứng runtime và xác nhận OBS/browser của người dùng. Giai đoạn 1–7 và backend nghiệp vụ chưa triển khai; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md) để phân biệt dữ liệu tự động với xác nhận thủ công.
+- Cập nhật phạm vi: 2026-10-25, theo yêu cầu người dùng, MVP xử lý đồng bộ từ đầu đến cuối; chưa xây hàng đợi task hoặc recovery tự động.
+- Trạng thái: M0 và M1 đã đạt. Giai đoạn 1 đã chuyển về schema hai bảng, bỏ task runtime và kiểm chứng 77/77 test ngày 2026-10-25. Giai đoạn 2–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
 - Kết quả cần đạt: streamer tạo session, cấu hình OBS, phát video/audio; người dùng đăng nhập có thể vào web xem và nhận đúng trạng thái khi nguồn mất kết nối hoặc kết thúc.
 - Module chính: `stream-service`, `web-app`, `api-gateway`, cấu hình Docker/MediaMTX. Bổ sung API nội bộ nhỏ trong `user-service` và `channel-service` khi cần.
 - Kiến trúc nguồn: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
@@ -29,7 +30,8 @@
 | Reconnect | Mặc định 60 giây từ khi backend chuyển sang `RECONNECTING`, cấu hình được |
 | Giới hạn session | Tối đa một session `READY`/`LIVE`/`RECONNECTING` trên mỗi channel |
 | Quyền xem MVP | Stream `PUBLIC`; người xem phải đăng nhập để xin Read JWT |
-| Kết thúc | Backend đóng path session trên MediaMTX để ngăn dùng lại Publish JWT còn hạn |
+| Kết thúc | Gọi MediaMTX đóng path trực tiếp, chờ xác nhận rồi commit ENDED và trả thành công |
+| Cách xử lý MVP | Đồng bộ trong từng request, có timeout; không enqueue task, không trả 202 để xử lý sau |
 | Phiên đã kết thúc | Không mở lại; buổi tiếp theo tạo session/path/token mới |
 | Bảo vệ MVP | CORS giới hạn frontend + JWT; chấp nhận việc người xem hợp lệ sao chép token hoặc ghi lại video |
 
@@ -49,10 +51,12 @@ Các giá trị dưới đây là đề xuất trong plan, chưa phải các l�
 | OBS | H.264 + AAC; keyframe interval khởi điểm 2 giây | Không cần transcoding/FFmpeg trong luồng chạy thật của MVP |
 | Trình duyệt nghiệm thu đầu tiên | Chrome/Edge desktop có `Hls.isSupported()` | Safari/native HLS cần cách gửi credential riêng, không tự fallback sang phát không xác thực |
 | Cập nhật trạng thái UI | Poll metadata khoảng 3 giây khi tab hiển thị | Chưa thêm WebSocket/SSE chỉ để cập nhật trạng thái stream |
-| Worker backend | Retry task mỗi 5 giây; đối soát MediaMTX mỗi 5 giây, chia batch | Không gọi backend để auth từng playlist/segment |
+| Quét hết hạn reconnect | Scheduler khoảng 1 giây | Mỗi lần xử lý gọi MediaMTX trực tiếp và chờ kết quả; không có worker media sync |
 
 ### 1.3. Ngoài phạm vi MVP
 
+- Hàng đợi `stream_media_sync_tasks`, lease/revision của task, worker retry/backoff và reconciler tự động.
+- Tự phục hồi path khi MediaMTX restart, tự khôi phục callback bị mất, đóng bù sau crash/timeout và bảo đảm atomicity giữa PostgreSQL với MediaMTX. Lỗi trả ngay; vận hành kiểm tra thủ công khi cần.
 - CDN, nhiều MediaMTX, cân bằng tải media, adaptive bitrate/transcoding.
 - Donate, viewer count, chat, thông báo follower, analytics và recording/VOD.
 - Stream PRIVATE/UNLISTED, DRM, chống quay màn hình và chống relay bằng token hợp lệ.
@@ -65,14 +69,14 @@ Các giá trị dưới đây là đề xuất trong plan, chưa phải các l�
 | Thành phần | Hiện có | Công việc cần làm |
 |---|---|---|
 | `stream-service` | Java 21, Spring Boot, JPA/Flyway, PostgreSQL, Redis authorities, Feign/WebClient, exception/security chung | Module nghiệp vụ stream, schema, JWT media, MediaMTX adapter, callback, scheduler và API |
-| DB Stream Service | Chưa có migration feature stream trong `src/main/resources/db/migration` | Tạo migration đầu tiên; không để Hibernate tự tạo schema production |
+| DB Stream Service | V1–V3 đã kiểm chứng schema hai bảng session/history, không task runtime | Áp dụng migration theo môi trường khi triển khai; không để Hibernate tự tạo schema production |
 | `api-gateway` | Route `/stream/api/**` đến port 8082; account auth qua cookie | Bổ sung ngoại lệ chính xác cho JWKS/callback; giữ các API stream khác được bảo vệ |
 | `user-service` | API nội bộ tìm streamer ACTIVE theo user ID | Bổ sung contract eligibility có email verification nếu API hiện tại chưa đủ |
 | `channel-service` | Channel, category, validation category nội bộ | Tra cứu channel theo streamer, kiểm tra sở hữu/trạng thái; batch metadata nếu cần cho danh sách |
 | `web-app` | React/TypeScript/Vite, Axios, TanStack Query, Zustand, hls.js | Nối dashboard với API, danh sách stream và trang xem thật |
 | Dashboard | Có `StreamerDashboardPage.tsx`, route `/dashboard`; server/key đang là giá trị mẫu | Giữ bố cục hiện có, thay mock bằng dữ liệu và hành động thật |
 | Browse livestream | `BrowseLivestreamsTab.tsx` hiện chưa hiển thị danh sách | Hiển thị danh sách LIVE tối thiểu và link vào trang xem |
-| Docker | PostgreSQL/Redis/Kafka và các hạ tầng dùng chung | Thêm đúng một service `mediamtx`, cấu hình, helper callback và healthcheck |
+| Docker | PostgreSQL/Redis/Kafka và một service MediaMTX đã kiểm chứng ở M0 | Dùng lại config/helper/healthcheck, nối endpoint backend thật |
 | Test web | Đã có `npm test` dùng `node --test tests/*.test.mjs` | Giữ bộ test hiện tại; thêm kiểm chứng hành vi mới phù hợp, cộng kiểm thử browser thật cho HLS |
 
 Không sửa các tính năng account/channel đang hoạt động ngoài các contract tích hợp cần thiết. Trước mỗi giai đoạn, đọc lại file thực tế vì repository có thể tiếp tục được chỉnh sửa.
@@ -120,11 +124,12 @@ MediaMTX HLS mặc định dùng port 8888, được xác nhận trong [config v
 
 ### 4.1. Migration
 
-- Tạo `stream-service/src/main/resources/db/migration/V1__create_stream_sessions.sql` với session, history, task đồng bộ media và index.
-- Nếu đến lúc implement đã xuất hiện migration khác, dùng version tiếp theo; không sửa migration đã chạy ở môi trường dùng chung.
+- Schema đích của MVP có hai bảng `stream_sessions`, `stream_status_history` cùng index/constraint. Loại bảng task và code liên quan khỏi đường chạy.
+- Migration V1 hiện có ba bảng theo thiết kế cũ. Nếu V1 đã chạy ở môi trường dùng chung, thêm migration version mới để bỏ bảng task/điều chỉnh constraint; không drop dữ liệu session/history. Chỉ sửa V1 khi xác nhận chưa được áp dụng ở môi trường dùng chung.
+- V3__remove_stream_session_version.sql bỏ cột version theo quyết định chỉ dùng pessimistic locking; giữ nguyên V1/V2 đã có. Không sửa migration đã chạy ở môi trường dùng chung.
 - Dùng UUID cho các ID. `channel_id`, `streamer_id`, `owner_user_id`, `category_id` chỉ là ID tham chiếu giữa service, không có FK xuyên database.
 - Tái sử dụng `common.entity.BaseEntity` cho `created_at`, `updated_at` khi phù hợp. Thời gian lưu theo UTC, JVM/JDBC cấu hình nhất quán; JSON trả ISO-8601 có múi giờ.
-- Sửa `stream_status_history` trong tài liệu data model từ `CREATED` thành `READY` khi triển khai migration này. Không thêm lại cột chứa JWT/stream key/hash.
+- Giữ `READY` thống nhất trong schema/history theo Data Model đã cập nhật; không dùng lại `CREATED` hoặc thêm cột chứa JWT/stream key/hash.
 
 ### 4.2. `stream_sessions`
 
@@ -140,32 +145,31 @@ Giữ các trường nghiệp vụ đã có trong data model và bổ sung trư�
 | `status` | VARCHAR(30), NOT NULL | READY/LIVE/RECONNECTING/ENDED |
 | `playback_path` | VARCHAR(500), NOT NULL, UNIQUE | `/live/{id}/index.m3u8`, không chứa token |
 | `creation_request_id` | UUID NOT NULL | Dedupe yêu cầu tạo session của cùng owner |
-| `media_path_state` | VARCHAR(30), NOT NULL | PENDING_OPEN/OPEN/PENDING_CLOSE/CLOSED; trạng thái đồng bộ hạ tầng |
+| `media_path_state` | VARCHAR(30), NOT NULL | OPEN/CLOSED; kết quả đã xác nhận trong luồng đồng bộ |
 | `media_source_id` | UUID, nullable | Connection/source ID hiện được backend ghi nhận từ MediaMTX |
 | `media_source_type` | VARCHAR(30), nullable | Phân biệt `rtmpConn`/`rtmpsConn` khi điều khiển kết nối |
 | `disconnected_at` | TIMESTAMP, nullable | Lần bắt đầu mất nguồn hiện tại |
 | `reconnect_deadline_at` | TIMESTAMP, nullable | Deadline 60 giây được lưu bền vững |
 | `started_at`, `ended_at` | TIMESTAMP, nullable | Lần đầu LIVE và thời điểm kết thúc |
-| `version` | BIGINT NOT NULL | JPA optimistic version, kết hợp khóa khi chuyển trạng thái |
 | `created_at`, `updated_at` | TIMESTAMP NOT NULL | Theo convention entity của service |
 
-`media_path_state` không phải trạng thái livestream mới. UI nghiệp vụ vẫn sử dụng bốn trạng thái đã chốt; trường này cho biết backend đã tạo/đóng path thực tế hay đang chờ thử lại.
+`media_path_state` không phải trạng thái livestream mới. UI vẫn dùng bốn trạng thái đã chốt. Session active được commit với OPEN; ENDED được commit với CLOSED sau khi lời gọi đóng path thành công. Không có trạng thái chờ worker xử lý.
 
 Ràng buộc cần có:
 
 - Unique `(owner_user_id, creation_request_id)` để retry không tạo thêm session.
 - CHECK cho các enum; status RECONNECTING phải có deadline; ENDED phải có `ended_at`.
-- Session active không được có media state CLOSED/PENDING_CLOSE; khi chuyển ENDED phải đồng thời chuyển media state về PENDING_CLOSE.
+- Session READY/LIVE/RECONNECTING có media state OPEN; ENDED có media state CLOSED. Khi lời gọi media lỗi, rollback thay đổi DB của thao tác đó.
+- Mọi cập nhật session hiện có lấy PESSIMISTIC_WRITE và ghi trong cùng transaction; không save một entity cũ từ ngoài transaction để thay cho khóa. Unique index bảo vệ Create chưa có row.
 - Không tái sử dụng path của session khác hoặc session đã ENDED.
 - Index danh sách LIVE theo visibility/status/started_at/id; index tìm deadline RECONNECTING và current session theo owner.
 
-Giữ slot của channel trong cả thời gian chờ đóng nguồn cũ:
+Giữ slot của channel cho tới khi đóng path thành công và commit ENDED:
 
 ```sql
 CREATE UNIQUE INDEX uq_stream_sessions_channel_slot
 ON stream_sessions (channel_id)
-WHERE status IN ('READY', 'LIVE', 'RECONNECTING')
-   OR media_path_state <> 'CLOSED';
+WHERE status IN ('READY', 'LIVE', 'RECONNECTING');
 ```
 
 Đây là cơ chế bảo vệ khi hai request tạo stream đến cùng lúc. Backend vẫn trả lỗi nghiệp vụ dễ hiểu khi vi phạm index. Partial unique index cần được kiểm thử bằng PostgreSQL thật, theo [tài liệu PostgreSQL 17](https://www.postgresql.org/docs/17/indexes-partial.html).
@@ -179,20 +183,16 @@ WHERE status IN ('READY', 'LIVE', 'RECONNECTING')
 - Ghi history cùng transaction cập nhật session. Callback lặp không tạo thêm transition hoặc kéo dài deadline.
 - `started_at` chỉ ghi khi LIVE lần đầu; reconnect không reset thời điểm bắt đầu buổi phát.
 
-### 4.4. `stream_media_sync_tasks`
+### 4.4. Phạm vi đồng bộ thay cho bảng task
 
-Task bền vững để tạo/đóng path và phục hồi sau lỗi; không cần thêm Kafka cho MVP.
+MVP không dùng `StreamMediaSyncTaskEntity`, task repository/service/DTO, lease, task revision hay lịch retry. Session dùng pessimistic locking trong cùng transaction cho mọi cập nhật; không dùng cột version/JPA @Version trong MVP.
 
-| Trường | Mục đích |
-|---|---|
-| `stream_id` UUID PK/FK | Mỗi session tối đa một task đang cần đồng bộ |
-| `revision` BIGINT | Nhận biết task/desired state đã thay đổi trong khi gọi MediaMTX |
-| `next_attempt_at`, `attempt_count` | Backoff và theo dõi retry |
-| `lease_until`, `lease_owner` nullable | Claim task có thời hạn, phục hồi khi worker chết |
-| `last_error` nullable | Mã lỗi/chẩn đoán đã loại secret, không lưu token hoặc URL có token |
-| `created_at`, `updated_at` | Theo dõi vận hành |
-
-Tạo hoặc cập nhật task trong cùng transaction thay đổi trạng thái session. Worker đọc lại session để quyết định phải mở hay đóng path; không thực thi mù một lệnh CREATE cũ khi session đã ENDED.
+- Use case gọi adapter MediaMTX trực tiếp, chờ kết quả trước khi trả response.
+- Với Create: trong transaction, reserve slot bằng insert/flush READY/OPEN chưa commit, gọi tạo path, ghi history và commit; chỉ sau commit mới trả credential. Lỗi media làm rollback transaction.
+- Với End: khóa session, gọi đóng path/ngắt nguồn và xác nhận trực tiếp; thành công mới ghi ENDED/CLOSED/history và commit. Lỗi trả 503, trạng thái DB trước thao tác được giữ nguyên.
+- Chấp nhận giữ transaction/row lock qua lời gọi media có timeout trong MVP một replica để serialize thao tác trên cùng session. Không giữ khóa khi gọi User/Channel; các kiểm tra đó thực hiện trước transaction.
+- Row reserve dùng OPEN để thỏa constraint nhưng chưa commit, nên request khác chưa thấy session sẵn sàng; chỉ commit sau xác nhận MediaMTX.
+- PostgreSQL và MediaMTX không có transaction chung. Timeout hoặc crash sau khi MediaMTX đã xử lý vẫn có thể gây lệch trạng thái/orphan path; MVP ghi lỗi và xử lý thủ công, chưa có task đóng bù hoặc phục hồi tự động.
 
 ## 5. State machine và quy tắc nghiệp vụ
 
@@ -207,7 +207,7 @@ Tạo hoặc cập nhật task trong cùng transaction thay đổi trạng thái
 | RECONNECTING | Nguồn online | Trong thời gian cho phép, nguồn thực tế hợp lệ | LIVE |
 | RECONNECTING | Hết deadline | Khóa/recheck trạng thái hiện tại trước khi kết thúc | ENDED |
 | READY/LIVE/RECONNECTING | Owner kết thúc | Đúng owner; không yêu cầu streamer vẫn ACTIVE để được dừng | ENDED |
-| ENDED | Callback online/offline hoặc OBS reconnect | Không mở lại; tiếp tục đóng path nếu còn nguồn | ENDED |
+| ENDED | Callback online/offline hoặc OBS reconnect | Không mở lại; callback bị bỏ qua, path đã đóng trong End thành công | ENDED |
 
 ### 5.2. Quy tắc chuyển trạng thái
 
@@ -231,7 +231,7 @@ Controller của Stream Service dùng `/api/...`; Gateway thấy tiền tố `/s
 | Method và URL qua Gateway | Quyền | Hành vi chính |
 |---|---|---|
 | `POST /stream/api/streams` | Đăng nhập, streamer đủ điều kiện | Tạo READY, đăng ký path và trả thông tin OBS khi media sẵn sàng |
-| `GET /stream/api/streams/me/current` | Đăng nhập | Current session của owner, gồm session đang chờ đóng nguồn; không có thì `result: null` |
+| `GET /stream/api/streams/me/current` | Đăng nhập | Session active của owner; không có thì `result: null` |
 | `PATCH /stream/api/streams/{id}` | Owner, session chưa ENDED | Cập nhật title/category; không đổi JWT/path vì thay metadata |
 | `POST /stream/api/streams/{id}/publish-credentials` | Owner, streamer đủ điều kiện | Cấp Publish JWT mới cho session đang hoạt động và path sẵn sàng |
 | `POST /stream/api/streams/{id}/end` | Đăng nhập và đúng owner | Kết thúc idempotent, yêu cầu đóng path; READY dùng API này để hủy |
@@ -253,7 +253,7 @@ Controller của Stream Service dùng `/api/...`; Gateway thấy tiền tố `/s
 
 - Backend tự tìm streamer/channel của principal và cố định visibility PUBLIC.
 - Request ID giữ nguyên khi retry cùng lần tạo; không dùng nó cho lần tạo buổi phát tiếp theo.
-- Nếu request ID đã tạo session cho cùng owner, trả lại session đó/cùng tiến trình provisioning; không áp dụng lại body để sửa title/category. Muốn đổi metadata dùng PATCH.
+- Nếu request ID đã tạo session cho cùng owner, trả lại session đó; không áp dụng lại body để sửa title/category. Muốn đổi metadata dùng PATCH.
 - Một request ID khác khi channel còn chiếm slot trả `409`, không âm thầm kết thúc session cũ.
 
 `UpdateStreamSessionRequest`: chỉ nhận `title`, `categoryId` theo cùng validation. Field thiếu giữ nguyên; field có mặt nhưng `null`, title rỗng sau trim, body không có field cập nhật hoặc field ngoài contract đều trả `400`. Không nhận field `status`, `owner`, `playbackPath` từ client.
@@ -262,7 +262,7 @@ Controller của Stream Service dùng `/api/...`; Gateway thấy tiền tố `/s
 
 - `id`, `channelId`, `title`, `categoryId`, `visibility`, `status`.
 - `startedAt`, `endedAt`, `reconnectDeadlineAt`, `serverTime`.
-- `publishReady`, `mediaCleanupPending` cho màn hình owner; DTO metadata/viewer không lộ chi tiết lỗi nội bộ. `publishReady` chỉ cho biết path đã được provision để OBS kết nối, không có nghĩa nguồn đã LIVE.
+- `publishReady` cho màn hình owner: path đã mở thành công để OBS kết nối, không có nghĩa nguồn đã LIVE. Không dùng `mediaCleanupPending` hoặc tiến trình job nền.
 - Không chứa token trong response metadata/list/polling.
 
 `StreamPublishCredentialsResponse`:
@@ -291,8 +291,9 @@ Danh sách dùng `ApiResponse<PageResponse<StreamListItem>>`; không tạo wrapp
 
 - Dùng envelope `ApiResponse` hiện tại cho business API; status trong body khớp HTTP status.
 - Create thành công lần đầu `201`; retry cùng request ID trả `200` khi đã có kết quả.
-- End trả `200` khi đóng nguồn đã xác nhận; `202` khi đã ghi nhận ENDED nhưng còn chờ đóng media. Response cho biết `mediaCleanupPending`.
-- Provisioning lỗi có thể trả `503` sau khi session READY đã được commit. Client dùng `me/current` hoặc retry cùng request ID; không suy ra rằng DB chưa có session.
+- End trả `200` sau khi đóng path và commit ENDED/CLOSED; lỗi/timeout media trả `503`, không ghi ENDED như đã hoàn tất và không trả `202`.
+- Create lỗi media trả `503`, rollback session/history trong transaction. Nếu client mất response thì dùng current hoặc gửi lại cùng request ID để tìm kết quả đã commit.
+- Các lời gọi backend → MediaMTX đều chờ kết quả; request người dùng không giao scheduler/queue retry sau response hoặc chạy fire-and-forget. Người dùng có thể chủ động thử lại sau lỗi.
 - `Cache-Control: no-store` cho response chứa Publish JWT/Read JWT; frontend không đưa các response này vào cache bền vững.
 
 | Nhóm lỗi | HTTP | Frontend xử lý |
@@ -376,7 +377,7 @@ scripts/testing/streaming/
 ```
 
 - Pin binary/image MediaMTX `1.21.2`; không dùng tag `latest` hoặc `1` trôi phiên bản trong nghiệm thu.
-- Image chuẩn là `scratch`, không có shell/công cụ HTTP. Tạo custom image nhẹ có `/bin/sh`, Python 3 và CA certificates; copy binary từ image đã pin và helper vào cùng container. Python helper chỉ dùng thư viện chuẩn cho JSON/HMAC/HTTP/retry, không thêm một media server/container khác. Xem [Dockerfile chính thức](https://github.com/bluenviron/mediamtx/blob/v1.21.2/docker/standard.Dockerfile) và [hướng dẫn custom image](https://mediamtx.org/docs/kickoff/install).
+- Image chuẩn là `scratch`, không có shell/công cụ HTTP. Tạo custom image nhẹ có `/bin/sh`, Python 3 và CA certificates; copy binary từ image đã pin và helper vào cùng container. Python helper chỉ dùng thư viện chuẩn cho JSON/HMAC/HTTP, không thêm một media server/container khác. Xem [Dockerfile chính thức](https://github.com/bluenviron/mediamtx/blob/v1.21.2/docker/standard.Dockerfile) và [hướng dẫn custom image](https://mediamtx.org/docs/kickoff/install).
 - Không thêm FFmpeg vào runtime để chỉ gọi callback.
 - Mount config read-only. Secret callback đưa qua env/secret file, không bake vào image. Các file key sinh local phải được ignore và không in private key vào log.
 
@@ -424,7 +425,7 @@ paths: {}
 | Đăng ký path chính xác | `POST /v3/config/paths/add/{name}` |
 | Xóa cấu hình path | `DELETE /v3/config/paths/delete/{name}` |
 | Kiểm tra nguồn thực tế | `GET /v3/paths/get/{name}` |
-| Đối soát nhiều path | Các API list path/config có pagination |
+| Kiểm tra vận hành thủ công khi cần | Các API list path/config có pagination; chưa xây reconciler |
 | Kick RTMP nếu cần | `POST /v3/rtmp/conns/kick/{id}` |
 | Kick RTMPS nếu cần | `POST /v3/rtmps/conns/kick/{id}` |
 
@@ -433,8 +434,8 @@ Contract lấy từ [OpenAPI v1.21.2](https://github.com/bluenviron/mediamtx/blo
 - Dùng WebClient đã có trong service, timeout connect/read hữu hạn. Không để request treo khi MediaMTX unavailable.
 - Serialize/encode path đúng theo API của phiên bản này; không ghép URL từ input bất kỳ của client.
 - `ensurePath` idempotent: kiểm tra path đã tồn tại và cấu hình đúng thì giữ nguyên; không replace path đang LIVE vô điều kiện.
-- DELETE nhận 404 được xem như path đã đóng sau khi kiểm tra đúng trường hợp. Timeout là kết quả chưa rõ, phải đọc lại trạng thái và retry.
-- Không tự mở lại path của ENDED. Khởi động lại MediaMTX phải đồng bộ từ DB vì cấu hình tạo qua API không được coi là dữ liệu bền vững.
+- DELETE nhận 404 đúng nghĩa path không tồn tại được xem như đã đóng. Timeout trả lỗi ngay; chưa tự retry hay tạo task xử lý sau.
+- Không tự mở lại path của ENDED. Cấu hình path tạo qua API có thể mất khi MediaMTX restart; MVP xử lý vận hành thủ công, chưa tự dựng lại từ DB.
 - Control API JWT chỉ ở backend; không mở Control API qua Gateway hoặc trả URL quản trị cho frontend.
 
 ## 9. Callback và đồng bộ trạng thái
@@ -445,7 +446,7 @@ Contract lấy từ [OpenAPI v1.21.2](https://github.com/bluenviron/mediamtx/blo
 
 ```json
 {
-  "eventId": "<UUID giữ nguyên khi retry sự kiện này>",
+  "eventId": "<UUID của sự kiện>",
   "eventType": "ONLINE",
   "path": "live/<sessionId>",
   "sourceId": "<MTX_SOURCE_ID>",
@@ -455,15 +456,15 @@ Contract lấy từ [OpenAPI v1.21.2](https://github.com/bluenviron/mediamtx/blo
 ```
 
 - OFFLINE dùng cùng cấu trúc. Helper lấy `MTX_PATH`, `MTX_SOURCE_ID`, `MTX_SOURCE_TYPE` từ môi trường của hook, không dùng `runOnConnect` để kết luận nguồn LIVE.
-- Mỗi lần gửi: `X-Media-Timestamp` là Unix timestamp theo giây của lần gửi hiện tại; `X-Media-Signature` là `sha256=<hex HMAC-SHA256>` trên `timestamp + newline + rawBody` với timestamp đúng chuỗi header. Body và event ID giữ nguyên khi retry; Content-Type là `application/json`.
+- Mỗi lần gửi: `X-Media-Timestamp` là Unix timestamp theo giây; `X-Media-Signature` là `sha256=<hex HMAC-SHA256>` trên `timestamp + newline + rawBody` với timestamp đúng chuỗi header. Content-Type là `application/json`.
 - Backend kiểm tra kích thước, timestamp lệch trong cửa sổ cấu hình, chữ ký constant-time, DTO và path đúng namespace/UUID.
 - Shared secret callback tách khỏi account signer và RSA private key.
 - Gateway cho phép đúng POST callback đi qua khi không có account cookie. Nếu bật CSRF ở Gateway, loại trừ đúng webhook này khỏi CSRF, không loại trừ toàn bộ `/stream/**`.
-- Response 2xx chỉ khi transition đã commit hoặc sự kiện hợp lệ được xác định là duplicate/stale/no-op. Lỗi tạm thời trả 503 cho helper retry.
+- Handler xử lý ngay trong request callback; response 2xx chỉ sau commit hoặc xác định duplicate/stale/no-op. Lỗi trả 503, không enqueue sự kiện xử lý sau.
 - Log event/session/source ID và kết quả, không log Authorization, Stream Key, raw query hoặc secret.
-- Helper retry với backoff hữu hạn, ví dụ 1/2/4/8 giây trong tối đa 30 giây; mỗi lần gửi có timeout riêng. Xử lý SIGINT khi hook online bị dừng, không để process cũ retry mãi sau khi nguồn đã offline.
+- Helper gửi một HTTP request có timeout và chờ response; ghi nhận lỗi nếu thất bại, không có vòng retry/backoff. Helper hiện tại từ M0 còn retry hữu hạn; điều chỉnh ở STR-401 theo phạm vi mới.
 
-MediaMTX hook là command được chạy theo sự kiện, không phải hàng đợi webhook bền vững. Helper cần timeout/retry hữu hạn; backend vẫn cần đối soát để phục hồi khi hook không gửi được. Xem [MediaMTX Hooks](https://mediamtx.org/docs/features/hooks#runononline).
+Hook vẫn được kích hoạt theo sự kiện nguồn, độc lập với request Create/End. Từng request callback được xử lý đồng bộ đến khi commit. Callback mất có thể khiến DB lệch nguồn thực tế; phục hồi/đối soát tự động được hoãn sau MVP. Xem [MediaMTX Hooks](https://mediamtx.org/docs/features/hooks#runononline).
 
 ### 9.2. Chống sai thứ tự và callback lặp
 
@@ -473,27 +474,17 @@ MediaMTX hook là command được chạy theo sự kiện, không phải hàng 
 4. Với OFFLINE, đối chiếu source hiện tại trong DB và nguồn thực tế; nếu connection mới đã online thì bỏ qua offline của connection cũ.
 5. Khóa/reload row trước khi áp dụng transition. Ghi history và source/deadline cùng transaction.
 6. Sự kiện lặp giữ nguyên `started_at` và deadline; sự kiện không tạo thay đổi không ghi history mới.
-7. Callback cho ENDED luôn giữ ENDED; nếu MediaMTX còn nguồn thì tạo/retry task đóng nguồn.
+7. Callback cho ENDED luôn giữ ENDED; không tạo task hoặc tự mở lại session. Nguồn bất thường sau End được ghi log để kiểm tra thủ công.
 8. Callback sai thứ tự khi session còn READY phải đối chiếu trạng thái thực tế, không tạo LIVE giả chỉ để khớp thứ tự sự kiện.
 
-### 9.3. Scheduler và recovery
+### 9.3. Xử lý đồng bộ và timeout reconnect
 
-- Reconnect worker tìm deadline đã hết, khóa row, đọc lại status/source để tránh timeout cạnh tranh với reconnect; thắng transition nào phải có điều kiện rõ ràng và history tương ứng.
-- Media sync worker claim task có lease; cùng session không được có hai thao tác tạo/xóa path đang chạy cạnh tranh. Dùng một cơ chế serialize thống nhất cho cả API thử đồng bộ ngay và worker nền.
-- Không giữ transaction ghi DB dài trong lúc chờ HTTP. Sau I/O phải đọc lại revision/status; nếu CREATE cũ vừa hoàn tất trong lúc session đã ENDED thì xóa bù và giữ task CLOSE đến khi xác nhận xong.
-- Retry có backoff giới hạn; đóng ENDED chưa thành công không được mất task sau restart hoặc chỉ retry vài lần rồi bỏ.
-- Reconciler so sánh DB với MediaMTX theo batch: phục hồi path active bị mất, xử lý nguồn online/offline bị lỡ callback, đóng path ENDED/orphan trong namespace ứng dụng sở hữu.
-- Control API timeout là trạng thái chưa biết, không tự coi mọi session là offline. Chỉ xử lý mất nguồn dựa trên callback hợp lệ hoặc quan sát đáng tin cậy.
-- Khi backend restart: dùng deadline đã lưu, không cộng lại 60 giây. Khi MediaMTX restart: khôi phục path active trước để OBS còn token có thể reconnect, không mở ENDED hoặc session hết deadline.
-- MVP chạy một replica Stream Service; DB constraint, row lock và task lease vẫn bảo vệ request/worker đồng thời trong process và phục hồi sau crash.
-
-Quy trình claim/xác nhận task cần hiện thực rõ ràng:
-
-1. Transaction ngắn chọn task đến hạn bằng `FOR UPDATE SKIP LOCKED`, ghi lease owner, deadline và revision đã claim.
-2. Reload session, quyết định desired state; trước mỗi thao tác HTTP xác nhận lease còn thuộc worker hiện tại. API muốn thử sync ngay cũng phải đi qua quy trình này.
-3. Gọi MediaMTX ngoài transaction ghi DB, với timeout nhỏ hơn thời hạn lease; không chạy thêm thao tác cùng session khi lease còn hợp lệ ở worker khác.
-4. Transaction xác nhận chỉ cập nhật OPEN/CLOSED và xóa task khi revision/status vẫn phù hợp. Nếu End đã ghi desired state mới, giữ task mới và thực hiện CLOSE thay vì xác nhận CREATE cũ.
-5. Khi HTTP lỗi hoặc kết quả chưa rõ, giữ task và lịch retry. Lease hết hạn được claim lại; request End trả pending khi chưa giành được quyền đồng bộ, không tự mở một luồng DELETE cạnh tranh.
+- MVP chạy một replica Stream Service. Các thao tác Create/End/cấp credential serialize theo session bằng transaction và row lock; unique index bảo vệ slot khi chưa có row để khóa.
+- Không dùng `@Async`, fire-and-forget, queue, media-sync worker, lease, task revision hoặc reconciler. WebClient phải được chờ đến khi nhận kết quả hoặc timeout.
+- Scheduler chỉ phục vụ quy tắc hết hạn RECONNECTING: đọc deadline đã lưu, khóa/recheck nguồn và trạng thái, gọi MediaMTX đóng path trực tiếp rồi mới commit ENDED/CLOSED/history. Không reset deadline khi backend restart.
+- Nếu lời gọi media thất bại, rollback thao tác chuyển ENDED và ghi lỗi; không báo đã đóng nguồn. Lần quét nghiệp vụ sau vẫn có thể gặp session còn quá hạn, nhưng không có hàng đợi retry, lịch backoff hay cơ chế recovery riêng. Session đã quá deadline không được cấp credential hoặc hồi sinh do ONLINE đến muộn.
+- End từ web và handler callback phải xử lý xong trước response. Frontend chờ request, disable double-submit và hiển thị lỗi nếu nhận 503.
+- Mất callback, MediaMTX restart, timeout không rõ kết quả và crash giữa media/DB cần kiểm tra thủ công trong MVP; không đặt nghiệm thu phục hồi tự động cho các tình huống này.
 
 ## 10. Workflow backend cần hiện thực
 
@@ -501,18 +492,16 @@ Quy trình claim/xác nhận task cần hiện thực rõ ràng:
 
 ```text
 Client --> Gateway --> Stream Service: POST create + requestId
-Stream Service --> User Service: Xác nhận streamer đủ điều kiện của principal
-Stream Service --> Channel Service: Channel sở hữu, trạng thái, category
-Stream Service --> DB: Transaction ghi READY + history + task OPEN
-Stream Service --> MediaMTX: Đồng bộ exact path, xác nhận path có cấu hình đúng
-Stream Service --> DB: Ghi media OPEN nếu session vẫn hợp lệ
+Stream Service --> User/Channel: Kiểm tra eligibility, ownership, category (chờ kết quả)
+Stream Service --> DB: Bắt đầu transaction, dedupe, reserve slot READY/OPEN bằng insert/flush (chưa commit)
+Stream Service --> MediaMTX: Gọi tạo/ensure exact path trực tiếp, chờ kết quả
+Stream Service --> DB: Ghi OPEN + history, commit
 Stream Service --> Client: 201 session + serverUrl + streamKey chứa Publish JWT
 ```
 
-- Deduplicate request trước khi tạo mới; DB unique slot vẫn là hàng rào cuối cùng.
-- Nếu MediaMTX lỗi sau commit: trả 503, giữ request ID/current session để retry và để worker khôi phục.
-- Chỉ cấp Publish JWT khi kiểm tra lại owner, eligibility, status và media path còn hợp lệ.
-- Nếu End cạnh tranh với Create/provisioning, không trả credential cho session ENDED; tác vụ tạo path hoàn tất muộn phải được đóng bù.
+- Retry request do người dùng giữ nguyên request ID. Nếu session đã commit, trả cùng session; concurrent retry phải đọc lại kết quả sau transaction thua, không đổi metadata.
+- Lỗi/timeout MediaMTX: rollback session/history và trả 503; không trả credential và không có công việc chạy tiếp sau response.
+- Chỉ trả thành công sau commit. Không bảo đảm rollback MediaMTX khi DB commit lỗi hoặc media response bị mất; đây là giới hạn vận hành thủ công của MVP.
 
 ### 10.2. OBS phát và reconnect
 
@@ -544,15 +533,17 @@ Player <--> MediaMTX: Cập nhật media playlist và tải segment theo buffer
 ### 10.4. Kết thúc và chặn phát lại
 
 ```text
-Client --> Backend: POST end
-Backend --> DB: ENDED + endedAt + PENDING_CLOSE + history + task CLOSE
-Backend --> MediaMTX: Xóa cấu hình path, ngắt publisher còn tồn tại nếu cần
-Backend --> MediaMTX: Xác nhận path không còn nhận publish/không còn nguồn
-Backend --> DB: CLOSED; hoàn tất task, giải phóng slot channel
-Backend --> Client: 200 hoàn tất, hoặc 202 nếu còn cleanup đang chờ
+Client --> Backend: POST end, chờ request hoàn tất
+Backend --> DB: Bắt đầu transaction, khóa/reload session và kiểm tra owner
+Backend --> MediaMTX: Xóa path/ngắt publisher, chờ xác nhận đã đóng
+Backend --> DB: Ghi ENDED + endedAt + CLOSED + history, commit và giải phóng slot
+Backend --> Client: 200 hoàn tất
 ```
 
-Callback offline đến sau giữ ENDED. Publish JWT cũ còn đúng chữ ký cũng không mở được path đã đóng. Tạo buổi tiếp theo cần slot được giải phóng, dùng session/path/token mới.
+- MediaMTX lỗi/timeout: rollback thay đổi DB, trả 503; UI hiển thị lỗi và cho người dùng bấm thử lại. Không ghi ENDED trước rồi giao worker xử lý.
+- End lặp với session ENDED/CLOSED trả 200, không mở lại path hoặc tạo history lặp.
+- Callback offline phát sinh trong lúc đóng path có thể chờ khóa session; sau commit phải giữ ENDED. Lời gọi Control API không được chờ callback nghiệp vụ hoàn tất theo vòng lặp phụ thuộc.
+- Sau End thành công, Publish JWT cũ không mở được path đã đóng; buổi tiếp theo tạo session/path/token mới.
 
 ## 11. Tổ chức code Java và tích hợp service khác
 
@@ -570,16 +561,16 @@ com.reallive.streamservice/
       external/        # create/update/current/list/end/playback-access
       media/           # JWKS và callback MediaMTX
     service/
-      impl/            # use case session, playback, lifecycle, media sync
+      impl/            # use case session, playback, lifecycle đồng bộ
     repository/
-    entity/            # session, history, sync task và enum
+    entity/            # session, history và enum
     mapper/
     dto/request/
     dto/response/
     adapter/media/     # MediaMTX HTTP, JWT issuer/JWKS, remote DTO
     client/user/       # eligibility API + DTO riêng của caller
     client/channel/    # channel context/category/batch metadata API + DTO
-    scheduler/         # trigger lịch; nghiệp vụ nằm trong service
+    scheduler/         # chỉ quét hết hạn reconnect; không media-sync/reconciler
 ```
 
 - MediaMTX là hạ tầng nên HTTP client của nó ở `adapter/media`; User/Channel là application microservice nên ở `client`.
@@ -633,7 +624,7 @@ Giữ Axios/account refresh, auth store, TanStack Query và style hiện có. C�
 - Sau reload: tải metadata; nút lấy/cấp lại thông tin OBS gọi endpoint credentials. Không cố phục hồi token từ hash, localStorage hoặc URL.
 - Không fetch lại Publish JWT trong mỗi lần poll. Cấp mới không cập nhật OBS tự động và không thu hồi token OBS đang giữ.
 - Cập nhật title/category không đổi key; state READY hướng dẫn Start Streaming trong OBS, không dùng nút web để giả lập LIVE.
-- Nút kết thúc/hủy gọi end; chỉ báo hoàn tất khi cleanup được xác nhận, còn 202 thì hiển thị đang ngắt nguồn và poll tiếp.
+- Nút kết thúc/hủy chờ End trả kết quả, disable trong lúc gọi; 200 hiển thị kết thúc, 503 hiển thị lỗi và cho bấm thử lại. Không poll job cleanup hoặc xử lý 202.
 - Countdown reconnect dùng deadline/server time, không tự gia hạn 60 giây mỗi render/reload.
 - Nếu owner mất quyền tạo stream nhưng còn session, vẫn cho xem trạng thái và kết thúc theo quyền owner của API; UI guard không thay cho backend authorization.
 
@@ -680,8 +671,7 @@ Tham khảo [API hls.js v1.7.3](https://github.com/video-dev/hls.js/blob/v1.7.3/
 | `STREAM_MEDIA_CALLBACK_URL` | URL callback qua host Gateway | Helper |
 | `STREAM_MEDIA_CALLBACK_SECRET` | Bắt buộc, hai bên cùng giá trị | Helper và Stream Service |
 | `STREAM_MEDIA_CALLBACK_MAX_SKEW` | `60s`, đề xuất | Kiểm tra HMAC timestamp |
-| `STREAM_MEDIA_SYNC_DELAY` / `STREAM_MEDIA_RECONCILE_DELAY` | `5s` / `5s`, đề xuất | Scheduler |
-| `STREAM_RECONNECT_SWEEP_DELAY` / `STREAM_MEDIA_SYNC_LEASE` | `1s` / `30s`, đề xuất | Quét deadline và claim task có thời hạn |
+| `STREAM_RECONNECT_SWEEP_DELAY` | `1s`, đề xuất | Chỉ quét deadline reconnect |
 | `STREAM_MEDIAMTX_CONNECT_TIMEOUT` / `STREAM_MEDIAMTX_READ_TIMEOUT` | `2s` / `5s`, đề xuất | Adapter |
 | `STREAM_MEDIA_ALLOWED_ORIGINS` | `http://localhost:5173` | Map sang `hlsAllowOrigins` đúng dạng list |
 
@@ -710,12 +700,17 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 
 ### Giai đoạn 1 — Domain và database
 
-- [ ] Migration session/history/media task, index/constraint, sửa data model READY và các trường bổ sung.
-- [ ] Entity/enums/repository/mapper theo package feature; clock UTC và transaction boundaries.
-- [ ] Khóa/chuyển trạng thái có điều kiện; không dùng check-then-insert làm bảo vệ duy nhất.
-- [ ] Regression test concurrent create, dedupe request, first LIVE, reconnect/deadline và ENDED terminal.
+Thực hiện theo [plan chi tiết giai đoạn 1](Streaming%20MVP%20Phase%201%20Implementation%20Plan.md): điều chỉnh code đã có về hai bảng, gỡ task và sửa concurrent idempotency. Adapter/HTTP MediaMTX thật và transaction điều phối Create/End được nối ở giai đoạn 3–4; không yêu cầu hoàn thiện chúng để nghiệm thu persistence M1.
+
+- [x] Điều chỉnh migration về session/history, index/constraint và media state OPEN/CLOSED; bỏ bảng task theo quy tắc migration an toàn.
+- [x] Entity/enums/repository/mapper theo package feature; clock UTC và transaction boundaries.
+- [x] Gỡ entity/repository/service/DTO/config task, cập nhật query slot/current và Javadoc theo contract mới.
+- [x] Khóa/chuyển trạng thái có điều kiện; không dùng check-then-insert làm bảo vệ duy nhất.
+- [x] Regression test concurrent create khác/cùng request ID, rollback/history, first LIVE, reconnect trước/đúng/sau deadline và ENDED terminal; kiểm chứng lại trên PostgreSQL 17.
 
 **Hoàn tất khi:** schema chạy được trên PostgreSQL 17, tạo cạnh tranh chỉ chiếm một slot và history/state nhất quán.
+
+**Kết quả 2026-10-25:** M1 đạt, 77/77 test và build JAR PASS; V2/V3 mới chạy trong DB test cô lập, chưa migrate database ứng dụng. Adapter/HTTP MediaMTX và API thật thuộc các giai đoạn tiếp theo.
 
 ### Giai đoạn 2 — Account integration, eligibility và JWT media
 
@@ -731,18 +726,18 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 
 - [ ] Thêm service Docker, config/helper/healthcheck/env example và hướng dẫn mạng local.
 - [ ] Implement get/ensure/delete path, source inspection, kick đúng protocol, timeout và token Control API.
-- [ ] Implement task đồng bộ, serialize theo session, backoff/retry và kết quả chưa rõ khi HTTP timeout.
-- [ ] Create API trả credential sau provisioning; 503 sau commit có recovery qua current session/cùng request ID.
-- [ ] Test không replace nguồn LIVE khi ensurePath lặp; tạo path muộn sau End được đóng bù.
+- [ ] Implement gọi MediaMTX trực tiếp, serialize theo session, chờ kết quả/timeout và rollback DB khi lỗi; bỏ task/worker khỏi đường chạy.
+- [ ] Create API chỉ trả credential sau mở path và commit; lỗi trả 503, client chủ động thử lại cùng request ID.
+- [ ] Test ensurePath không replace nguồn LIVE; Create/End được serialize, response chỉ trả sau hoàn tất.
 
 **Hoàn tất khi:** dashboard/API tạo session, copy sang OBS và MediaMTX nhận media với path đúng, không có callback verify key về backend.
 
-### Giai đoạn 4 — Lifecycle, callback, End và recovery
+### Giai đoạn 4 — Lifecycle, callback và End đồng bộ
 
-- [ ] Helper ký callback/retry; backend xác thực, dedupe, source check và transaction state/history.
-- [ ] ONLINE/OFFLINE, RECONNECTING 60 giây, timeout worker và xử lý callback đến muộn.
-- [ ] End idempotent; giữ slot đến khi đóng media được xác nhận; task không mất qua restart.
-- [ ] Reconciler cho mất callback, restart backend/MediaMTX và path orphan trong namespace sở hữu.
+- [ ] Helper ký callback gửi một lần có timeout; backend xử lý đồng bộ, xác thực/dedupe/source check và commit state/history trước response.
+- [ ] ONLINE/OFFLINE, RECONNECTING 60 giây, scheduler hết hạn gọi đóng media trực tiếp và xử lý callback đến muộn.
+- [ ] End idempotent: đóng media trực tiếp rồi commit ENDED/CLOSED; lỗi trả 503, không có task hoặc 202.
+- [ ] Ghi giới hạn và hướng dẫn kiểm tra thủ công khi mất callback, crash/timeout hoặc MediaMTX restart; hoãn reconciler sau MVP.
 - [ ] Regression test callback cũ, callback lặp, End đấu với reconnect/create, Control API unavailable.
 
 **Hoàn tất khi:** trạng thái theo nguồn thật, OBS reconnect trong grace được phục hồi và session ENDED không bị phát lại bằng key cũ.
@@ -771,7 +766,7 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 - [ ] Chạy ma trận kiểm thử ở mục 15 trên cấu hình thật; ghi kết quả/pass/fail và giới hạn chưa hỗ trợ.
 - [ ] Kiểm tra không đưa token/key vào log, DB, URL playback hoặc frontend persistent storage.
 - [ ] Cập nhật architecture/data model/README/env examples và hướng dẫn OBS/khởi động/recovery theo code cuối.
-- [ ] Ghi hướng dẫn deploy HTTPS/RTMPS, private Control API, backup signing key và xử lý task pending.
+- [ ] Ghi hướng dẫn deploy HTTPS/RTMPS, private Control API, backup signing key và xử lý lỗi media thủ công.
 - [ ] Chụp UI cần thiết cho review khi có thay đổi giao diện; không coi screenshot là bằng chứng đủ cho media auth.
 
 **Hoàn tất khi:** đạt checklist nghiệm thu ở mục 17, các giới hạn được ghi đúng và có hướng dẫn chạy lại từ môi trường sạch.
@@ -782,7 +777,7 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 
 - Unit/service test cho policy/transition/TTL với `Clock` kiểm soát được, không dùng sleep để chờ 60 giây.
 - Controller/security test cho method/path, owner, auth cookie, raw JWKS, callback HMAC và HTTP/error envelope.
-- Adapter test với HTTP stub cho JSON contract, token api, timeout, retry/idempotency và lỗi response.
+- Adapter test với HTTP stub cho JSON contract, token api, timeout, idempotency và lỗi response; xác nhận không retry ngầm.
 - PostgreSQL integration test cho Flyway, partial unique index, transaction/history, deadline và concurrent create/End. H2 hiện có không thay thế phần kiểm chứng PostgreSQL này.
 - Giữ test mặc định chạy được không cần OBS/MediaMTX thật. Tạo profile integration rõ ràng nếu bổ sung Testcontainers/Failsafe; đánh dấu lệnh dự kiến và prerequisite trong README.
 
@@ -793,7 +788,7 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 | Tạo session hợp lệ | READY, một exact path, trả thông tin OBS; chưa LIVE |
 | Hai create đồng thời khác request ID | Một session chiếm slot; request còn lại 409 |
 | Retry cùng request ID/mất response | Không tạo session thứ hai; lấy lại tiến trình/kết quả của session cũ |
-| MediaMTX unavailable khi create | Không trả credential như đã sẵn sàng; có cách retry/recover session đã commit |
+| MediaMTX unavailable khi create | Request trả 503, rollback session/history; không credential hoặc task nền |
 | Tài khoản không có quyền/streamer không ACTIVE/email chưa đủ điều kiện | Không cấp Publish JWT |
 | User khác truy cập credential/update/end | 403, không thay đổi session |
 | Token sai chữ ký/hết hạn/sai path/sai action | MediaMTX từ chối; Read JWT không publish được, Publish JWT không có quyền api/read |
@@ -812,9 +807,9 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 | Backend restart khi RECONNECTING | Giữ deadline cũ; không nhận thêm 60 giây |
 | Hết grace | ENDED và path đóng; online/token cũ không mở lại phiên |
 | End từ web trong lúc LIVE hoặc READY | ENDED, ngắt/đóng path; callback muộn không đổi trạng thái |
-| Media API lỗi khi End | Có task CLOSE bền vững, UI báo pending; giữ slot đến khi xác nhận đóng |
-| Provisioning hoàn tất sau End | Không trả key; path vừa mở bị đóng bù |
-| MediaMTX restart | Restore đúng path active hợp lệ; không restore ENDED/expired reconnect |
+| Media API lỗi khi End | Request trả 503, giữ trạng thái DB/slot trước thao tác; UI cho bấm thử lại, không job nền |
+| Create cạnh tranh End | Serialize thao tác trên cùng session; không trả credential cho session ENDED |
+| MediaMTX restart | Ghi nhận giới hạn, kiểm tra/khôi phục thủ công; không yêu cầu tự restore trong MVP |
 | Cấp lại Publish JWT | Token mới dùng được; không tuyên bố token cũ đã revoke |
 | Kết thúc rồi dùng lại Publish JWT cũ còn hạn | Không phát lại được vì path đã đóng và không có catch-all |
 | Thay title/category khi LIVE | Metadata thay đổi; video và credential hiện tại tiếp tục hoạt động |
@@ -852,23 +847,23 @@ Media/browser:   smoke test và các case OBS/HLS thật ở trên
 4. Build/start một container MediaMTX; kiểm tra callback helper, host networking, Control API auth và map port HLS.
 5. Login streamer → dashboard → tạo session → copy server/key vào OBS → Start Streaming.
 6. Login viewer → browse/link watch → nhận Read JWT → xem hình và tiếng.
-7. Thử reconnect và End, xác nhận task/path/source thực tế trước khi kết luận buổi phát đã đóng.
+7. Thử reconnect và End, xác nhận HTTP response/DB/path/source trước khi kết luận buổi phát đã đóng.
 
 ### 16.2. Khi lỗi hoặc restart
 
-- DB READY nhưng media chưa sẵn sàng: dùng current session/task retry; không tạo thêm session mới để che lỗi.
-- DB ENDED nhưng còn nguồn/path: ưu tiên CLOSE, giữ pending và quan sát lỗi; không reset DB về LIVE để đồng bộ ngược theo media.
-- Callback mất: worker đối soát nguồn thực tế, không dựa hoàn toàn vào retry helper.
-- Backend restart: giữ signing key, task và deadline; không regenerate key hoặc gia hạn reconnect tự động.
-- MediaMTX restart: backend chỉ dựng lại path active được phép; Control API phải sẵn sàng và JWKS truy cập được trước khi cấp credential mới.
-- JWT hết hạn lúc reconnect: owner xin Publish JWT mới và cập nhật OBS. Việc đó không hồi sinh session đã ENDED.
+- Lỗi/timeout Control API trả ngay 503; không báo thao tác thành công, không tạo task. Người dùng chủ động thử lại request.
+- Mất response của API: đọc current/metadata hoặc gửi lại request ID cũ; không tạo request ID mới để né slot.
+- DB và media lệch sau timeout/crash: vận hành kiểm tra path/source và session, đóng path orphan hoặc xử lý session thủ công. Chưa có tự động đóng bù.
+- Callback mất hoặc MediaMTX restart: có thể cần thao tác thủ công để khôi phục/kết thúc phiên; chưa có reconciler/restore tự động.
+- Backend restart: giữ signing key và deadline đã lưu; không regenerate key hoặc cộng lại grace. Scheduler reconnect tiếp tục quét deadline theo business.
+- JWT hết hạn lúc reconnect: owner xin Publish JWT mới và cập nhật OBS; session ENDED hoặc quá deadline không được hồi sinh.
 
 ### 16.3. Rollout và rollback
 
 - Deploy migration trước code dùng schema, nạp secret, kiểm tra network/JWKS, sau đó bật các API/UI streaming.
 - Production xác minh HTTPS/RTMPS và Control API private bằng cấu hình thật; không chỉ dựa vào việc chạy được localhost.
-- Nếu rollback tính năng, dừng cấp credential mới, kết thúc/đóng các path đã cấp và xác minh media đã dừng trước khi tắt backend worker. Không để token còn hạn phát vào MediaMTX không còn backend quản lý.
-- Không drop session/history/task hoặc thay signing key như một bước rollback mặc định. Giữ schema tương thích để có thể đọc pending cleanup và audit.
+- Nếu rollback tính năng, dừng cấp credential mới, kết thúc/đóng các path đã cấp và xác minh media đã dừng trước khi tắt backend. Không để token còn hạn phát vào MediaMTX không còn backend quản lý.
+- Không drop session/history hoặc thay signing key như bước rollback mặc định; giữ dữ liệu audit. Việc bỏ bảng task thuộc migration thay đổi phạm vi, không phải thao tác rollback vận hành.
 
 ## 17. Checklist nghiệm thu MVP
 
@@ -881,6 +876,7 @@ Media/browser:   smoke test và các case OBS/HLS thật ở trên
 - [ ] Channel không có hai session cạnh tranh; retry create không tạo session trùng.
 - [ ] Mất mạng/OBS dừng đi qua RECONNECTING, hồi phục đúng trong grace, timeout không bị reset qua retry/restart.
 - [ ] End đóng path thật; Publish JWT cũ còn hạn không phát lại được; callback đến muộn không hồi sinh session.
-- [ ] Lỗi MediaMTX không làm mất task cleanup hoặc báo UI hoàn tất giả.
+- [ ] Create/End/callback chờ xử lý xong trước response; lỗi MediaMTX trả ngay, không báo thành công giả hoặc enqueue task.
+- [ ] Không còn code/config/bảng task theo schema đích; giới hạn crash/timeout/mất callback được ghi rõ, chưa nghiệm thu recovery tự động.
 - [ ] Có smoke test/kiểm thử thực tế và runbook tái hiện; tài liệu kiến trúc/data model phản ánh code cuối.
 - [ ] Các đề xuất/default chưa xác nhận riêng và giới hạn MVP được ghi rõ khi bàn giao.

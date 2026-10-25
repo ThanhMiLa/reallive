@@ -17,6 +17,10 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
 
   flyway:
     enabled: true
@@ -68,5 +72,9 @@ app:
   service:
     user: ${USER_SERVICE_BASE_URL:http://localhost:8080/user}
     channel: ${CHANNEL_SERVICE_BASE_URL:http://localhost:8081/channel}
+
+stream:
+  lifecycle:
+    reconnect-grace: ${STREAM_RECONNECT_GRACE:60s}
 
 # Add Media Server connection properties with the media adapter implementation.

@@ -120,3 +120,120 @@ python3 scripts/testing/streaming/acceptance.py
 - `acceptance.py` cuối cùng: protocol/STR-004/STR-005/STR-006 đều PASS; STR-005 in rõ nguồn xác nhận người dùng cho ba case thiếu record. Lệnh không tự sửa checkbox và không cho xác nhận thủ công thay thế smoke bị lỗi.
 
 File kết quả local được ignore; tài liệu này chỉ giữ số đo và ID không chứa credential. Môi trường local và path test đã kết thúc không được báo thành backend nghiệp vụ hoặc production đã hoàn tất.
+
+---
+
+# Giai đoạn 1 — MVP đồng bộ: Kết quả nghiệm thu mới (2026-10-25)
+
+**M1 đạt cho nền tảng domain/database:** đã thực thi STR-101–107 theo [plan mới](../Implement%20Plan/Streaming%20MVP%20Phase%201%20Implementation%20Plan.md). Toàn bộ `stream-service` có **77 tests, 0 failures, 0 errors, 0 skipped**; clean verify và Spring Boot repackage thành công.
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml clean verify
+```
+
+Môi trường kiểm chứng: Java 21, PostgreSQL 17 qua Testcontainers (`postgres:17-alpine`). Các suite PostgreSQL dùng schema riêng; cleanup chỉ DROP schema `stream_it_<uuid>` do test tạo và không bỏ qua lỗi cleanup. Không dùng database ứng dụng để nghiệm thu lần này.
+
+| Suite | Kết quả | Bằng chứng hành vi |
+|---|---|---|
+| StreamMigrationPostgresTest | 17/17 PASS | V1 → V3 từ schema sạch và schema cũ; giữ session/history, bỏ bảng task, constraint và unique slot; chặn upgrade khi còn PENDING_* chưa xác minh |
+| StreamRepositoryPostgresTest | 5/5 PASS | Hibernate validate, UUID/enum/source round-trip, slot/current/deadline/list và history theo thời gian Clock |
+| StreamStateMachineServiceTest | 12/12 PASS | READY/OPEN, LIVE, reconnect trước/đúng/sau deadline, first startedAt, duplicate/stale source/event, ENDED/CLOSED terminal |
+| StreamConcurrencyAndTransactionPostgresTest | 11/11 PASS | Request đồng thời khác/cùng ID, conflict khác channel, rollback session/history/End, bắt buộc transaction End/expire, deadline reload, gỡ task runtime và ONLINE chờ khóa End |
+| Các suite common/security/context giữ lại | 32/32 PASS | Auth state, Redis authorities, exception mapping và application context |
+
+## Schema và code đã thay đổi
+
+- Giữ V1/V2 nguyên trạng, thêm `V3__remove_stream_session_version.sql` bỏ cột version. Schema cuối có hai bảng session/history, không cột version hoặc optimistic locking; Flyway vẫn giữ trường version riêng để quản lý migration.
+- Test upgrade từ V2 với version=7 xác nhận V3 bỏ cột mà giữ session/history; test DB sạch chạy V1–V3 và migrate lần hai không thay đổi gì.
+- V2 từ chối khi còn PENDING_OPEN/PENDING_CLOSE để không giả định MediaMTX đã mở/đóng; hai test âm tính xác nhận migration rollback và dữ liệu/task cũ còn nguyên. Các log migration failed trong hai case này là kết quả mong đợi, không phải suite thất bại.
+- Runtime chỉ dùng OPEN/CLOSED. Slot/current chỉ dựa trên READY/LIVE/RECONNECTING. Bỏ năm class entity/repository/service/implementation/DTO task và cấu hình media-sync lease/retry.
+- History nhận createdAt từ Clock của domain; cùng transaction với session.
+- Create dùng transaction REQUIRED qua TransactionTemplate: khi tự sở hữu transaction, unique conflict được xử lý bằng đọc lại sau rollback; khi tham gia transaction của caller, lỗi được đẩy ra để caller rollback trước khi xử lý.
+- End/expire dùng MANDATORY để yêu cầu transaction của use case; caller phải giữ khóa và xác nhận đóng media trước khi gọi mutation domain. ONLINE quá hạn không tự ghi CLOSED.
+
+## Kiểm chứng tranh chấp và rollback
+
+- Test End giữ PESSIMISTIC_WRITE chưa commit và callback ONLINE đồng thời: quan sát callback chờ row lock qua pg_stat_activity, chỉ xử lý sau commit và giữ ENDED/CLOSED, history không lặp.
+- Test cùng request ID giữ request đầu chưa commit, quan sát request sau đang chờ unique index qua `pg_stat_activity`, rồi mới cho commit. Kết quả là cùng session, giữ cả title/categoryId và chỉ một history READY; đây là kiểm thử đồng thời thực tế.
+- Khác request ID cùng channel: một session thắng, request còn lại nhận STREAM_SESSION_ALREADY_ACTIVE. Cùng owner/request ID nhưng khác channel: nhận STREAM_CREATION_REQUEST_CONFLICT, không tạo session ở channel thua.
+- Lỗi CHECK title không bị đổi thành lỗi slot. Chủ động gây lỗi sau reservation hoặc trong history khi End chứng minh session/history/slot rollback cùng nhau.
+- Sau commit End domain với tiền điều kiện đóng media đã được caller đáp ứng, session ENDED/CLOSED và slot được giải phóng; End lặp/callback muộn không tạo thêm transition.
+- Deadline được đọc lại từ PostgreSQL, offline lặp không gia hạn; ONLINE tại deadline không hồi sinh hoặc giả báo đã đóng path. Kiểm thử Clock không đợi 60 giây thực.
+
+## Giới hạn bằng chứng
+
+- Đây là nghiệm thu Giai đoạn 1: chưa implement adapter HTTP MediaMTX, API Create/End thật hoặc worker deadline của giai đoạn 3–4. Test domain không chứng minh media path thật đã mở/đóng.
+- Migration đã chạy trong database/schema test cô lập; chưa áp dụng V2/V3 vào database ứng dụng đang chạy. Khi nâng DB cũ có PENDING_*, cần xác minh media và xử lý row đó trước khi migrate.
+- Không có task queue/lease/retry worker/reconciler trong runtime. Các phần auth/JWKS/eligibility và workflow media thật vẫn theo backlog giai đoạn 2–7.
+
+---
+
+# Lưu trữ — Báo cáo Giai đoạn 1 theo thiết kế task cũ (2026-10-25)
+
+
+> Lưu trữ báo cáo trước thay đổi phạm vi. Các kết quả sau đây thuộc schema ba bảng/code task đã được thay thế; không dùng để mô tả implementation hiện tại. Kết quả nghiệm thu mới nằm ở phần ngay phía trên.
+
+**Kết quả đã báo cáo trước review/thay đổi phạm vi:** 53/53 test PASS trên PostgreSQL 17/Testcontainers; nhãn M1 cũ không còn là nghiệm thu cho thiết kế đồng bộ hiện tại.
+
+## STR-101 — Flyway Migration và Data Model: PASS
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml test -Dtest=StreamMigrationPostgresTest
+```
+
+- **Database:** PostgreSQL 17 (container `postgres:17-alpine`).
+- **Migration script:** `V1__create_stream_sessions.sql` (schema: `stream_sessions`, `stream_status_history`, `stream_media_sync_tasks`).
+- **Kết quả kiểm chứng (`StreamMigrationPostgresTest` - 3/3 test pass):**
+  - PASS: Migration chạy trơn tru từ schema sạch, tạo đúng primary key, unique constraints và check constraints.
+  - PASS: Partial unique index `uq_stream_sessions_channel_slot` trên `channel_id` ngăn chặn hai session hoạt động đồng thời (trạng thái `READY`, `LIVE`, `RECONNECTING` hoặc `media_path_state` thuộc `PENDING_OPEN`, `OPEN`, `PENDING_CLOSE`), trong khi cho phép nhiều session `ENDED` với media path `CLOSED`.
+  - PASS: CHECK constraints hoạt động chuẩn xác: từ chối title rỗng/khoảng trắng, từ chối visibility không hợp lệ, yêu cầu `disconnected_at` + `reconnect_deadline_at` khi `RECONNECTING`, bắt buộc `started_at` và media source khi `LIVE`, bắt buộc `ended_at` khi `ENDED`.
+  - PASS: Cập nhật tài liệu data model khớp 100% với Flyway DDL.
+
+## STR-102 — Entity, Enum và Repository Nền Tảng: PASS
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml test -Dtest=StreamRepositoryPostgresTest
+```
+
+- **Kết quả kiểm chứng (`StreamRepositoryPostgresTest` - 5/5 test pass):**
+  - PASS: `StreamSessionEntity`, `StreamStatusHistoryEntity`, `StreamMediaSyncTaskEntity` pass kiểm tra `spring.jpa.hibernate.ddl-auto=validate` trên PostgreSQL 17 schema thật.
+  - PASS: Roundtrip persistence bảo toàn chính xác các enum `StreamVisibility`, `StreamSessionStatus`, `MediaPathState`, `MediaSourceType`.
+  - PASS: Unique constraint `uk_stream_sessions_owner_creation_request` trên `(owner_user_id, creation_request_id)` ngăn trùng lặp request ID của cùng owner.
+  - PASS: Query pessimistic write lock `findSlotOccupyingByChannelIdForUpdate` phát hiện chính xác session đang chiếm slot.
+  - PASS: Repository `StreamStatusHistoryRepository` lưu và truy vấn theo thứ tự thời gian tăng dần (`createdAt`, `id`).
+  - PASS: Repository `StreamMediaSyncTaskRepository` claim task đến hạn với JPQL pessimistic write lock kết hợp lock timeout `-2` (`FOR UPDATE SKIP LOCKED`).
+
+## STR-103 — Vòng Đời và State Machine: PASS
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml test -Dtest=StreamStateMachineServiceTest
+```
+
+- **Clock:** Tiêm `java.time.Clock` mô phỏng bước nhảy thời gian chính xác (không dùng `Thread.sleep`).
+- **Kết quả kiểm chứng (`StreamStateMachineServiceTest` - 9/9 test pass):**
+  - PASS: Khởi tạo session ở trạng thái `READY` và `PENDING_OPEN`.
+  - PASS: Media online lần đầu chuyển session sang `LIVE`, gán `mediaSourceId`, `mediaSourceType` và `startedAt`.
+  - PASS: Media online lặp cùng source ID là idempotent no-op; lặp `mediaEventId` bị bỏ qua.
+  - PASS: Media offline chuyển session sang `RECONNECTING`, thiết lập hạn chót grace period 60 giây (`reconnectDeadlineAt = now + 60s`).
+  - PASS: Media online trở lại trong hạn 60s chuyển về `LIVE`, giữ nguyên `startedAt` ban đầu, cập nhật `mediaSourceId` mới và xóa `reconnectDeadlineAt`.
+  - PASS: Khi grace period 60s hết hạn, `onGracePeriodExpired` chuyển session sang `ENDED`, gán `endedAt` và đặt `mediaPathState = PENDING_CLOSE`.
+  - PASS: Grace period chưa hết hạn từ chối kết thúc sớm.
+  - PASS: `endSession` chủ động kết thúc session thành `ENDED` và `PENDING_CLOSE`.
+  - PASS: Mọi sự kiện media sau khi session đã `ENDED` đều bị bỏ qua (terminal immutability).
+
+## STR-104 & STR-105 & STR-106 & STR-107 — Concurrency, Sync Task và PostgreSQL Integration: PASS
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml test -Dtest=StreamConcurrencyAndSyncPostgresTest
+./stream-service/mvnw -f stream-service/pom.xml clean verify
+```
+
+- **Môi trường:** Testcontainers PostgreSQL 17-alpine, cấp phát dynamic isolated schema `stream_it_<uuid>` cho mỗi test run và dọn dẹp bằng `DROP SCHEMA ... CASCADE`.
+- **Kết quả kiểm chứng (`StreamConcurrencyAndSyncPostgresTest` - 4/4 test pass):**
+  - PASS: Concurrency create với 2 thread cùng channel và khác request ID: đúng 1 thread tạo thành công (201), thread còn lại bị từ chối với `STREAM_SESSION_ALREADY_ACTIVE` (409) do partial unique index `uq_stream_sessions_channel_slot`.
+  - PASS: Idempotency create với cùng `creationRequestId`: request thứ hai trả về session đã tạo trước đó (`created = false`), không sửa đổi metadata và không tạo thêm history record.
+  - PASS: Session ở trạng thái `ENDED` nhưng `mediaPathState = PENDING_CLOSE` tiếp tục chặn tạo session mới trên channel cho tới khi media sync hoàn tất và chuyển sang `CLOSED`.
+  - PASS: Worker hoàn thành task mở media cũ bị từ chối (`rejected`) khi session đã chuyển sang `ENDED` trước khi worker báo cáo (monotonic revision bump và optimistic lease check).
+- **Tổng kết kiểm thử toàn dịch vụ `stream-service`:**
+  - 53 tests run, 0 failures, 0 errors, 0 skipped.
+  - Build jar và repackage Spring Boot hoàn tất thành công (`stream-service-0.0.1-SNAPSHOT.jar`).

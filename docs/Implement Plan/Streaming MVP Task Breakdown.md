@@ -1,7 +1,8 @@
 # Streaming MVP — Phân chia task triển khai
 
 - Ngày lập: 2026-10-24.
-- Trạng thái: giai đoạn 0 đã hoàn tất STR-001–006; 52 task giai đoạn 1–7 chưa hoàn tất.
+- Cập nhật 2026-10-25: MVP xử lý đồng bộ từ đầu đến cuối theo yêu cầu người dùng. Không có bảng task, worker retry, lease/revision hoặc reconciler.
+- Trạng thái: M0 và M1 đã đạt. Giai đoạn 1 đã điều chỉnh theo schema hai bảng và nghiệm thu 77/77 test ngày 2026-10-25; giai đoạn 2–7 chưa hoàn tất. HTTP MediaMTX thật được tích hợp ở giai đoạn 3–4.
 - Thiết kế và contract gốc: [Streaming MVP Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md).
 - Kiến trúc đã chốt: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Mục tiêu: triển khai theo từng phần có thể kiểm chứng, đến khi streamer phát được bằng OBS và người dùng đăng nhập xem được trên web.
@@ -15,6 +16,8 @@
 - Giữ nguyên phạm vi MVP và phân biệt các đề xuất mặc định ở mục 1.2 của implementation plan với quyết định đã chốt. TTL token, trình duyệt hỗ trợ và chính sách cấp lại key không được tự ghi thành yêu cầu đã xác nhận.
 - Ghi bằng chứng kiểm chứng ngắn theo task: lệnh/kết quả test hoặc kịch bản thực tế. Không tick hoàn tất chỉ vì đã viết code hoặc đã viết tài liệu kiểm thử.
 - Task dựng fixture ở giai đoạn 0 là kiểm chứng kỹ thuật. JWKS/callback qua Gateway và backend thật được nghiệm thu tiếp ở giai đoạn 2–4.
+- Request gọi MediaMTX trực tiếp và chờ kết quả; thành công mới commit/response, lỗi trả 503 và rollback DB của thao tác. Không trả 202 hoặc giao job xử lý sau. Giữ scheduler hết hạn reconnect theo business.
+- Mã 58 task được giữ ổn định; STR-105, STR-302 và STR-406 được đổi nội dung để khớp phạm vi đồng bộ. Các checkbox giai đoạn 1 đã được nghiệm thu lại theo kết quả mới, không dùng kết quả 53 test của thiết kế cũ.
 
 ### 1.1. Quy tắc hoàn tất chung
 
@@ -32,7 +35,7 @@
 | 1. Domain/database | STR-101–STR-107 | Hoàn tất giai đoạn 0 | Schema, persistence, state machine và ràng buộc concurrency |
 | 2. Auth và tích hợp service | STR-201–STR-208 | Hoàn tất giai đoạn 1 | Eligibility, ownership context, ký JWT, JWKS và security callback |
 | 3. Media adapter/provisioning | STR-301–STR-308 | Hoàn tất giai đoạn 2 | API tạo/cập nhật session và cấp thông tin OBS qua backend thật |
-| 4. Lifecycle/recovery | STR-401–STR-408 | Hoàn tất giai đoạn 3 | LIVE/reconnect/End, callback, retry bền vững và recovery |
+| 4. Lifecycle đồng bộ | STR-401–STR-408 | Hoàn tất giai đoạn 3 | LIVE/reconnect/End, callback và lỗi trực tiếp; giới hạn vận hành thủ công |
 | 5. Playback API/discovery | STR-501–STR-505 | Hoàn tất giai đoạn 4 | Metadata/list và cấp quyền xem dùng được với HLS thật |
 | 6. Frontend | STR-601–STR-610 | Hoàn tất giai đoạn 5 | Dashboard và trang xem kết nối đầy đủ API thật |
 | 7. Nghiệm thu/bàn giao | STR-701–STR-706 | Hoàn tất giai đoạn 6 | Bằng chứng MVP hoạt động, runbook và các giới hạn rõ ràng |
@@ -97,69 +100,71 @@ Mục tiêu: xác nhận cách tích hợp media trước khi xây toàn bộ ng
 
 **Mốc nghiệm thu giai đoạn 0:** Một container đã được kiểm chứng với OBS + JWT + HLS + đóng path. Fixture không được nhầm thành implementation nghiệp vụ hoàn chỉnh.
 
-**M0 đạt ngày 2026-10-24:** 12/12 kiểm chứng giao thức, 16/16 test fixture/helper, OBS/browser do người dùng thao tác và xác nhận; chi tiết nguồn bằng chứng ở tài liệu kiểm thử. Task tiếp theo là STR-101, chưa bắt đầu trong đợt này.
+**M0 đạt ngày 2026-10-24:** 12/12 kiểm chứng giao thức, 16/16 test fixture/helper, OBS/browser do người dùng thao tác và xác nhận; chi tiết nguồn bằng chứng ở tài liệu kiểm thử. Ghi nhận tại thời điểm M0: task tiếp theo khi đó là STR-101. Tiến độ sau đó được cập nhật ở mục giai đoạn 1.
 
 ## 3. Giai đoạn 1 — Domain và database
 
 Mục tiêu: có nền tảng persistence và transition đáng tin cậy trước khi tích hợp I/O media vào workflow.
 
-### STR-101 — Tạo Flyway migration và cập nhật data model
+Kế hoạch chi tiết và thứ tự điều chỉnh code đã có: [Streaming MVP Phase 1 Implementation Plan](Streaming%20MVP%20Phase%201%20Implementation%20Plan.md). Data Model hai bảng là schema đích. Giai đoạn này gỡ task và chuẩn bị transaction/domain; việc gọi HTTP MediaMTX thật được nối và nghiệm thu ở giai đoạn 3–4.
+
+### STR-101 — Điều chỉnh migration và data model về hai bảng MVP
 
 - **Phụ thuộc:** STR-006.
 - **Module/file:** `stream-service/src/main/resources/db/migration/`, `docs/data-model/Data Model.md`.
-- **Cần làm:** Tạo bảng session/history/media sync task, các field owner/source/deadline/version và idempotency; constraint enum, unique request/slot/path và index. Đổi CREATED thành READY trong history; không thêm stream key/JWT/hash vào schema.
-- **Hoàn tất khi:** Migration chạy được trên PostgreSQL 17 từ DB sạch; một channel không chiếm hai slot, kể cả nguồn cũ đang chờ cleanup. Tài liệu khớp schema dự kiến.
-- [ ] STR-101 hoàn tất, migration đã được kiểm chứng.
+- **Cần làm:** Giữ `stream_sessions`, `stream_status_history`; bỏ `stream_media_sync_tasks`. Giữ owner/source/deadline/idempotency và unique slot/path/request; bỏ cột version bằng V3. Media state đích OPEN/CLOSED, constraint/index theo Data Model; không lưu JWT/key/hash. Không sửa migration đã áp dụng; mặc định thêm version tiếp theo nếu chưa rõ lịch sử triển khai. Không tự chuyển PENDING_* chưa xác minh thành OPEN/CLOSED.
+- **Hoàn tất khi:** PostgreSQL 17 migrate/validate từ schema sạch và schema cũ có dữ liệu tương thích; schema cuối có hai bảng nghiệp vụ, không mất session/history; một channel tối đa một session active. Dữ liệu pending chưa xử lý khiến migration báo lỗi rõ.
+- [x] STR-101 hoàn tất 2026-10-25: V1–V3 migrate/validate trên PostgreSQL 17; schema cuối hai bảng, dữ liệu session/history được giữ; 17/17 test migration PASS, gồm chặn PENDING_* và rollback upgrade.
 
-### STR-102 — Xây entity, enum và repository nền tảng
+### STR-102 — Điều chỉnh entity, enum, repository và mapper
 
 - **Phụ thuộc:** STR-101.
-- **Module/file:** `stream-service/.../stream/entity/`, `repository/`, mapper cơ bản.
-- **Cần làm:** Map session/history/task, reuse BaseEntity, phân biệt lifecycle status với media path state. Bổ sung query tìm current session, deadline đến hạn và task cần xử lý; dùng đúng UUID/UTC/version.
-- **Hoàn tất khi:** JPA validate được schema, persistence round-trip giữ đúng enum/source/deadline và không tạo quan hệ entity xuyên service.
-- [ ] STR-102 hoàn tất, persistence nền tảng đã có kiểm chứng.
+- **Module/file:** `stream/entity/`, `entity/enums/`, `repository/`, `mapper/`, `dto/`.
+- **Cần làm:** Giữ session/history và enum/source converter; loại entity/repository/DTO task cùng STR-105. MediaPathState dùng OPEN/CLOSED; bỏ JPA @Version và field snapshot tương ứng; giữ PESSIMISTIC_WRITE trong cùng transaction, query slot/current/deadline và UUID/UTC. Slot/current chỉ lọc status active, bỏ predicate pending cleanup cũ.
+- **Hoàn tất khi:** JPA validate schema mới; persistence round-trip đúng; không còn bean hoặc query phụ thuộc bảng task.
+- [x] STR-102 hoàn tất 2026-10-25: hai entity và repository/mapper validate schema OPEN/CLOSED; slot/current bỏ predicate pending, 5/5 repository test PASS.
 
-### STR-103 — Xây quy tắc state machine
+### STR-103 — Giữ state machine, tách khỏi task đồng bộ
 
 - **Phụ thuộc:** STR-102.
-- **Module/file:** `stream/service/`, `service/impl/`, lifecycle policy và test tương ứng.
-- **Cần làm:** Hiện thực transition READY/LIVE/RECONNECTING/ENDED, điều kiện source/deadline, first startedAt và terminal ENDED. Tiêm Clock để kiểm thử mà không sleep.
-- **Hoàn tất khi:** Transition hợp lệ hoạt động; transition sai bị chặn/no-op đúng contract; callback lặp không reset thời gian bắt đầu hoặc gia hạn reconnect.
-- [ ] STR-103 hoàn tất, state machine có test hành vi.
+- **Module/file:** `stream/service/`, `service/impl/`, lifecycle policy và tests.
+- **Cần làm:** Giữ READY/LIVE/RECONNECTING/ENDED, source/deadline/first startedAt, terminal ENDED và Clock. Bỏ upsert task khi End/hết hạn; domain tham gia transaction use case, không commit riêng trước media. Chuẩn bị contract End/expire chỉ áp dụng sau xác nhận đóng media; ONLINE quá hạn không tự ghi ENDED/CLOSED chưa được xác nhận. Test mốc đúng deadline.
+- **Hoàn tất khi:** Transition đúng, callback lặp không reset thời gian; session quá deadline không nhận credential/ONLINE để hồi sinh; không có task side effect.
+- [x] STR-103 hoàn tất 2026-10-25: domain không còn task, End/expire yêu cầu transaction hiện có; Clock và mốc deadline có 12/12 state-machine test PASS.
 
-### STR-104 — Bảo vệ slot channel và dedupe create ở persistence
+### STR-104 — Bảo vệ slot channel và concurrent idempotency
 
 - **Phụ thuộc:** STR-103.
-- **Module/file:** Session repository và service thao tác transaction/khóa.
-- **Cần làm:** Xử lý unique slot, lookup cùng owner/request ID và lỗi cạnh tranh. Khóa/reload có điều kiện thay vì chỉ check tồn tại rồi insert; giữ slot khi ENDED nhưng chưa đóng nguồn xong.
-- **Hoàn tất khi:** Hai yêu cầu cạnh tranh không tạo hai session hoạt động; retry cùng request ID trả cùng session, không sửa metadata ngầm.
-- [ ] STR-104 hoàn tất, ràng buộc concurrency đã kiểm chứng.
+- **Module/file:** Session repository, service transaction/locking.
+- **Cần làm:** Unique slot và request ID; cùng owner/request trả cùng session kể cả đồng thời, không sửa title/categoryId ngầm. Phân biệt lỗi constraint và trường hợp request ID đã dùng cho channel khác; request thua đọc lại kết quả trong transaction mới sau rollback, không self-invocation @Transactional hoặc đọc trong transaction rollback-only. End lỗi giữ trạng thái cũ nên vẫn chiếm slot.
+- **Hoàn tất khi:** Hai create khác request chỉ một thành công; cùng request trả cùng session; không chỉ có test retry tuần tự.
+- [x] STR-104 hoàn tất 2026-10-25: test thực sự giữ request đầu chưa commit và chờ insert cạnh tranh; cùng request trả cùng session/title/category, khác request/channel trả đúng lỗi.
 
-### STR-105 — Xây history và repository cho task đồng bộ bền vững
+### STR-105 — History cùng transaction và loại bỏ task cũ
 
 - **Phụ thuộc:** STR-102.
-- **Module/file:** History/task repository và các method transaction liên quan.
-- **Cần làm:** Ghi history cùng transaction transition; tạo/cập nhật task cùng desired state. Bổ sung claim lease/revision, lịch retry và kiểm tra owner lease cho task.
-- **Hoàn tất khi:** Transaction rollback không để history/task lẻ; worker chết có thể claim lại sau lease; cập nhật desired state không bị task cũ ghi đè.
-- [ ] STR-105 hoàn tất, contract persistence cho worker đã sẵn sàng.
+- **Module/file:** History repository, domain service, task service/config/test cũ.
+- **Cần làm:** Ghi history cùng transaction trạng thái; rollback không để history lẻ. Bỏ StreamMediaSyncTaskService/Impl, ClaimedMediaSyncTask, lease/retry config và test chỉ dành cho task; giữ/viết lại assertion slot/history/transaction còn phù hợp. Sửa Javadoc/error wording còn mô tả pending/task; không sửa revision của auth ở service khác.
+- **Hoàn tất khi:** Domain không còn phụ thuộc task; history nhất quán khi rollback; build không cần bảng hoặc cấu hình media-sync.
+- [x] STR-105 hoàn tất 2026-10-25: đã bỏ năm class task và cấu hình lease/retry; history dùng Clock và cùng transaction, lỗi ghi history/rollback không để session thay đổi lẻ.
 
-### STR-106 — Thiết lập kiểm thử PostgreSQL integration
+### STR-106 — PostgreSQL integration cô lập
 
 - **Phụ thuộc:** STR-101.
-- **Module/file:** `stream-service/pom.xml`, test profile và integration test resources.
-- **Cần làm:** Chọn cấu hình PostgreSQL test cô lập/Testcontainers phù hợp BOM hiện tại, chạy migration thật. Giữ test mặc định không cần OBS/MediaMTX; ghi đúng lệnh/prerequisite cho integration suite.
-- **Hoàn tất khi:** Integration suite chạy với DB riêng, kiểm tra được partial index/locking/Flyway; không chạy cleanup trên DB ứng dụng đang dùng.
-- [ ] STR-106 hoàn tất, có lệnh chạy integration test tái hiện được.
+- **Module/file:** `pom.xml`, test profile, PostgreSQL test support.
+- **Cần làm:** Dùng PostgreSQL 17/Testcontainers, migration thật, schema test cô lập theo class hoặc lifecycle được quản lý rõ; chỉ cleanup schema test. Giữ unit test không cần OBS/MediaMTX.
+- **Hoàn tất khi:** Kiểm chứng constraint/Flyway/JPA/locking; không tác động schema public ứng dụng; lệnh và prerequisite chính xác.
+- [x] STR-106 hoàn tất 2026-10-25: Testcontainers PostgreSQL 17, schema riêng từng suite/context; cleanup chỉ nhận schema test và không nuốt lỗi; cả migration/JPA/concurrency suite PASS.
 
-### STR-107 — Kiểm chứng đầy đủ nền tảng domain/database
+### STR-107 — Kiểm chứng nền tảng đồng bộ và cập nhật nghiệm thu
 
 - **Phụ thuộc:** STR-103, STR-104, STR-105, STR-106.
-- **Module/file:** `stream-service/src/test/.../stream/` và tài liệu kiểm thử liên quan.
-- **Cần làm:** Test concurrent create, dedupe, terminal ENDED, duplicate history, deadline qua restart dữ liệu và task revision/lease. Sửa lỗi phát hiện trước khi đưa remote I/O vào workflow.
-- **Hoàn tất khi:** Build/test nền tảng đạt, các invariant quan trọng được kiểm bằng PostgreSQL thật và Clock kiểm soát được.
-- [ ] STR-107 hoàn tất, kết thúc giai đoạn 1.
+- **Module/file:** `stream-service/src/test/.../stream/`, tài liệu kiểm thử.
+- **Cần làm:** Chạy ma trận trong plan giai đoạn 1: migration sạch/nâng schema cũ, concurrent create khác/cùng request, rollback/history, terminal ENDED, duplicate/stale events, deadline trước/đúng/sau mốc và đọc lại từ DB. Chạy clean verify sau khi bỏ task; bỏ yêu cầu lease/revision/SKIP LOCKED, ghi số test thực tế thay vì giữ cố định 53.
+- **Hoàn tất khi:** Nền tảng hai bảng đạt kiểm chứng; không còn dependency task; M1 chỉ được tick theo kết quả mới. Chờ giai đoạn 3–4 để nghiệm thu HTTP MediaMTX thật.
+- [x] STR-107 hoàn tất 2026-10-25: clean verify và repackage PASS: 77/77 test, 0 failures/errors/skipped; suite concurrency/transaction mới 11/11 PASS. HTTP MediaMTX được kiểm chứng tiếp ở giai đoạn 3–4.
 
-**Mốc nghiệm thu giai đoạn 1:** Schema và code persistence bảo vệ được một slot/channel, lịch sử trạng thái, deadline và task bền vững.
+**M1 đạt ngày 2026-10-25 theo phạm vi mới:** hai bảng session/history, OPEN/CLOSED, không task runtime; slot/concurrent idempotency/history/deadline đạt 77/77 test. [Bằng chứng và giới hạn](../testing/Streaming%20MVP%20Tests.md). V2/V3 chỉ được chạy trong DB test cô lập, chưa migrate DB ứng dụng; bước tiếp theo STR-201.
 
 ## 4. Giai đoạn 2 — Auth, eligibility và JWT media
 
@@ -169,7 +174,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 
 - **Phụ thuộc:** STR-107.
 - **Module/file:** `stream/dto/`, `mapper/`, `common/exception/ErrorCode.java`.
-- **Cần làm:** Tạo request/response theo implementation plan, validation title/category/request ID, quy tắc PATCH và DTO tách metadata khỏi credential. Thêm error code độc nhất, HTTP 400/401/403/404/409/503 và pending cleanup.
+- **Cần làm:** Tạo request/response theo implementation plan, validation title/category/request ID, quy tắc PATCH và DTO tách metadata khỏi credential. Thêm error code độc nhất, HTTP 400/401/403/404/409/503; không response pending cleanup hoặc 202.
 - **Hoàn tất khi:** Contract có thể dùng chung cho backend/frontend; không có metadata response chứa JWT, không thêm exception class riêng theo feature.
 - [ ] STR-201 hoàn tất, DTO và lỗi được rà soát.
 
@@ -233,7 +238,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 
 ## 5. Giai đoạn 3 — Media adapter và session provisioning
 
-Mục tiêu: tạo session/cấp thông tin OBS qua API thật, có xử lý retry và kết quả remote chưa rõ.
+Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọi MediaMTX đồng bộ; lỗi/timeout trả ngay, người dùng chủ động thử lại.
 
 ### STR-301 — Xây MediaMTX Control API adapter
 
@@ -243,19 +248,19 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật, có xử lý ret
 - **Hoàn tất khi:** Adapter test đạt cho success/auth/error/timeout; ensure không replace path LIVE vô điều kiện, URL/path không do client tùy ý điều khiển.
 - [ ] STR-301 hoàn tất, adapter có test contract.
 
-### STR-302 — Xây media sync service và worker retry
+### STR-302 — Xây use case gọi MediaMTX đồng bộ
 
 - **Phụ thuộc:** STR-301, STR-105.
-- **Module/file:** Media sync service, task repository, scheduler.
-- **Cần làm:** Claim lease/revision, serialize cùng session, gọi HTTP ngoài transaction ghi dài; xác nhận kết quả theo desired state mới nhất. Retry/backoff và đọc lại remote khi timeout, giữ task CLOSE đến khi xác nhận đóng.
-- **Hoàn tất khi:** Worker phục hồi task sau restart; CREATE cũ không được xóa/ghi đè task CLOSE mới; API và scheduler dùng cùng cơ chế đồng bộ.
-- [ ] STR-302 hoàn tất, có test task/race/retry.
+- **Module/file:** Session/lifecycle use case, transaction và MediaMTX adapter.
+- **Cần làm:** Gọi adapter trực tiếp và chờ kết quả/timeout; không @Async, queue hoặc worker. MVP một replica dùng transaction/row lock serialize thao tác cùng session; reserve slot trước Create, đóng path trước commit End. Các lời gọi User/Channel nằm trước transaction ghi.
+- **Hoàn tất khi:** Test chứng minh response chờ I/O; lỗi rollback DB và trả 503; không enqueue task, retry ngầm hoặc trả 202. Ghi rõ DB/media không atomic khi crash/timeout.
+- [ ] STR-302 hoàn tất, luồng đồng bộ có test chờ kết quả/lỗi.
 
 ### STR-303 — Xây API Create Stream Session
 
 - **Phụ thuộc:** STR-302, STR-202, STR-203, STR-104, STR-201.
 - **Module/file:** Session controller/service, repository và DTO.
-- **Cần làm:** Check principal/eligibility/channel/category; transaction READY + history + task; provision path; cấp thông tin OBS khi sẵn sàng. Xử lý request ID trùng, slot bị chiếm và 503 sau commit.
+- **Cần làm:** Check principal/eligibility/channel/category; transaction reserve slot READY/OPEN chưa commit, provision path trực tiếp, ghi history rồi commit; sau đó trả thông tin OBS. Lỗi media rollback và trả 503; xử lý request ID trùng/slot bị chiếm.
 - **Hoàn tất khi:** Create hợp lệ trả đúng session/credential; không cấp key cho ENDED hoặc media chưa provision; retry không tạo thêm session.
 - [ ] STR-303 hoàn tất, API create có test thành công và lỗi.
 
@@ -279,7 +284,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật, có xử lý ret
 
 - **Phụ thuộc:** STR-303.
 - **Module/file:** Current session query/service/controller và metadata DTO.
-- **Cần làm:** Trả session hiện tại hoặc session còn chờ cleanup; không có thì result null. Trả deadline/serverTime/publishReady/mediaCleanupPending; không trả JWT trong polling metadata.
+- **Cần làm:** Trả session active hiện tại hoặc result null. Trả deadline/serverTime/publishReady; không JWT trong polling metadata, không mediaCleanupPending/job status.
 - **Hoàn tất khi:** Dashboard có thể phục hồi tiến trình sau create bị mất response hoặc reload, biết lúc nào chưa được tạo session mới, không nhận credential qua API metadata.
 - [ ] STR-306 hoàn tất, query/current contract có test.
 
@@ -295,23 +300,23 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật, có xử lý ret
 
 - **Phụ thuộc:** STR-303, STR-304, STR-305, STR-306, STR-307.
 - **Module/file:** Controller/service/adapter integration tests và smoke script.
-- **Cần làm:** Kiểm tra API thật với OBS, owner khác, double-submit, retry sau commit và lỗi MediaMTX. Kiểm tra path đúng, JWT đúng và metadata không lộ token.
+- **Cần làm:** Kiểm tra API thật với OBS, owner khác, double-submit, mất response sau commit và lỗi/timeout MediaMTX trước commit. Kiểm tra path đúng, JWT đúng và metadata không lộ token.
 - **Hoàn tất khi:** Dùng API tạo session rồi copy sang OBS phát được nguồn. Chưa gắn lifecycle handler thì không tự giả lập LIVE; phần đó được nghiệm thu ở giai đoạn 4.
 - [ ] STR-308 hoàn tất, kết thúc giai đoạn 3.
 
-**Mốc nghiệm thu giai đoạn 3:** Backend tạo/cập nhật/quản lý thông tin OBS được, provisioning phục hồi được khi lỗi và không còn key mẫu ở kết quả API.
+**Mốc nghiệm thu giai đoạn 3:** Backend gọi MediaMTX và hoàn tất provisioning trước response; lỗi trả trực tiếp, không còn key mẫu hoặc task nền.
 
-## 6. Giai đoạn 4 — Lifecycle, reconnect, End và recovery
+## 6. Giai đoạn 4 — Lifecycle, reconnect và End đồng bộ
 
 Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không bị phát lại bằng token còn hạn.
 
-### STR-401 — Hoàn thiện helper callback có HMAC và retry
+### STR-401 — Helper callback HMAC gửi trực tiếp
 
 - **Phụ thuộc:** STR-207, STR-307.
 - **Module/file:** `infra/mediamtx/media_hook.py`, Dockerfile/config và helper tests.
-- **Cần làm:** Đọc đúng path/source ID/type, tạo event ID/body ổn định, ký timestamp/raw body và gửi đúng endpoint. Retry hữu hạn, timeout/SIGINT đúng; không gửi MTX_QUERY hoặc log stream key.
-- **Hoàn tất khi:** Receiver test xác minh được chữ ký và payload; retry giữ event ID; helper dừng đúng theo hook, không để process cũ gửi mãi.
-- [ ] STR-401 hoàn tất, helper có kiểm chứng payload/retry.
+- **Cần làm:** Đọc đúng path/source, ký HMAC và gửi một request HTTP có timeout, chờ response; bỏ vòng retry/backoff hiện có từ M0. Không gửi MTX_QUERY/log key. Callback handler xử lý xong trước response, không enqueue.
+- **Hoàn tất khi:** Chữ ký/payload đúng; lỗi được ghi nhận, helper dừng đúng; có đúng một lần gửi cho mỗi lần hook chạy.
+- [ ] STR-401 hoàn tất, helper đồng bộ có kiểm chứng.
 
 ### STR-402 — Xử lý ONLINE và chuyển LIVE
 
@@ -329,43 +334,43 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Hoàn tất khi:** Dừng/mất kết nối OBS tạo RECONNECTING đúng; callback lặp/sai thứ tự không kéo dài grace hoặc làm hỏng nguồn mới.
 - [ ] STR-403 hoàn tất, OFFLINE/source ordering có test.
 
-### STR-404 — Xây timeout worker cho RECONNECTING
+### STR-404 — Quét deadline reconnect và đóng path trực tiếp
 
 - **Phụ thuộc:** STR-403, STR-302.
 - **Module/file:** Reconnect scheduler/service, query deadline và transaction transition.
-- **Cần làm:** Quét deadline, khóa/recheck status/source theo policy; hết hạn tạo ENDED + history + task CLOSE. Không reset deadline sau backend restart, không cạnh tranh mù với ONLINE.
+- **Cần làm:** Quét deadline, khóa/recheck status/source theo policy; hết hạn gọi MediaMTX đóng path và chờ kết quả rồi ghi ENDED/CLOSED/history. Lỗi rollback/ghi log, không tạo task retry riêng. Không reset deadline sau backend restart, không cạnh tranh mù với ONLINE.
 - **Hoàn tất khi:** Test clock chứng minh trước/sau deadline đúng, restart không cho thêm 60 giây và timeout cạnh tranh reconnect có kết quả nhất quán.
-- [ ] STR-404 hoàn tất, timeout worker có test.
+- [ ] STR-404 hoàn tất, scheduler deadline và lời gọi đồng bộ có test.
 
 ### STR-405 — Xây End Stream API và đóng nguồn thật
 
 - **Phụ thuộc:** STR-404, STR-308.
-- **Module/file:** End controller/use case, media sync/task, response pending cleanup.
-- **Cần làm:** Cho đúng owner kết thúc READY/LIVE/RECONNECTING; commit ENDED và CLOSE, xóa path/ngắt nguồn, xác nhận đóng. End lặp idempotent; trả 202 khi cleanup còn pending, giữ slot đến khi hoàn tất.
+- **Module/file:** End controller/use case, MediaMTX adapter và transaction session/history.
+- **Cần làm:** Cho đúng owner kết thúc READY/LIVE/RECONNECTING; khóa session, gọi MediaMTX đóng path/ngắt nguồn và chờ xác nhận rồi commit ENDED/CLOSED/history. End lặp idempotent; lỗi/timeout trả 503 và rollback DB; không 202 hoặc xử lý sau response.
 - **Hoàn tất khi:** Token cũ còn hạn không phát lại sau khi đóng path được xác nhận; không báo hoàn tất giả khi Control API lỗi; callback sau End giữ ENDED.
 - [ ] STR-405 hoàn tất, API End và cleanup có test/thử thực tế.
 
-### STR-406 — Xây reconciler và phục hồi sau restart
+### STR-406 — Chốt giới hạn lỗi/restart và hướng dẫn thao tác thủ công
 
 - **Phụ thuộc:** STR-405, STR-302.
-- **Module/file:** Reconciliation service/scheduler, task query và MediaMTX list/source adapter.
-- **Cần làm:** Đối soát theo batch, phục hồi path active hợp lệ, nhận diện mất callback và đóng ENDED/orphan trong namespace sở hữu. Phân biệt timeout không biết trạng thái với offline thực sự; đọc deadline/task từ DB sau restart.
-- **Hoàn tất khi:** Backend/MediaMTX restart không mở lại ENDED, không mất cleanup và không gia hạn reconnect. Mất callback có cơ chế khôi phục từ quan sát nguồn thực tế.
-- [ ] STR-406 hoàn tất, recovery có kiểm chứng.
+- **Module/file:** Runbook MediaMTX/Stream Service và tài liệu kiểm thử.
+- **Cần làm:** Ghi cách kiểm tra DB/path/source khi timeout, crash, mất callback hoặc MediaMTX restart. Nêu rõ không tự restore path, đóng bù, retry queue hoặc reconcile; backend restart vẫn giữ deadline/key.
+- **Hoàn tất khi:** Giới hạn MVP đồng bộ được ghi chính xác; có hướng dẫn thủ công, không yêu cầu implementation recovery tự động.
+- [ ] STR-406 hoàn tất, giới hạn/runbook được rà soát.
 
 ### STR-407 — Kiểm thử concurrency và lỗi lifecycle
 
 - **Phụ thuộc:** STR-406.
 - **Module/file:** Service/DB/adapter integration tests.
-- **Cần làm:** Test End đấu với create/reconnect, task CREATE hoàn tất muộn, offline cũ sau online mới, helper gửi lặp, lease hết hạn và lỗi Control API. Kiểm tra state/history/task/slot sau mỗi tình huống.
-- **Hoàn tất khi:** Các invariant vẫn giữ; task CLOSE không bị mất/ghi đè và không có đường tự mở lại path ENDED.
+- **Cần làm:** Test End đấu với create/reconnect, offline cũ sau online mới, callback lặp và lỗi/timeout Control API. Kiểm tra state/history/slot; response chờ kết quả, không task hoặc retry ngầm.
+- **Hoàn tất khi:** Các invariant vẫn giữ khi lời gọi thành công; lỗi không báo thành công giả; ENDED không bị callback hồi sinh. Không nghiệm thu tự recovery sau crash/timeout.
 - [ ] STR-407 hoàn tất, regression lifecycle đạt.
 
 ### STR-408 — Nghiệm thu nguồn phát và lifecycle bằng OBS thật
 
 - **Phụ thuộc:** STR-407.
 - **Module/file:** Smoke script, cấu hình chạy thật local và ghi nhận kiểm thử.
-- **Cần làm:** Thực hiện create → OBS online → mất mạng/reconnect → End bằng API; thử Stop OBS, tắt tab web và phát lại bằng key cũ. Thử backend/MediaMTX restart theo runbook.
+- **Cần làm:** Thực hiện create → OBS online → mất mạng/reconnect → End bằng API; thử Stop OBS, tắt tab web và phát lại bằng key cũ. Thử backend restart giữ deadline/key; MediaMTX restart được ghi nhận theo giới hạn vận hành thủ công.
 - **Hoàn tất khi:** DB/API phản ánh nguồn thực tế và các khác biệt giữa web/OBS/network đúng kiến trúc; có bằng chứng phiên ENDED không phát lại được.
 - [ ] STR-408 hoàn tất, kết thúc giai đoạn 4.
 
@@ -433,7 +438,7 @@ Mục tiêu: hoàn thành quy trình streamer/viewer trên giao diện hiện c�
 
 - **Phụ thuộc:** STR-601, STR-303, STR-306.
 - **Module/file:** `pages/dashboard/StreamerDashboardPage.tsx`, form/components/hook cần thiết.
-- **Cần làm:** Chờ auth, tải current, chỉ hiện form create khi không có session; submit chống double-click và retry cùng request ID. Hiển thị đúng pending provisioning/503 sau commit, giữ nội dung người dùng nhập.
+- **Cần làm:** Chờ auth, tải current, chỉ hiện form create khi không có session; submit chống double-click và retry cùng request ID. Chờ Create hoàn tất, disable submit; 503 hiển thị lỗi và giữ nội dung nhập, không poll tiến trình provisioning nền.
 - **Hoàn tất khi:** Tạo session từ UI được; reload hoặc mất response không tạo trùng và không tự tạo session chỉ vì vào dashboard.
 - [ ] STR-602 hoàn tất, create/current UI có kiểm chứng.
 
@@ -457,7 +462,7 @@ Mục tiêu: hoàn thành quy trình streamer/viewer trên giao diện hiện c�
 
 - **Phụ thuộc:** STR-602, STR-405.
 - **Module/file:** Dashboard polling, status banner/countdown và mutation End.
-- **Cần làm:** Dùng status/deadline/serverTime từ API, pause polling khi phù hợp; hiển thị pending cleanup và chỉ báo kết thúc xong khi backend xác nhận. Owner vẫn có đường kết thúc session theo quyền API nếu không còn đủ quyền tạo stream.
+- **Cần làm:** Dùng status/deadline/serverTime từ API, pause polling khi phù hợp; chờ End trả kết quả và chỉ báo hoàn tất khi HTTP 200; 503 hiển thị lỗi/thử lại, không UI job pending cleanup. Owner vẫn có đường kết thúc session theo quyền API nếu không còn đủ quyền tạo stream.
 - **Hoàn tất khi:** READY/LIVE/RECONNECTING/ENDED hiện đúng, reload không reset 60 giây và không cho tạo buổi mới khi nguồn cũ chưa đóng xong.
 - [ ] STR-605 hoàn tất, lifecycle UI có kiểm chứng.
 
@@ -523,19 +528,19 @@ Mục tiêu: chứng minh các phần đã tích hợp hoạt động cùng nhau
 - **Hoàn tất khi:** Quy trình tái hiện được từ UI, video không đi qua Java backend và session mới dùng path/token mới.
 - [ ] STR-702 hoàn tất, happy case có bằng chứng.
 
-### STR-703 — Nghiệm thu lỗi, bảo vệ media và recovery
+### STR-703 — Nghiệm thu lỗi trực tiếp và bảo vệ media
 
 - **Phụ thuộc:** STR-702.
 - **Module/file:** Môi trường thật local, smoke script và ma trận kiểm thử trong implementation plan.
 - **Cần làm:** Thử invalid token/path/action, user khác, CORS, mất mạng, OBS Stop, callback cũ/lặp, timeout grace, backend/media restart và Control API lỗi lúc End. Dùng lại key cũ còn hạn sau End và xác nhận bị chặn.
-- **Hoàn tất khi:** Ma trận bắt buộc có kết quả cụ thể, không còn lỗi khiến ENDED hồi sinh, mất task cleanup hoặc chiếm hai slot; giới hạn replay/recording được ghi đúng.
+- **Hoàn tất khi:** Ma trận bắt buộc có kết quả cụ thể, không còn lỗi khiến ENDED hồi sinh, báo thành công giả khi media lỗi hoặc chiếm hai slot; giới hạn replay/recording được ghi đúng.
 - [ ] STR-703 hoàn tất, các tình huống lỗi có bằng chứng.
 
 ### STR-704 — Hoàn thiện runbook local và tài liệu theo code cuối
 
 - **Phụ thuộc:** STR-703.
 - **Module/file:** README Stream Service/MediaMTX, env examples, architecture flow, data model và testing docs.
-- **Cần làm:** Ghi thứ tự chạy, nạp env/key, thiết lập OBS, URL/port, điều tra lỗi JWKS/hook và retry cleanup. Đồng bộ contract/API/field/tham số thực tế với plan và bỏ fixture khỏi đường chạy chính.
+- **Cần làm:** Ghi thứ tự chạy, nạp env/key, thiết lập OBS, URL/port, điều tra lỗi JWKS/hook/Control API và kiểm tra path thủ công. Đồng bộ contract/API/field/tham số thực tế với plan và bỏ fixture khỏi đường chạy chính.
 - **Hoàn tất khi:** Có thể dựng lại môi trường sạch theo hướng dẫn; tài liệu không chứa secret và không mô tả code/protocol khác thực tế.
 - [ ] STR-704 hoàn tất, runbook đã được đi thử.
 
@@ -551,7 +556,7 @@ Mục tiêu: chứng minh các phần đã tích hợp hoạt động cùng nhau
 
 - **Phụ thuộc:** STR-704, STR-705.
 - **Module/file:** Task breakdown, implementation plan, kết quả kiểm thử và ghi nhận bàn giao.
-- **Cần làm:** Đối chiếu checklist nghiệm thu MVP, đánh dấu task theo bằng chứng, liệt kê lỗi/giới hạn còn lại. Tách việc mở rộng như rotate/revoke trong cùng session, Safari/native HLS, moderation, CDN, recording khỏi kết quả đã hoàn tất.
+- **Cần làm:** Đối chiếu checklist nghiệm thu MVP, đánh dấu task theo bằng chứng, liệt kê lỗi/giới hạn còn lại. Tách task queue/lease/revision/retry/reconciler/restore tự động, rotate/revoke trong cùng session, Safari/native HLS, moderation, CDN và recording khỏi kết quả đã hoàn tất.
 - **Hoàn tất khi:** Người review biết rõ tính năng nào chạy được, đã test ở đâu và phần nào còn ngoài phạm vi; không có checkbox hoàn thành dựa trên giả định.
 - [ ] STR-706 hoàn tất, kết thúc giai đoạn 7.
 
@@ -562,10 +567,10 @@ Mục tiêu: chứng minh các phần đã tích hợp hoạt động cùng nhau
 | Mốc | Task cuối cần đạt | Có thể kiểm chứng được |
 |---|---|---|
 | M0 — Chứng minh kiến trúc media — ĐẠT 2026-10-24 | STR-006 | OBS/JWT/HLS/đóng path bằng fixture |
-| M1 — Nền tảng dữ liệu đúng | STR-107 | Constraint/concurrency/history/deadline/task |
+| M1 — Nền tảng dữ liệu đúng — ĐẠT 2026-10-25 | STR-107 | Hai bảng session/history, constraint/concurrency/deadline, 77/77 test |
 | M2 — Auth backend thật | STR-208 | JWT/JWKS/eligibility/account boundary |
-| M3 — Tạo stream bằng API | STR-308 | Backend cấp thông tin OBS thật, retry provisioning được |
-| M4 — Vòng đời và kết thúc an toàn | STR-408 | LIVE/reconnect/End/recovery với OBS thật |
+| M3 — Tạo stream bằng API | STR-308 | Backend mở path trực tiếp và cấp thông tin OBS sau commit |
+| M4 — Vòng đời và kết thúc đồng bộ | STR-408 | LIVE/reconnect/End với OBS thật, lỗi trực tiếp và giới hạn thủ công |
 | M5 — Xem bằng API thật | STR-505 | Read JWT backend cấp phát được trên player fixture |
 | M6 — Dùng trọn luồng trên web | STR-610 | Dashboard + browse/watch không còn dữ liệu giả |
 | M7 — MVP được nghiệm thu | STR-706 | Check tự động, E2E, runbook và giới hạn rõ ràng |

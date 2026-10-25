@@ -2,6 +2,8 @@
 
 Mục tiêu: streamer phát bằng OBS và người dùng xem được trên React + hls.js. Chưa dùng CDN.
 
+Cập nhật phạm vi 2026-10-25: các thao tác backend gọi MediaMTX xử lý **đồng bộ từ đầu đến cuối**, chờ kết quả trước response; không task queue, worker retry/lease/revision hoặc reconciler. Giữ scheduler phục vụ deadline reconnect. Mọi cập nhật session dùng pessimistic row lock trong cùng transaction; không dùng version/optimistic locking trong MVP.
+
 Chốt triển khai **một instance MediaMTX, chạy trong một container Docker**. MediaMTX tự verify cả **Publish JWT** của OBS và **Read JWT** của player bằng **public key** do backend cung cấp qua JWKS.
 
 ## 1. Kiến trúc tổng thể
@@ -27,8 +29,8 @@ Mỗi channel chỉ có tối đa một session đang hoạt động, tức ở 
 
 1. Frontend gọi API qua Gateway đến Stream Service.
 2. Backend kiểm tra quyền streamer, channel và dữ liệu thiết lập.
-3. Nếu hợp lệ, backend lưu session **READY** và đăng ký path riêng `live/{sessionId}` trên MediaMTX qua Control API.
-4. Backend dùng private key ký **Publish JWT**, chỉ cấp quyền `publish` vào path đó, rồi trả `serverUrl` và `streamKey` chứa JWT cho frontend. Chỉ trả thông tin OBS khi đăng ký path thành công; nếu thất bại phải xử lý hoàn tác hoặc thử lại cho cùng session.
+3. Nếu hợp lệ, backend mở transaction, reserve slot session **READY**, gọi đăng ký path riêng `live/{sessionId}` trên MediaMTX và chờ kết quả; thành công mới commit READY/OPEN cùng history.
+4. Backend dùng private key ký **Publish JWT**, chỉ cấp quyền `publish` vào path đó, rồi trả `serverUrl` và `streamKey` chứa JWT cho frontend. Chỉ trả thông tin OBS sau khi đăng ký path thành công và commit DB. Lỗi media trả 503, rollback DB; không enqueue để xử lý tiếp.
 5. Streamer copy hai giá trị đó vào OBS. Cập nhật title/category tiếp tục gọi API của session hiện tại và giữ nguyên thông tin OBS.
 
 Ví dụ thông tin điền vào OBS:
@@ -45,9 +47,9 @@ Cơ chế này thay thế stream key ngẫu nhiên đối chiếu hash: không l
 ## 3. Workflow Create Stream Session
 
 ```text
-1. Client         --> Stream Service: Tạo session; backend kiểm tra và lưu READY
-2. Stream Service --> MediaMTX:       Đăng ký path live/{sessionId} qua Control API
-3. Stream Service --> Client:         Trả serverUrl + streamKey chứa Publish JWT
+1. Client         --> Stream Service: Tạo session; kiểm tra, mở transaction, reserve slot READY
+2. Stream Service --> MediaMTX:       Đăng ký path live/{sessionId}, chờ kết quả rồi commit DB
+3. Stream Service --> Client:         Trả serverUrl + streamKey chứa Publish JWT sau commit
 4. OBS            --> MediaMTX:       Kết nối serverUrl, yêu cầu publish với streamKey
 5. MediaMTX:                          Verify Publish JWT bằng public key cache
 6. MediaMTX       --> OBS:            RTMP: NetStream.Publish.Start (chấp nhận publish)
@@ -103,8 +105,8 @@ OBS nối lại trong thời gian cho phép
   --> MediaMTX runOnOnline --> Backend --> RECONNECTING → LIVE
 
 Hết thời gian chờ hoặc streamer chủ động kết thúc
-  --> Backend chuyển ENDED, ngừng cấp token cho session
-  --> Backend gọi Control API đóng path, ngắt nguồn OBS
+  --> Backend khóa/recheck session, gọi Control API đóng path và chờ xác nhận
+  --> Thành công mới commit ENDED/CLOSED, ngừng cấp token cho session
   --> Callback offline về sau không đổi ENDED thành RECONNECTING
 ```
 
@@ -112,7 +114,7 @@ OBS reconnect dùng lại serverUrl/streamKey đã lưu nếu Publish JWT còn h
 
 Session đã **ENDED** không mở lại; buổi stream tiếp theo dùng session/path/token mới. Khi kết thúc, backend xóa cấu hình path riêng qua Control API để ngăn kết nối lại bằng JWT cũ còn hạn. MediaMTX chỉ mở các path được backend đăng ký, không dùng path catch-all như `all_others`.
 
-Nếu gọi Control API thất bại, backend phải thử lại; chỉ đổi trạng thái DB hoặc kick kết nối OBS chưa đủ chặn phát lại. Khi MediaMTX khởi động lại, backend đồng bộ path theo các session còn hoạt động và thời hạn reconnect trong DB, không mở lại path của session đã kết thúc. Xem [Control API quản lý path](https://github.com/bluenviron/mediamtx/blob/v1.21.2/api/openapi.yaml#L2970).
+Nếu gọi Control API lỗi/timeout, request End trả 503 và rollback thay đổi DB, UI cho phép người dùng thử lại; không trả 202 hoặc ghi ENDED rồi giao worker xử lý. Scheduler hết hạn reconnect cũng gọi trực tiếp và chỉ commit ENDED khi đóng media thành công; session đã quá deadline không được cấp credential hoặc hồi sinh. DB và MediaMTX không có transaction chung: crash/timeout có thể để lại trạng thái lệch. Mất callback hoặc MediaMTX restart cần kiểm tra/xử lý thủ công trong MVP; tự restore/đóng bù/đối soát được hoãn sau MVP. Xem [Control API quản lý path](https://github.com/bluenviron/mediamtx/blob/v1.21.2/api/openapi.yaml#L2970).
 
 ## 6. Xác thực JWT và bảo vệ MVP
 
@@ -122,3 +124,5 @@ Nếu gọi Control API thất bại, backend phải thử lại; chỉ đổi t
 - **HLS:** JWT được kiểm tra khi mở phiên HLS; hết hạn JWT không tự bảo đảm ngắt phiên đang xem. Player cần token còn hạn khi mở lại phiên.
 - **CORS + JWT:** dùng `hlsAllowOrigins` giới hạn origin frontend và Read JWT cấp quyền xem. MVP tạm chấp nhận người xem hợp lệ sao chép token để chia sẻ/phát lại.
 - **Tích hợp nội bộ:** Control API chỉ dành cho backend với quyền `api` riêng; callback online/offline được xác thực riêng. Hook là lệnh gọi HTTP về backend, độc lập với bước verify JWT. Xem [MediaMTX Hooks](https://mediamtx.org/docs/features/hooks#runononline).
+
+Schema đích của MVP có `stream_sessions` và `stream_status_history`. Code task cũ đã được loại khỏi runtime; migration V2 bỏ bảng `stream_media_sync_tasks` và V3 bỏ cột version đã được kiểm chứng trong DB test theo [kế hoạch điều chỉnh](../Implement%20Plan/Streaming%20MVP%20Phase%201%20Implementation%20Plan.md). Chưa migrate DB ứng dụng hoặc triển khai adapter/HTTP MediaMTX của giai đoạn 3–4.
