@@ -124,7 +124,6 @@ export function CategoryPreferencesPage() {
       <div className="mx-auto max-w-5xl space-y-7 pb-10">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl font-outfit">Category Interests</h1>
-          <p className="mt-2 text-sm text-gray-400">Choose the categories you enjoy to personalize your recommendations.</p>
         </div>
         <section aria-label="Category Interests" className="rounded-xl border border-[#1f1f26] bg-[#08080a] p-5 sm:p-7">
           {isCheckingAuth ? <p role="status" className="text-sm text-gray-400">Checking your session…</p>

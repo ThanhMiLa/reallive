@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Circle, LogIn, Radio, Settings2, Users, Video } from 'lucide-react'
+import { CheckCircle2, Circle, LogIn, Settings2, Users, Video } from 'lucide-react'
 import { authApi } from '@/api/auth.api'
 import { profileStaleTime } from '@/lib/query-client'
 import { Button } from '@/components/ui/Button'
@@ -34,12 +34,8 @@ export function BecomeStreamerPage() {
   return (
     <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl space-y-7 pb-10">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#ff2b42]/30 bg-[#ff2b42]/10 text-[#ff2b42]"><Radio className="h-6 w-6" /></div>
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl font-outfit">Become a streamer</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">Create your space on RealLive. Review what you get, check the requirements and read the streamer guidelines before you join.</p>
-          </div>
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl font-outfit">Become a streamer</h1>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">

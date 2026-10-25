@@ -186,7 +186,6 @@ export function ProfilePage() {
       <div className="mx-auto max-w-5xl space-y-7 pb-10">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl font-outfit">Profile</h1>
-          <p className="mt-2 text-sm text-gray-400">Manage your personal information and RealLive account security.</p>
         </div>
         {isCheckingAuth ? <p role="status" className="text-sm text-gray-400">Checking your session…</p> : !isAuthenticated ? (
           <div className="rounded-xl border border-[#1f1f26] bg-[#08080a] p-6 space-y-4">
@@ -217,9 +216,9 @@ export function ProfilePage() {
               }} />
             </section>
             <section aria-labelledby="password-heading" className="rounded-xl border border-[#1f1f26] bg-[#08080a] p-5 sm:p-7">
-              <div className="mb-6 border-b border-[#1f1f26] pb-5">
-                <div className="flex items-center gap-3"><LockKeyhole className="h-5 w-5 text-[#ff2b42]" /><h2 id="password-heading" className="text-lg font-bold text-white font-outfit">Change password</h2></div>
-                <p className="mt-2 text-xs text-gray-400">Your new password must contain at least 5 characters and differ from your current password.</p>
+              <div className="mb-6 flex items-center gap-3 border-b border-[#1f1f26] pb-5">
+                <LockKeyhole className="h-5 w-5 text-[#ff2b42]" />
+                <h2 id="password-heading" className="text-lg font-bold text-white font-outfit">Change password</h2>
               </div>
               <PasswordForm key={data.userId} />
             </section>

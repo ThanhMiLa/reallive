@@ -6,9 +6,6 @@ export function StreamerDashboardPage() {
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white font-outfit">
             Stream Manager
           </h1>
-          <p className="mt-1 text-sm text-gray-400">
-            Manage your channel broadcasts and live streaming settings
-          </p>
         </div>
 
         {/* Dashboard frame / container placeholder */}
