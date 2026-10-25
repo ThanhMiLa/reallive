@@ -17,6 +17,8 @@ public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID>, J
 
     Optional<ChannelEntity> findByStreamerId(UUID streamerId);
 
+    Optional<ChannelEntity> findByUserId(UUID userId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select channel from ChannelEntity channel where channel.streamerId = :streamerId")
     Optional<ChannelEntity> findByStreamerIdForUpdate(@Param("streamerId") UUID streamerId);

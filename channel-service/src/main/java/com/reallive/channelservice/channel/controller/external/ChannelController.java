@@ -5,6 +5,7 @@ import com.reallive.channelservice.channel.dto.request.UnfollowedChannelListRequ
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
+import com.reallive.channelservice.channel.dto.response.OwnChannelResponse;
 import com.reallive.channelservice.channel.service.ChannelService;
 import com.reallive.channelservice.channel.service.ChannelFollowService;
 import com.reallive.channelservice.common.dto.ApiResponse;
@@ -42,6 +43,19 @@ public class ChannelController {
 
     ChannelService channelService;
     ChannelFollowService channelFollowService;
+
+    @GetMapping("/me")
+    @PreAuthorize("hasAuthority('CHANNEL_VIEW_OWN')")
+    public ResponseEntity<ApiResponse<OwnChannelResponse>> getOwnChannel(@AuthenticationPrincipal Jwt jwt) {
+        OwnChannelResponse response = channelService.getOwnChannel(AuthenticationUserId.getAuthenticatedUserId(jwt));
+        return ResponseEntity.ok(ApiResponse.<OwnChannelResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Channel retrieved successfully")
+                .result(response)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
 
     @PutMapping("/{channelId}/follow")
     @PreAuthorize("isAuthenticated()")

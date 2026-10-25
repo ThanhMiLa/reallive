@@ -7,6 +7,7 @@ import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileReque
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
+import com.reallive.channelservice.channel.dto.response.OwnChannelResponse;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryId;
@@ -62,6 +63,20 @@ public class ChannelServiceImpl implements ChannelService {
     ChannelMapper channelMapper;
     UserCategoryPreferenceResolver userCategoryPreferenceResolver;
     R2StorageService r2StorageService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public OwnChannelResponse getOwnChannel(UUID userId) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        ChannelEntity channel = channelRepository.findByUserId(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
+        List<CategoryEntity> categories = channelCategoryRepository.findCategoriesByChannelId(channel.getId()).stream()
+                .map(ChannelCategoryEntity::getCategory)
+                .toList();
+        return channelMapper.toOwnChannelResponse(channel, categories);
+    }
 
     @Override
     public PageResponse<ChannelListResponse> getFollowingChannels(UUID userId, FollowingChannelListRequest request) {

@@ -30,14 +30,15 @@ class StreamerMigrationTest {
     }
 
     @Test
-    void migratesFreshDatabaseAndSeedsStreamerRoleWithoutGrantingPrivileges() {
+    void migratesFreshDatabaseAndGrantsOwnChannelViewToStreamerRole() {
         Flyway flyway = migrations().load();
-        assertEquals(8, flyway.migrate().migrationsExecuted);
+        assertEquals(9, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
         assertEquals(0, count("user_roles", ""));
-        assertEquals(0, count("role_permissions", ""));
+        assertEquals(1, count("permissions", "WHERE name = 'CHANNEL_VIEW_OWN'"));
+        assertEquals(1, count("role_permissions", ""));
         assertEquals(0, count("streamers", ""));
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }
@@ -57,12 +58,15 @@ class StreamerMigrationTest {
         jdbc.update("INSERT INTO " + table("user_roles") + " (user_id, role_id) VALUES (?, ?)", userId, roleId);
 
         Flyway flyway = migrations().load();
-        assertEquals(5, flyway.migrate().migrationsExecuted);
+        assertEquals(6, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
         assertEquals(roleId, jdbc.queryForObject("SELECT id FROM " + table("roles") + " WHERE name = 'STREAMER'", UUID.class));
-        assertEquals(1, count("role_permissions", ""));
+        assertEquals(2, count("role_permissions", ""));
+        assertEquals(1, count("role_permissions", "WHERE permission_id = '" + permissionId + "'"));
+        assertEquals(1, count("role_permissions", "WHERE permission_id = (SELECT id FROM "
+                + table("permissions") + " WHERE name = 'CHANNEL_VIEW_OWN')"));
         assertEquals(1, count("user_roles", ""));
         assertEquals(1, count("users", ""));
         jdbc.update("INSERT INTO " + table("streamers") + " (user_id, status) VALUES (?, 'ACTIVE')", userId);
@@ -84,7 +88,7 @@ class StreamerMigrationTest {
                 profileId, userId);
 
         Flyway flyway = migrations().load();
-        assertEquals(4, flyway.migrate().migrationsExecuted);
+        assertEquals(5, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("users", ""));

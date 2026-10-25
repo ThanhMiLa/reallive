@@ -7,12 +7,22 @@ import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileReque
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
+import com.reallive.channelservice.channel.dto.response.OwnChannelResponse;
 import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.exception.AppException;
 
 import java.util.UUID;
 
 public interface ChannelService {
+
+    /**
+     * Retrieves the non-deleted channel owned by the authenticated user with its assigned categories.
+     *
+     * @param userId the authenticated owner's user ID
+     * @return the channel profile, category IDs and names, and stored follower count
+     * @throws AppException if the user ID is missing or the channel does not exist
+     */
+    OwnChannelResponse getOwnChannel(UUID userId);
 
     /**
      * Retrieves active, non-deleted channels followed by the authenticated user, excluding their own channels.
