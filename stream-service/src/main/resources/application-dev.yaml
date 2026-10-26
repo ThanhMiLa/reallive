@@ -85,7 +85,9 @@ stream:
     control-token-ttl: ${STREAM_CONTROL_TOKEN_TTL:5m}
     rtmp-public-url: ${STREAM_RTMP_PUBLIC_URL:rtmp://localhost:1935/live}
     hls-public-base-url: ${STREAM_HLS_PUBLIC_BASE_URL:http://localhost:8898}
+    control-api:
+      base-url: ${STREAM_MEDIA_CONTROL_API_URL:http://localhost:9997}
+      connect-timeout: ${STREAM_MEDIA_CONTROL_CONNECT_TIMEOUT:2s}
+      request-timeout: ${STREAM_MEDIA_CONTROL_REQUEST_TIMEOUT:5s}
   lifecycle:
     reconnect-grace: ${STREAM_RECONNECT_GRACE:60s}
-
-# Control API connection properties are added with the phase 3 media adapter.

@@ -19,7 +19,8 @@ public enum ErrorCode {
     STREAM_CREATION_REQUEST_CONFLICT(1010, "Creation request identifier is already used for another channel", HttpStatus.CONFLICT),
     STREAMER_NOT_ELIGIBLE(1011, "Streamer is not eligible to publish", HttpStatus.FORBIDDEN),
     STREAM_CHANNEL_NOT_ELIGIBLE(1012, "Channel is not eligible to publish", HttpStatus.FORBIDDEN),
-    STREAM_CATEGORY_INVALID(1013, "Stream category is invalid or inactive", HttpStatus.BAD_REQUEST);
+    STREAM_CATEGORY_INVALID(1013, "Stream category is invalid or inactive", HttpStatus.BAD_REQUEST),
+    MEDIA_SERVER_UNAVAILABLE(1014, "Media server temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 
     private final int code;
     private final String message;
