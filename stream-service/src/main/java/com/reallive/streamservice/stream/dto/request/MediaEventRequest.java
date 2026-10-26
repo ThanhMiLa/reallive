@@ -5,7 +5,10 @@ import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 import java.util.UUID;
 
-public record MediaEventRequest(@NotNull UUID eventId,
+public record MediaEventRequest(
+        @NotNull
+        UUID eventId,
+
         @NotNull
         @Pattern(regexp = "ONLINE|OFFLINE")
         String eventType,
@@ -17,9 +20,10 @@ public record MediaEventRequest(@NotNull UUID eventId,
         @NotNull
         UUID sourceId,
 
-        @NotNull @Pattern(regexp = "rtmpConn|rtmpsConn")
+        @NotNull
+        @Pattern(regexp = "rtmpConn|rtmpsConn")
         String sourceType,
 
         @NotNull
         Instant occurredAt
-) { }
+) {}

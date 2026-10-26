@@ -18,5 +18,7 @@ public interface ChannelApiClient {
     @PostMapping("/internal/api/categories/validate")
     ApiResponse<Boolean> validateCategories(@RequestBody CategoryIds request);
 
-    record CategoryIds(Set<UUID> categoryIds) { }
+    record CategoryIds(
+            Set<UUID> categoryIds
+    ) {}
 }
