@@ -83,6 +83,8 @@ public class CookieAuthenticationService {
         return type == TokenType.ACCESS ? properties.accessCookie() : properties.refreshCookie();
     }
 
-    private record CheckedCookie(TokenType type, Jwt jwt) {
-    }
+    private record CheckedCookie(
+            TokenType type,
+            Jwt jwt
+    ) {}
 }

@@ -487,13 +487,23 @@ class GatewayAuthenticationTest {
         BACKEND.stop(0);
     }
 
-    private record CsrfCredentials(String cookie, String headerName, String token) {
-    }
+    private record CsrfCredentials(
+            String cookie,
+            String headerName,
+            String token
+    ) {}
 
-    private record Token(String value, String jti) {
-    }
+    private record Token(
+            String value,
+            String jti
+    ) {}
 
-    private record CapturedRequest(String path, String cookies, String authorization, String body,
-                                   String signature, String timestamp) {
-    }
+    private record CapturedRequest(
+            String path,
+            String cookies,
+            String authorization,
+            String body,
+            String signature,
+            String timestamp
+    ) {}
 }

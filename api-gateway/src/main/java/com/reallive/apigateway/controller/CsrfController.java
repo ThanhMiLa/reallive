@@ -38,6 +38,8 @@ public class CsrfController {
                         exception -> errorWriter.write(exchange, exception).then(Mono.empty()));
     }
 
-    public record CsrfResponse(String headerName, String token) {
-    }
+    public record CsrfResponse(
+            String headerName,
+            String token
+    ) {}
 }

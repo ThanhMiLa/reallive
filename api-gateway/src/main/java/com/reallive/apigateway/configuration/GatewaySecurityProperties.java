@@ -15,7 +15,9 @@ public record GatewaySecurityProperties(
         List<String> allowedOrigins,
         TokenCookie accessCookie,
         TokenCookie refreshCookie,
-        @DefaultValue("true") boolean csrfEnabled) {
+        @DefaultValue("true")
+        boolean csrfEnabled
+) {
 
     public GatewaySecurityProperties {
         Assert.hasText(issuer, "JWT issuer is required");
@@ -27,7 +29,13 @@ public record GatewaySecurityProperties(
         allowedOrigins = List.copyOf(allowedOrigins);
     }
 
-    public record TokenCookie(String name, String path, boolean secure, boolean httpOnly, String sameSite) {
+    public record TokenCookie(
+            String name,
+            String path,
+            boolean secure,
+            boolean httpOnly,
+            String sameSite
+    ) {
 
         public TokenCookie {
             Assert.hasText(name, "Token cookie name is required");
