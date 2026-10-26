@@ -1,7 +1,9 @@
 package com.reallive.streamservice.common.security;
 
 import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
+import org.springframework.http.HttpMethod;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.DispatcherType;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -38,7 +40,11 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new AuthStateFailureFilter(objectMapper), BearerTokenAuthenticationFilter.class)
-                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/media/jwks").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/media/events").permitAll()
+                        .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
