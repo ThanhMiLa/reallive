@@ -55,6 +55,9 @@ public final class BannerValidator {
         }
     }
 
-    public record BannerImage(byte[] content, String contentType, String extension) {
-    }
+    public record BannerImage(
+            byte[] content,
+            String contentType,
+            String extension
+    ) {}
 }
