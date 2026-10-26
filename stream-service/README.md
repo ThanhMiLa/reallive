@@ -41,7 +41,7 @@ The development profile defaults to `http://localhost:8082/stream`, PostgreSQL a
 ./mvnw clean verify
 ```
 
-Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontainers for Flyway, persistence and concurrency checks. Docker is required. Redis authorities are mocked; test media keys are generated in memory, so application credentials are not required. The real MediaMTX/Gateway check is opt-in as described below.
+Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontainers for Flyway, persistence and concurrency checks. Docker is required. Redis authorities are mocked; test media keys are generated in memory, so application credentials are not required. The direct Stream Service/MediaMTX check is opt-in as described below.
 
 ## Streaming phase 2: eligibility and media authentication
 

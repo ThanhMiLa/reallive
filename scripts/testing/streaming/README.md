@@ -97,4 +97,4 @@ Stop Streaming trong OBS, đóng path trên trang, sau đó:
 python3 scripts/testing/streaming/stack.py down
 ```
 
-Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback qua Gateway và vòng đời DB thật được triển khai ở giai đoạn 2–4, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service và vòng đời DB thật được triển khai ở giai đoạn 2–4, không coi fixture là backend nghiệp vụ hoàn chỉnh.

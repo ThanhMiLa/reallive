@@ -4,7 +4,7 @@ Một container MediaMTX `1.21.2`, custom image có shell/Python standard librar
 
 Chuẩn bị key và env local bằng [fixture README](../../scripts/testing/streaming/README.md), hoặc cung cấp callback env riêng qua `STREAM_MEDIA_ENV_FILE`. File env này phải tồn tại trước khi chạy Compose. Service `mediamtx` được khai báo trực tiếp trong [docker-compose.yml ở root](../../docker-compose.yml), chạy cùng các service khác bằng `docker compose up -d`. Thư mục này giữ Dockerfile, cấu hình MediaMTX và helper callback.
 
-Backend thật (JWKS/callback qua Gateway):
+Backend thật (JWKS/callback gọi trực tiếp Stream Service):
 
 ```sh
 docker compose up -d --build --wait mediamtx
@@ -24,7 +24,7 @@ Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 
 
 - Cấu hình `paths: {}` không có catch-all; chỉ exact path được tạo qua Control API mới nhận publish.
 - `overridePublisher: false`; publish/read/api đều dùng JWT, không có action được bỏ qua xác thực.
-- Root mặc định trỏ JWKS/callback qua `host.docker.internal:8888`; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
+- Root mặc định trỏ JWKS/callback trực tiếp tới Stream Service tại `host.docker.internal:8082`, không qua Gateway; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
 - `STREAM_MEDIAMTX_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` có thể override cấu hình backend thật.
 - Callback secret đọc từ env file được ignore, mặc định `.local/streaming/mediamtx.env`; override đường dẫn bằng `STREAM_MEDIA_ENV_FILE`. Không in `docker compose config` đầy đủ vì có thể làm lộ env; dùng `config --quiet`.
 - Healthcheck kiểm tra listener RTMP/HLS/Control API. JWT/JWKS phải kiểm thêm bằng `media.py probe`, không suy ra auth pass chỉ từ container healthy.

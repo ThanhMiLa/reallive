@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật phạm vi: 2026-10-25, theo yêu cầu người dùng, MVP xử lý đồng bộ từ đầu đến cuối; chưa xây hàng đợi task hoặc recovery tự động.
-- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 hoàn tất ngày 2026-10-26; JWT/JWKS kiểm chứng với MediaMTX qua Gateway thật, Stream Service clean verify 103 test không bỏ qua. Giai đoạn 3–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 hoàn tất ngày 2026-10-26; JWT/JWKS kiểm chứng với MediaMTX gọi trực tiếp Stream Service, Stream Service clean verify 103 test không bỏ qua. Giai đoạn 3–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
 - Kết quả cần đạt: streamer tạo session, cấu hình OBS, phát video/audio; người dùng đăng nhập có thể vào web xem và nhận đúng trạng thái khi nguồn mất kết nối hoặc kết thúc.
 - Module chính: `stream-service`, `web-app`, `api-gateway`, cấu hình Docker/MediaMTX. Bổ sung API nội bộ nhỏ trong `user-service` và `channel-service` khi cần.
 - Kiến trúc nguồn: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
@@ -70,7 +70,7 @@ TTL Publish/Read/Control API đã được người dùng chốt ngày 2026-10-2
 |---|---|---|
 | `stream-service` | Java 21, Spring Boot, JPA/Flyway, PostgreSQL, Redis authorities, Feign/WebClient, exception/security chung | Module nghiệp vụ stream, schema, JWT media, MediaMTX adapter, callback, scheduler và API |
 | DB Stream Service | V1–V3 đã kiểm chứng schema hai bảng session/history, không task runtime | Áp dụng migration theo môi trường khi triển khai; không để Hibernate tự tạo schema production |
-| `api-gateway` | Route `/stream/api/**` đến port 8082; account auth qua cookie | Bổ sung ngoại lệ chính xác cho JWKS/callback; giữ các API stream khác được bảo vệ |
+| `api-gateway` | Route `/stream/api/**` đến port 8082; account auth qua cookie | Không mở ngoại lệ public cho JWKS/callback; MediaMTX gọi trực tiếp Stream Service; giữ các API stream được bảo vệ |
 | `user-service` | API nội bộ tìm streamer ACTIVE theo user ID | Bổ sung contract eligibility có email verification nếu API hiện tại chưa đủ |
 | `channel-service` | Channel, category, validation category nội bộ | Tra cứu channel theo streamer, kiểm tra sở hữu/trạng thái; batch metadata nếu cần cho danh sách |
 | `web-app` | React/TypeScript/Vite, Axios, TanStack Query, Zustand, hls.js | Nối dashboard với API, danh sách stream và trang xem thật |
@@ -385,7 +385,7 @@ scripts/testing/streaming/
 
 ```yaml
 authMethod: jwt
-authJWTJWKS: http://host.docker.internal:8888/stream/api/media/jwks
+authJWTJWKS: http://host.docker.internal:8082/stream/api/media/jwks
 authJWTClaimKey: mediamtx_permissions
 authJWTIssuer: reallive-stream
 authJWTAudience: reallive-media
@@ -690,7 +690,7 @@ Dùng fixture kỹ thuật tối thiểu cho JWKS, cấp token và nhận callba
 - [x] Chạy OBS thật với đúng `serverUrl` và stream key dạng JWT; kiểm tra nguồn online/offline và dữ liệu hook.
 - [x] Chạy hls.js với header Authorization: nhận playlist và phát cả hình/tiếng; không giả định đuôi segment.
 - [x] Kiểm tra đăng ký exact path, xóa path trong lúc phát, và OBS dùng token cũ reconnect bị từ chối sau khi path đã đóng.
-- [x] Kiểm tra image có helper chạy được, callback tới fixture và HLS port không xung đột. JWKS/callback qua Gateway với backend thật được kiểm chứng tiếp ở giai đoạn 2–4.
+- [x] Kiểm tra image có helper chạy được, callback tới fixture và HLS port không xung đột. JWKS/callback gọi trực tiếp Stream Service với backend thật được kiểm chứng tiếp ở giai đoạn 2–4.
 
 **Hoàn tất khi:** các cơ chế nền tảng chạy được cùng nhau trên đúng version, có ghi lại config và kết quả thực tế. Không tiếp tục xây toàn bộ UI dựa trên một cấu hình auth/chuyển path chưa được kiểm chứng.
 
@@ -717,12 +717,12 @@ Thực hiện theo [plan chi tiết giai đoạn 2](Streaming%20MVP%20Phase%202%
 - [x] User/Channel client và API nội bộ; kiểm tra đúng user ID/streamer ID/channel ID, email verified, owner và category.
 - [x] Contract DTO/validation và eligibility service với ownership/error mapping; chưa mở business CRUD API.
 - [x] Media JWT issuer, nạp khóa ổn định, JWKS raw response, TTL 8h/5m/5m và issuer/audience/permissions.
-- [x] Gateway/Stream Service security cho đúng JWKS/callback, giữ account Auth State behavior và CSRF exemption exact POST.
-- [x] Test token ký/verify, quyền path/action, không lộ private key; kiểm chứng JWT với MediaMTX/Gateway thật. Header no-store được nối ở credential controller giai đoạn 3/5.
+- [x] Stream Service cho phép đúng GET JWKS/POST callback không cần cookie, giữ account Auth State behavior khi có cookie; Gateway không mở ngoại lệ public cho các endpoint media này.
+- [x] Test token ký/verify, quyền path/action, không lộ private key; kiểm chứng JWT với MediaMTX gọi trực tiếp Stream Service thật. Header no-store được nối ở credential controller giai đoạn 3/5.
 
 **Hoàn tất khi:** resolve đúng account/owner đủ điều kiện, ký được credential và MediaMTX kiểm tra được token do backend thật cấp.
 
-**Kết quả 2026-10-26:** M2 đạt; Stream 103 test không bỏ qua, ba service liên quan clean verify thành công, IT Gateway/Stream HTTP/MediaMTX 1/1, fixture/helper 16/16. Xem [bằng chứng và số test bỏ qua](../testing/Streaming%20MVP%20Tests.md). Callback xác thực hợp lệ hiện trả 404 vì handler lifecycle thuộc giai đoạn 4; Create/End/playback API thuộc giai đoạn 3–5.
+**Kết quả 2026-10-26:** M2 đạt; Stream 103 test không bỏ qua, ba service liên quan clean verify thành công, IT Stream HTTP/MediaMTX trực tiếp 1/1, fixture/helper 16/16. Xem [bằng chứng và số test bỏ qua](../testing/Streaming%20MVP%20Tests.md). Callback xác thực hợp lệ hiện trả 404 vì handler lifecycle thuộc giai đoạn 4; Create/End/playback API thuộc giai đoạn 3–5.
 
 ### Giai đoạn 3 — MediaMTX adapter và provisioning
 
