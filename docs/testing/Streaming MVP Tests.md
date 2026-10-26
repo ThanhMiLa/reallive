@@ -237,3 +237,78 @@ Môi trường kiểm chứng: Java 21, PostgreSQL 17 qua Testcontainers (`postg
 - **Tổng kết kiểm thử toàn dịch vụ `stream-service`:**
   - 53 tests run, 0 failures, 0 errors, 0 skipped.
   - Build jar và repackage Spring Boot hoàn tất thành công (`stream-service-0.0.1-SNAPSHOT.jar`).
+
+---
+
+# Giai đoạn 2 — Auth, eligibility và JWT media (2026-10-26)
+
+**M2 đạt, STR-201–208 hoàn tất.** [Plan chi tiết](../Implement%20Plan/Streaming%20MVP%20Phase%202%20Implementation%20Plan.md).
+
+## Build và regression
+
+Chạy tại repository root:
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml clean verify
+./user-service/mvnw -f user-service/pom.xml clean verify
+./channel-service/mvnw -f channel-service/pom.xml clean verify
+./api-gateway/mvnw -f api-gateway/pom.xml clean verify
+python3 -m unittest discover -s scripts/testing/streaming -p 'test_*.py'
+```
+
+| Bộ kiểm thử | Tổng số | Đạt | Bỏ qua | Failure/error |
+|---|---:|---:|---:|---:|
+| Stream Service | 103 | 103 | 0 | 0/0 |
+| User Service | 722 | 686 | 36 | 0/0 |
+| Channel Service | 492 | 492 | 0 | 0/0 |
+| API Gateway | 84 | 83 | 1 | 0/0 |
+| Fixture/helper Python | 16 | 16 | 0 | 0/0 |
+
+Bốn lệnh Maven đều BUILD SUCCESS và đóng gói JAR. 37 test bị bỏ qua là các kiểm chứng Redis tùy chọn hiện hữu, cần các system property Redis tương ứng; không tính chúng là PASS. Các test mới của giai đoạn 2 đều đã chạy. Stream vẫn chạy đầy đủ migration/persistence/concurrency trên PostgreSQL 17 Testcontainers với database/schema cô lập.
+
+## STR-201–203 — Contract và eligibility: PASS
+
+- DTO Create/PATCH/pagination: trim title, null/blank/max length, phân biệt field vắng với explicit null, chặn payload rỗng/field lạ/cờ nội bộ.
+- Metadata không chứa credential; thời gian mapper UTC; toString credential che token.
+- User controller/service/repository thật: verified + ACTIVE streamer hợp lệ; thiếu user/streamer, email chưa verified và trạng thái streamer khác bị từ chối. Endpoint `/active` cũ giữ hành vi riêng, không vô tình bị thêm điều kiện email.
+- Channel controller/service/repository thật: context đúng identity/owner; từ chối inactive/deleted/missing/ownerless. Batch summary giới hạn 100 và bỏ channel không được công bố.
+- Feign gọi HTTP server cô lập: resolve đúng user → streamer → channel, kiểm tra owner và category; 403/404 nghiệp vụ khác với upstream 401/500/response sai; timeout không retry, không gọi Channel khi User thất bại; summary chỉ một batch.
+- Test producer dùng H2; test Feign dùng HTTP stub. Chưa chạy deployment đầy đủ cả User và Channel qua mạng production.
+
+## STR-204–207 — Khóa, token, JWKS và callback: PASS
+
+- Nạp cặp RSA ổn định, verify cặp khóa; thiếu/sai cấu hình thất bại với thông báo không chứa key/secret. Code yêu cầu RSA ít nhất 2048 bit, TTL dương, media URL đúng protocol và callback secret ít nhất 32 byte.
+- JWT RS256 đúng kid/iss/aud/sub/iat/exp/jti, exact path/action; TTL Publish 8h, Read 5m, Control API 5m theo quyết định mới. Không lưu token vào DB.
+- JWKS chỉ public key, JSON không bọc ApiResponse; exact GET được mở qua Gateway. Các path con/method khác và business route còn bảo vệ.
+- Cookie gửi kèm route public vẫn theo Auth State; Redis unavailable giữ 503, không bỏ qua cookie lỗi.
+- Callback HMAC trên raw bytes, constant-time comparison, timestamp trong 60 giây; thiếu/sai chữ ký, timestamp cũ, raw body bị sửa đều bị từ chối. Body quá 16 KiB, kể cả không có Content-Length, trả 413; body đọc lại được sau filter.
+- Callback hợp lệ tới 404 vì chưa có handler nghiệp vụ. Kiểm chứng HTTP thật phát hiện ERROR dispatch ban đầu biến 404 thành 401; đã sửa để trả lỗi gốc. Request HTTP trực tiếp tới `/error` vẫn cần auth.
+- Hướng dẫn chuyển PEM thành Base64 DER đã được kiểm tra lại trong thư mục tạm, không đổi key ứng dụng. Fixture Python đã cập nhật TTL 8h/5m/5m và chạy lại 16/16 test.
+
+## STR-208 — Gateway + Stream HTTP + MediaMTX thật: PASS
+
+Chạy sau khi có local image MediaMTX và Gateway JAR:
+
+```sh
+docker build -f infra/mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
+./api-gateway/mvnw -f api-gateway/pom.xml -DskipTests package
+./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
+```
+
+`MediaMtxAuthenticationIT`: **1 test PASS, không failure/error/skipped**. Đây là lệnh opt-in riêng, không cộng vào 103 test mặc định.
+
+- Stream Service chạy HTTP thật, H2 cô lập và key sinh trong bộ nhớ; Gateway chạy JAR subprocess, CSRF bật; một container MediaMTX 1.21.2 dùng cổng ngẫu nhiên.
+- MediaMTX tải public JWKS qua Gateway, chấp nhận JWT do `MediaJwtIssuer` Java ký. Control API JWT gọi API/provision path thành công; Publish/Read JWT không được gọi Control API.
+- FFmpeg H.264/AAC publish RTMP thành công với Publish JWT; nguồn thực sự online. Read JWT lấy HLS playlist có `#EXTM3U` thành công.
+- HLS từ chối thiếu token, sai action/path/signature/issuer/audience và token hết hạn. Read JWT không publish RTMP được.
+- Gateway từ chối media JWT gửi dưới dạng account cookie. Callback không HMAC trả 401; HMAC hợp lệ qua Gateway với CSRF bật trả 404 đúng phạm vi hiện tại.
+- Hook nguồn trong container test này được tắt để không gọi lifecycle handler chưa tồn tại; chữ ký callback được gửi bằng HTTP test riêng. Không coi đây là nghiệm thu workflow ONLINE/OFFLINE → DB.
+- Dọn path, FFmpeg, Gateway process và container test; không đổi container MediaMTX, OBS, browser hoặc database ứng dụng đang dùng.
+
+## Giới hạn và bước tiếp theo
+
+- Giai đoạn 2 cung cấp thành phần auth/eligibility, chưa có API nghiệp vụ Create/Update/cấp OBS/End/cấp quyền xem. Không có controller giả luôn báo thành công.
+- No-store sẽ được nối ở controller cấp credential giai đoạn 3/5; chưa nghiệm thu header của các API chưa tồn tại.
+- Test media chứng minh publish và HLS playlist; không thay nghiệm thu OBS/browser HLS đầy đủ ở giai đoạn 0/7, không nghiệm thu TLS/production hoặc xử lý lifecycle callback.
+- Stream Service từ nay cần cấu hình RSA/callback secret hợp lệ khi startup. Xem [README](../../stream-service/README.md); không tự sinh lại key khi restart.
+- Không đổi schema hai bảng, không thêm version/sync task/background retry/reconciler. STR-301 tiếp theo xây Control API adapter cho runtime ứng dụng.

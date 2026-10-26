@@ -49,7 +49,7 @@ class FixtureTest(unittest.TestCase):
             self.assertEqual('existing key must survive', private.read_text())
 
     def test_valid_tokens_have_exact_permissions_and_expiry(self):
-        for action, ttl in [('publish', 86400), ('read', 900), ('api', 300)]:
+        for action, ttl in [('publish', 28800), ('read', 300), ('api', 300)]:
             with self.subTest(action=action):
                 payload = fixture.verify(self.state, self.fixtures[action + 'Token'], action, self.fixtures['path'])
                 self.assertEqual(ttl, payload['exp'] - payload['iat'])

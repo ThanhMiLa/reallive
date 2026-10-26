@@ -22,6 +22,8 @@ DEFAULT_STATE = REPO / '.local/streaming'
 ISSUER = 'reallive-stream'
 AUDIENCE = 'reallive-media'
 KEY_ID = 'stream-rs256-v1'
+PUBLISH_TTL = 8 * 3600
+READ_TTL = 5 * 60
 JWKS_PATH = '/stream/api/media/jwks'
 EVENTS_PATH = '/stream/api/media/events'
 MAX_BODY = 16384
@@ -129,8 +131,8 @@ def prepare(state):
         write_private_json(session_file, {'sessionId': str(uuid4())})
     session_id = str(UUID(json.loads(session_file.read_text())['sessionId']))
     path = 'live/' + session_id
-    publish = issue(state, 'publish', path, 86400)
-    read = issue(state, 'read', path, 900)
+    publish = issue(state, 'publish', path, PUBLISH_TTL)
+    read = issue(state, 'read', path, READ_TTL)
     other_path = 'live/' + str(uuid4())
     fixtures = {'sessionId': session_id, 'path': path, 'serverUrl': 'rtmp://localhost:1935/live',
                 'streamKey': session_id + '?token=' + publish,
@@ -139,8 +141,8 @@ def prepare(state):
                 'negativeTokens': {
                     'expiredPublish': issue(state, 'publish', path, -1),
                     'expiredRead': issue(state, 'read', path, -1),
-                    'wrongPathPublish': issue(state, 'publish', other_path, 900),
-                    'wrongPathRead': issue(state, 'read', other_path, 900),
+                    'wrongPathPublish': issue(state, 'publish', other_path, PUBLISH_TTL),
+                    'wrongPathRead': issue(state, 'read', other_path, READ_TTL),
                     'wrongSignaturePublish': corrupt_signature(publish),
                     'wrongSignatureRead': corrupt_signature(read)}}
     write_private_json(state / 'fixtures.json', fixtures)
@@ -322,7 +324,7 @@ def make_server(state, host='127.0.0.1', port=18082):
                 if case == 'wrong-action':
                     action = 'read' if action == 'publish' else 'publish'
                 token_path = 'live/' + str(uuid4()) if case == 'wrong-path' else path
-                token = issue(state, action, token_path, -1 if case == 'expired' else (86400 if action == 'publish' else 900))
+                token = issue(state, action, token_path, -1 if case == 'expired' else (PUBLISH_TTL if action == 'publish' else READ_TTL))
                 if case == 'wrong-signature':
                     token = corrupt_signature(token)
                 if case == 'missing':

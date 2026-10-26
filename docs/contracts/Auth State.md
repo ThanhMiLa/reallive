@@ -31,9 +31,11 @@ Public endpoints allow requests without an access-token cookie and do not requir
 
 `GET /channel/api/channels` supports optional authentication through the same filter chain as other Channel Service endpoints. Without an access-token cookie it lists active, non-deleted channels without ownership/follow exclusions or user-interest lookup. With a valid access token it retains the user's ownership/follow exclusions and interest-based ordering when no explicit filters are supplied. `GET /channel/api/channels/following` remains protected.
 
+`GET /stream/api/media/jwks` permits requests without account cookies and returns only the public media signing key. Exact `POST /stream/api/media/events` uses a separate HMAC/timestamp/raw-body check at Stream Service and is exempt from Gateway account-cookie and CSRF requirements. Supplied account cookies still follow the rules above; media JWTs cannot replace account tokens. Other Stream endpoints remain protected.
+
 Normal requests never fetch auth state from User Service on a Redis miss. Login or refresh republishes it. Dependent services must use the same Redis host, logical database and key serialization. Development backends bind to `127.0.0.1` by default through `BACKEND_BIND_ADDRESS`. If overridden for deployment, backend ports must remain restricted to trusted callers because downstream JWT decoders trust gateway validation.
 
-Channel ownership, channel-specific moderators, bans on chat/viewing, email verification and streamer status remain separate business rules. Future Stream, VOD and Chat authentication must follow this contract; mobile clients continue using the gateway cookie API.
+Channel ownership, channel-specific moderators, bans on chat/viewing, email verification and streamer status remain separate business rules. Stream authentication follows this contract; future VOD and Chat authentication must also follow it; mobile clients continue using the gateway cookie API.
 
 ## Committed publication and recovery
 

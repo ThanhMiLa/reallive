@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật 2026-10-25: MVP xử lý đồng bộ từ đầu đến cuối theo yêu cầu người dùng. Không có bảng task, worker retry, lease/revision hoặc reconciler.
-- Trạng thái: M0 và M1 đã đạt. Giai đoạn 1 đã điều chỉnh theo schema hai bảng và nghiệm thu 77/77 test ngày 2026-10-25; giai đoạn 2–7 chưa hoàn tất. HTTP MediaMTX thật được tích hợp ở giai đoạn 3–4.
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26: eligibility, JWT/JWKS và callback security; JWT Java đã kiểm chứng với MediaMTX qua Gateway thật. Giai đoạn 3–7 chưa hoàn tất; adapter/lifecycle MediaMTX cho runtime ứng dụng thuộc giai đoạn 3–4.
 - Thiết kế và contract gốc: [Streaming MVP Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md).
 - Kiến trúc đã chốt: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Mục tiêu: triển khai theo từng phần có thể kiểm chứng, đến khi streamer phát được bằng OBS và người dùng đăng nhập xem được trên web.
@@ -13,7 +13,7 @@
 - Thực hiện theo thứ tự giai đoạn và các task phụ thuộc. Một task chỉ hoàn tất khi đầu ra và kiểm chứng ghi trong task đều đạt.
 - Các đường dẫn/class mới là vị trí dự kiến; kiểm tra repository thực tế trước khi tạo, tái sử dụng phần đã có thay vì tạo lại.
 - Business API phải tuân thủ ownership/account auth hiện tại. MediaMTX vẫn chỉ có một instance, tự verify Publish JWT và Read JWT bằng public key.
-- Giữ nguyên phạm vi MVP và phân biệt các đề xuất mặc định ở mục 1.2 của implementation plan với quyết định đã chốt. TTL token, trình duyệt hỗ trợ và chính sách cấp lại key không được tự ghi thành yêu cầu đã xác nhận.
+- Giữ nguyên phạm vi MVP và phân biệt các đề xuất mặc định ở mục 1.2 của implementation plan với quyết định đã chốt. TTL 8h/5m/5m đã được người dùng chốt ở giai đoạn 2; trình duyệt hỗ trợ và các mặc định khác giữ trạng thái đã ghi trong plan.
 - Ghi bằng chứng kiểm chứng ngắn theo task: lệnh/kết quả test hoặc kịch bản thực tế. Không tick hoàn tất chỉ vì đã viết code hoặc đã viết tài liệu kiểm thử.
 - Task dựng fixture ở giai đoạn 0 là kiểm chứng kỹ thuật. JWKS/callback qua Gateway và backend thật được nghiệm thu tiếp ở giai đoạn 2–4.
 - Request gọi MediaMTX trực tiếp và chờ kết quả; thành công mới commit/response, lỗi trả 503 và rollback DB của thao tác. Không trả 202 hoặc giao job xử lý sau. Giữ scheduler hết hạn reconnect theo business.
@@ -176,7 +176,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** `stream/dto/`, `mapper/`, `common/exception/ErrorCode.java`.
 - **Cần làm:** Tạo request/response theo implementation plan, validation title/category/request ID, quy tắc PATCH và DTO tách metadata khỏi credential. Thêm error code độc nhất, HTTP 400/401/403/404/409/503; không response pending cleanup hoặc 202.
 - **Hoàn tất khi:** Contract có thể dùng chung cho backend/frontend; không có metadata response chứa JWT, không thêm exception class riêng theo feature.
-- [ ] STR-201 hoàn tất, DTO và lỗi được rà soát.
+- [x] STR-201 hoàn tất, DTO và lỗi được rà soát.
 
 ### STR-202 — Tích hợp kiểm tra điều kiện streamer
 
@@ -184,15 +184,15 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** `stream/client/user/`, API/service eligibility trong `user-service` nếu thiếu.
 - **Cần làm:** Resolve streamer từ principal user ID; kiểm tra ACTIVE và điều kiện email theo business. Giữ account-active check ở Gateway; map lỗi eligibility/unavailable đúng contract.
 - **Hoàn tất khi:** User không đủ điều kiện không xin được quyền phát; user ID và streamer ID không bị dùng lẫn; endpoint eligibility không làm đổi hành vi caller hiện có ngoài phạm vi.
-- [ ] STR-202 hoàn tất, client và business eligibility có test.
+- [x] STR-202 hoàn tất, client và business eligibility có test.
 
 ### STR-203 — Tích hợp channel ownership và category
 
 - **Phụ thuộc:** STR-201.
 - **Module/file:** `stream/client/channel/`, controller/service nội bộ Channel Service.
-- **Cần làm:** Lookup channel theo streamer, xác nhận sở hữu/trạng thái; reuse category validation. Bổ sung batch summary nhỏ khi danh sách cần channel name/avatar, không tạo N request theo N card.
+- **Cần làm:** Lookup channel theo streamer, xác nhận sở hữu/trạng thái; reuse category validation. Chặn channel không hợp lệ hoặc không thuộc về owner.
 - **Hoàn tất khi:** Không cấp stream cho channel khác/không hợp lệ; category không active bị chặn; response remote sai hoặc unavailable không bị coi là hợp lệ.
-- [ ] STR-203 hoàn tất, contract/client Channel Service có test.
+- [x] STR-203 hoàn tất, contract/client Channel Service có test.
 
 ### STR-204 — Nạp và validate cấu hình RSA/JWT media
 
@@ -200,7 +200,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** `common/configuration/`, cấu hình Stream Service, `.env.example`.
 - **Cần làm:** Bind/validate key, kid, issuer/audience và TTL; parse private/public key, kiểm tra cặp khóa khớp, Clock UTC và public media URLs. Giữ bộ khóa qua restart, không dùng account signer làm media signer.
 - **Hoàn tất khi:** Cấu hình sai/thiếu báo lỗi rõ; cấu hình hợp lệ không sinh key mới; không làm lộ private key qua startup log hoặc example.
-- [ ] STR-204 hoàn tất, cấu hình có kiểm chứng.
+- [x] STR-204 hoàn tất, cấu hình có kiểm chứng.
 
 ### STR-205 — Xây bộ ký Publish/Read/Control API JWT
 
@@ -208,7 +208,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** `stream/adapter/media/` và test JWT.
 - **Cần làm:** Ký RS256 với kid/issuer/audience/subject/expiry/jti; phân quyền publish/read theo exact path và api cho backend. Tạo stream key đúng định dạng đã chốt.
 - **Hoàn tất khi:** Verify được chữ ký bằng public key; claim/TTL/path đúng; token api không đi vào response client, token publish/read không có quyền ngoài mục đích.
-- [ ] STR-205 hoàn tất, bộ ký có test phân quyền/expiry.
+- [x] STR-205 hoàn tất, bộ ký có test phân quyền/expiry.
 
 ### STR-206 — Phục vụ JWKS thật và mở đúng đường qua Gateway
 
@@ -216,7 +216,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** JWKS controller, Stream Service SecurityConfig, Gateway AuthenticationGlobalFilter.
 - **Cần làm:** Trả JWKS JSON chuẩn không bọc ApiResponse, chỉ public parameters. Allow đúng GET JWKS khi không có account cookie; giữ Auth State behavior đối với token cookie được gửi kèm.
 - **Hoàn tất khi:** MediaMTX lấy được JWKS qua Gateway thật; endpoint business khác vẫn yêu cầu đăng nhập; có test đảm bảo không lộ private parameters.
-- [ ] STR-206 hoàn tất, JWKS qua Gateway đã được kiểm chứng.
+- [x] STR-206 hoàn tất, JWKS qua Gateway đã được kiểm chứng.
 
 ### STR-207 — Chuẩn bị xác thực callback độc lập với account cookie
 
@@ -224,7 +224,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** Callback DTO/HMAC verifier, security Stream Service và Gateway.
 - **Cần làm:** Kiểm tra HMAC/timestamp/raw body/kích thước; cấu hình method/path callback và ngoại lệ CSRF chính xác nếu bật. Tách secret callback khỏi RSA/account signer; chuẩn bị contract cho handler ở giai đoạn 4.
 - **Hoàn tất khi:** Sai/thiếu chữ ký không tới business handler; credential hợp lệ không cần account cookie. Không mở anonymous toàn bộ `/stream/**` hoặc trả thành công giả khi chưa xử lý nghiệp vụ.
-- [ ] STR-207 hoàn tất, security callback có test.
+- [x] STR-207 hoàn tất, security callback có test.
 
 ### STR-208 — Kiểm chứng auth/client với backend thật
 
@@ -232,9 +232,11 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Module/file:** Test Stream/User/Channel/Gateway liên quan, fixture MediaMTX giai đoạn 0.
 - **Cần làm:** Thay JWKS fixture bằng endpoint thật; kiểm tra token backend ký được MediaMTX chấp nhận. Chạy regression account cookie/public route, lỗi client remote và phân biệt media token với account token.
 - **Hoàn tất khi:** Bộ auth/token/client đạt kiểm chứng, không ảnh hưởng login/refresh hoặc ownership contract của service khác.
-- [ ] STR-208 hoàn tất, kết thúc giai đoạn 2.
+- [x] STR-208 hoàn tất, kết thúc giai đoạn 2.
 
 **Mốc nghiệm thu giai đoạn 2:** Backend thật phục vụ JWKS và ký credential dùng được; eligibility và ranh giới account/media auth đã được bảo vệ.
+
+**M2 đạt ngày 2026-10-26:** [Plan chi tiết và contract](Streaming%20MVP%20Phase%202%20Implementation%20Plan.md), [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md). Stream 103 test không bỏ qua; User/Channel/Gateway clean verify thành công (37 test Redis tùy chọn chưa bật); IT Gateway + Stream HTTP + MediaMTX thật 1/1 và fixture/helper 16/16. Callback hợp lệ hiện trả 404 vì chưa có handler nghiệp vụ; Create/End/playback API chưa mở. Bước tiếp theo STR-301.
 
 ## 5. Giai đoạn 3 — Media adapter và session provisioning
 

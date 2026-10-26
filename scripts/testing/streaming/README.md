@@ -16,7 +16,7 @@ python3 scripts/testing/streaming/fixture.py serve
 
 - `prepare` tạo key/secret nếu chưa có; dùng lại key/secret/session ID khi chạy lại, chỉ cấp lại bộ JWT test. Không tự thay một cặp khóa thiếu/mismatched.
 - `fixtures.json` chứa serverUrl/streamKey/playbackUrl và JWT publish/read/api. Các token âm tính gồm sai chữ ký, hết hạn và sai path; token read cũng dùng để thử publish sai quyền.
-- TTL mặc định thử nghiệm theo đề xuất của plan: publish 24h, read 15m, api 5m. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
+- TTL mặc định đồng bộ với quyết định Giai đoạn 2: publish 8h, read 5m, api 5m. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
 - Key RSA 2048 bit được ký/verify bằng OpenSSL; JWKS chỉ gồm kty/kid/alg/use/n/e. Không có Python dependency ngoài thư viện chuẩn.
 - Không `cat` token/key/secret ra log hoặc commit chúng. Các lệnh trên chỉ in trạng thái và đường dẫn.
 - Dừng fixture bằng Ctrl+C. Dữ liệu callback test lưu ở `.local/streaming/events.jsonl`, không có token/query/secret.

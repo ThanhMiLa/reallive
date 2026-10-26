@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật phạm vi: 2026-10-25, theo yêu cầu người dùng, MVP xử lý đồng bộ từ đầu đến cuối; chưa xây hàng đợi task hoặc recovery tự động.
-- Trạng thái: M0 và M1 đã đạt. Giai đoạn 1 đã chuyển về schema hai bảng, bỏ task runtime và kiểm chứng 77/77 test ngày 2026-10-25. Giai đoạn 2–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 hoàn tất ngày 2026-10-26; JWT/JWKS kiểm chứng với MediaMTX qua Gateway thật, Stream Service clean verify 103 test không bỏ qua. Giai đoạn 3–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
 - Kết quả cần đạt: streamer tạo session, cấu hình OBS, phát video/audio; người dùng đăng nhập có thể vào web xem và nhận đúng trạng thái khi nguồn mất kết nối hoặc kết thúc.
 - Module chính: `stream-service`, `web-app`, `api-gateway`, cấu hình Docker/MediaMTX. Bổ sung API nội bộ nhỏ trong `user-service` và `channel-service` khi cần.
 - Kiến trúc nguồn: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
@@ -37,13 +37,13 @@
 
 ### 1.2. Đề xuất mặc định để triển khai
 
-Các giá trị dưới đây là đề xuất trong plan, chưa phải các lựa chọn đã được người dùng xác nhận riêng. Tách chúng thành cấu hình hoặc contract rõ ràng để thay đổi có kiểm soát.
+TTL Publish/Read/Control API đã được người dùng chốt ngày 2026-10-26 là 8 giờ/5 phút/5 phút. Các giá trị còn lại tiếp tục là đề xuất nếu chưa được ghi nhận xác nhận riêng; tất cả được tách thành cấu hình/contract.
 
 | Nội dung | Đề xuất MVP | Hệ quả |
 |---|---|---|
-| Publish JWT TTL | 24 giờ kể từ lần cấp | OBS cần token mới nếu reconnect sau khi token cũ hết hạn; đây không phải giới hạn cứng thời lượng buổi phát |
-| Read JWT TTL | 15 phút | Player xin lại token khi cần mở lại phiên HLS; không ngắt phiên đang xem chỉ vì đến `exp` |
-| Token Control API | 5 phút, chỉ backend giữ | Có quyền `api`, không cấp cho frontend hoặc OBS |
+| Publish JWT TTL | 8 giờ kể từ lần cấp, đã chốt | OBS cần token mới nếu reconnect sau khi token cũ hết hạn; đây không phải giới hạn cứng thời lượng buổi phát |
+| Read JWT TTL | 5 phút, đã chốt | Player xin lại token khi cần mở lại phiên HLS; không ngắt phiên đang xem chỉ vì đến `exp` |
+| Token Control API | 5 phút, đã chốt, chỉ backend giữ | Có quyền `api`, không cấp cho frontend hoặc OBS |
 | Cấp lại thông tin OBS | Nút cấp JWT mới cho cùng session | Không vô hiệu hóa JWT đã cấp trước đó |
 | Thu hồi key ngay trong MVP | Kết thúc session và tạo session mới | Rotate làm mất hiệu lực key cũ trong cùng session là phần mở rộng riêng, không giả lập bằng cách cấp thêm JWT |
 | Session READY chưa phát | Giữ READY đến khi owner hủy/kết thúc | Khi quay lại dashboard, tiếp tục session hiện tại; không tự tạo session mới |
@@ -660,9 +660,9 @@ Tham khảo [API hls.js v1.7.3](https://github.com/video-dev/hls.js/blob/v1.7.3/
 | `STREAM_MEDIA_PUBLIC_KEY_BASE64` | Bắt buộc, public key tương ứng | Stream Service phục vụ JWKS |
 | `STREAM_MEDIA_KEY_ID` | `stream-rs256-v1` | JWT header/JWKS |
 | `STREAM_MEDIA_ISSUER` / `STREAM_MEDIA_AUDIENCE` | `reallive-stream` / `reallive-media` | Backend và MediaMTX phải khớp |
-| `STREAM_PUBLISH_TOKEN_TTL` | `24h`, đề xuất | Backend |
-| `STREAM_READ_TOKEN_TTL` | `15m`, đề xuất | Backend |
-| `STREAM_CONTROL_TOKEN_TTL` | `5m`, đề xuất | Backend |
+| `STREAM_PUBLISH_TOKEN_TTL` | `8h`, đã chốt | Backend |
+| `STREAM_READ_TOKEN_TTL` | `5m`, đã chốt | Backend |
+| `STREAM_CONTROL_TOKEN_TTL` | `5m`, đã chốt | Backend |
 | `STREAM_RECONNECT_GRACE` | `60s`, đã chốt | Backend |
 | `STREAM_RTMP_PUBLIC_URL` | `rtmp://localhost:1935/live` | Trả cho OBS |
 | `STREAM_HLS_PUBLIC_BASE_URL` | `http://localhost:8898` | Ghép playbackUrl |
@@ -714,13 +714,17 @@ Thực hiện theo [plan chi tiết giai đoạn 1](Streaming%20MVP%20Phase%201%
 
 ### Giai đoạn 2 — Account integration, eligibility và JWT media
 
-- [ ] User/Channel client và API nội bộ thiếu; kiểm tra đúng user ID/streamer ID/channel ID.
-- [ ] Business controller/service skeleton với ownership và error mapping.
-- [ ] Media JWT issuer, nạp khóa, JWKS raw response, token TTL/issuer/audience/permissions.
-- [ ] Gateway/Stream Service security cho đúng JWKS/callback, giữ account Auth State behavior.
-- [ ] Test token ký/verify, quyền path/action, không lộ private key và response no-store.
+Thực hiện theo [plan chi tiết giai đoạn 2](Streaming%20MVP%20Phase%202%20Implementation%20Plan.md), STR-201–208.
 
-**Hoàn tất khi:** chỉ account/owner hợp lệ xin được credential và MediaMTX kiểm tra được token do backend thật cấp.
+- [x] User/Channel client và API nội bộ; kiểm tra đúng user ID/streamer ID/channel ID, email verified, owner và category.
+- [x] Contract DTO/validation và eligibility service với ownership/error mapping; chưa mở business CRUD API.
+- [x] Media JWT issuer, nạp khóa ổn định, JWKS raw response, TTL 8h/5m/5m và issuer/audience/permissions.
+- [x] Gateway/Stream Service security cho đúng JWKS/callback, giữ account Auth State behavior và CSRF exemption exact POST.
+- [x] Test token ký/verify, quyền path/action, không lộ private key; kiểm chứng JWT với MediaMTX/Gateway thật. Header no-store được nối ở credential controller giai đoạn 3/5.
+
+**Hoàn tất khi:** resolve đúng account/owner đủ điều kiện, ký được credential và MediaMTX kiểm tra được token do backend thật cấp.
+
+**Kết quả 2026-10-26:** M2 đạt; Stream 103 test không bỏ qua, ba service liên quan clean verify thành công, IT Gateway/Stream HTTP/MediaMTX 1/1, fixture/helper 16/16. Xem [bằng chứng và số test bỏ qua](../testing/Streaming%20MVP%20Tests.md). Callback xác thực hợp lệ hiện trả 404 vì handler lifecycle thuộc giai đoạn 4; Create/End/playback API thuộc giai đoạn 3–5.
 
 ### Giai đoạn 3 — MediaMTX adapter và provisioning
 
