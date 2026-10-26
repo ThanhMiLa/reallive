@@ -1,6 +1,6 @@
 ---
 name: code-style
-description: Apply this repository's Java code-organization, Lombok, naming, import, and commenting conventions when writing, editing, or reviewing Java code.
+description: Apply this repository's Java code-organization, Lombok, record formatting, naming, import, and commenting conventions when writing, editing, or reviewing Java code.
 ---
 
 # Java Code Style Conventions
@@ -86,6 +86,60 @@ public class StreamResponse {
     Long id;
     String title;
     String playbackUrl;
+}
+```
+
+## Records
+
+Format Java `record` declarations with each component (field/parameter) on its own separate line to ensure readability and clean diffs.
+
+- **One component per line:** Always declare each record component on a new line. Never place all components inline on the header line or cram multiple components across arbitrarily wrapped lines.
+- **Indentation:** Indent each component with standard continuation indentation (8 spaces, or two levels of indentation relative to the record declaration).
+- **Closing parenthesis:** Place the closing parenthesis `)` on its own line after the last component, followed immediately by `{}` (if the record has no body) or `{` (if the record defines methods, constructors, or overrides).
+- **Component annotations:** When record components require validation or serialization annotations (such as `@NotNull`, `@Pattern`, or `@JsonProperty`), place each annotation on its own line preceding the component type or keep them cleanly formatted per component. Do not combine annotations and components across multiple fields on one line.
+
+```java
+// DO: Multi-line component declaration with closing parenthesis on a separate line
+public record CreateSessionCommand(
+        UUID channelId,
+        UUID streamerId,
+        UUID ownerUserId,
+        UUID categoryId,
+        String title,
+        UUID creationRequestId
+) {}
+```
+
+```java
+// DO: Records with bodies (methods, overrides) follow the same multi-line component structure
+public record StreamPlaybackAccessResponse(
+        UUID sessionId,
+        String playbackUrl,
+        String readToken,
+        Instant readExpiresAt
+) {
+    @Override
+    public String toString() {
+        return "StreamPlaybackAccessResponse[sessionId=" + sessionId + ", credentials=REDACTED]";
+    }
+}
+```
+
+```java
+// DON'T: Single-line declarations crowding all components together
+public record StreamPlaybackAccessResponse(UUID sessionId, String playbackUrl, String readToken, Instant readExpiresAt) {
+    @Override
+    public String toString() {
+        return "StreamPlaybackAccessResponse[sessionId=" + sessionId + ", credentials=REDACTED]";
+    }
+}
+```
+
+```java
+// DON'T: Arbitrary multi-component wrapping on the same line
+public record StreamSessionResponse(UUID id, UUID channelId, String title, UUID categoryId,
+        StreamVisibility visibility, StreamSessionStatus status, Instant startedAt, Instant endedAt,
+        Instant reconnectDeadlineAt, Instant serverTime, boolean publishReady) {
 }
 ```
 
