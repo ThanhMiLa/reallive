@@ -49,18 +49,17 @@ Phase 1 domain/persistence and phase 2 authentication are implemented. Business 
 playback-access APIs and the lifecycle callback handler are planned for phases 3–5.
 Session writes use pessimistic row locks; no session version or media-sync task is used.
 
-The service requires stable RSA keys and a separate callback secret at startup. From repository root:
+The service requires stable RSA keys at startup. From repository root:
 
 ```sh
 ./scripts/dev/generate-stream-media-keys.sh
 export STREAM_MEDIA_PRIVATE_KEY_BASE64="$(openssl pkcs8 -topk8 -nocrypt -in .local/streaming/private.pem -outform DER | base64 | tr -d '\n')"
 export STREAM_MEDIA_PUBLIC_KEY_BASE64="$(openssl pkey -pubin -in .local/streaming/public.pem -outform DER | base64 | tr -d '\n')"
-export STREAM_MEDIA_CALLBACK_SECRET="$(cat .local/streaming/callback.secret)"
 ```
 
 The variables contain Base64 of DER key bytes, without PEM headers. Keep these environment values private and load the other database/Redis settings through the existing
 local environment. Startup fails with a sanitized message for missing/mismatched RSA keys, keys below
-2048 bits, invalid media URLs/TTLs or a callback secret shorter than 32 bytes. Keys are not regenerated
+2048 bits or invalid media URLs/TTLs. Keys are not regenerated
 on restart. See the root `.env.example` for media variables.
 
 Defaults: Publish JWT 8 hours, Read JWT 5 minutes, Control API JWT 5 minutes; issuer/audience

@@ -13,9 +13,9 @@ services:
     env_file:
       - ${STREAM_MEDIA_ENV_FILE:-.local/streaming/mediamtx.env}
     environment:
-      MTX_AUTHJWTJWKS: ${STREAM_MEDIAMTX_JWKS_URL:-http://host.docker.internal:8888/stream/api/media/jwks}
+      MTX_AUTHJWTJWKS: ${STREAM_MEDIAMTX_JWKS_URL:-http://host.docker.internal:8082/stream/api/media/jwks}
       MTX_HLSALLOWORIGINS: ${STREAM_MEDIA_ALLOWED_ORIGINS:-http://localhost:5173}
-      STREAM_MEDIA_CALLBACK_URL: ${STREAM_MEDIA_CALLBACK_URL:-http://host.docker.internal:8888/stream/api/media/events}
+      STREAM_MEDIA_CALLBACK_URL: ${STREAM_MEDIA_CALLBACK_URL:-http://host.docker.internal:8082/stream/api/media/events}
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:

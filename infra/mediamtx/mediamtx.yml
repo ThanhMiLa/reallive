@@ -1,6 +1,6 @@
 logLevel: warn
 authMethod: jwt
-authJWTJWKS: http://host.docker.internal:8888/stream/api/media/jwks
+authJWTJWKS: http://host.docker.internal:8082/stream/api/media/jwks
 authJWTClaimKey: mediamtx_permissions
 authJWTIssuer: reallive-stream
 authJWTAudience: reallive-media

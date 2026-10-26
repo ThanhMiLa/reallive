@@ -14,12 +14,12 @@ python3 -m unittest discover -s scripts/testing/streaming -p 'test_*.py' -v
 python3 scripts/testing/streaming/fixture.py serve
 ```
 
-- `prepare` tạo key/secret nếu chưa có; dùng lại key/secret/session ID khi chạy lại, chỉ cấp lại bộ JWT test. Không tự thay một cặp khóa thiếu/mismatched.
+- `prepare` tạo key nếu chưa có; dùng lại key/session ID khi chạy lại, chỉ cấp lại bộ JWT test. Không tự thay một cặp khóa thiếu/mismatched.
 - `fixtures.json` chứa serverUrl/streamKey/playbackUrl và JWT publish/read/api. Các token âm tính gồm sai chữ ký, hết hạn và sai path; token read cũng dùng để thử publish sai quyền.
 - TTL mặc định đồng bộ với quyết định Giai đoạn 2: publish 8h, read 5m, api 5m. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
 - Key RSA 2048 bit được ký/verify bằng OpenSSL; JWKS chỉ gồm kty/kid/alg/use/n/e. Không có Python dependency ngoài thư viện chuẩn.
-- Không `cat` token/key/secret ra log hoặc commit chúng. Các lệnh trên chỉ in trạng thái và đường dẫn.
-- Dừng fixture bằng Ctrl+C. Dữ liệu callback test lưu ở `.local/streaming/events.jsonl`, không có token/query/secret.
+- Không `cat` token/key ra log hoặc commit chúng. Các lệnh trên chỉ in trạng thái và đường dẫn.
+- Dừng fixture bằng Ctrl+C. Dữ liệu callback test lưu ở `.local/streaming/events.jsonl`, không có token/query.
 
 ## HTTP fixture
 
@@ -27,9 +27,9 @@ python3 scripts/testing/streaming/fixture.py serve
 |---|---|
 | `GET http://localhost:18082/health` | Trạng thái fixture |
 | `GET http://localhost:18082/stream/api/media/jwks` | JWKS public, không bọc ApiResponse |
-| `POST http://localhost:18082/stream/api/media/events` | Receiver kiểm HMAC/time/schema, ghi sự kiện hợp lệ và dedupe eventId |
+| `POST http://localhost:18082/stream/api/media/events` | Receiver nhận JSON event hợp lệ và dedupe eventId |
 
-Callback theo contract ở [Implementation Plan](../../../docs/Implement%20Plan/Streaming%20MVP%20Implementation%20Plan.md): `X-Media-Timestamp` là Unix seconds, `X-Media-Signature` là `sha256=<hex HMAC-SHA256(timestamp + newline + rawBody)>`. Secret là nội dung file callback.secret bỏ newline cuối.
+Callback theo contract ở [Implementation Plan](../../../docs/Implement%20Plan/Streaming%20MVP%20Implementation%20Plan.md): gửi POST JSON trực tiếp tới endpoint callback.
 
 Fixture bind loopback mặc định. MediaMTX Docker sẽ dùng `host.docker.internal:18082`; khả năng truy cập thực tế được kiểm ở STR-003. Linux cần `host.docker.internal:host-gateway`; chỉ dùng `--host` khác khi môi trường local yêu cầu và giới hạn network phù hợp.
 

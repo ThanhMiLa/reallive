@@ -34,7 +34,7 @@ class FixtureTest(unittest.TestCase):
         cls.directory.cleanup()
 
     def test_key_generation_is_stable_and_secrets_are_private(self):
-        paths = [self.state / name for name in ['private.pem', 'public.pem', 'callback.secret']]
+        paths = [self.state / name for name in ['private.pem', 'public.pem']]
         before = [hashlib.sha256(path.read_bytes()).digest() for path in paths]
         subprocess.run([str(fixture.REPO / 'scripts/dev/generate-stream-media-keys.sh'), str(self.state)], check=True)
         self.assertEqual(before, [hashlib.sha256(path.read_bytes()).digest() for path in paths])
@@ -72,12 +72,8 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(65537, int.from_bytes(fixture.unb64url(key['e']), 'big'))
         self.assertGreaterEqual(int.from_bytes(fixture.unb64url(key['n']), 'big').bit_length(), 2048)
 
-    def send_event(self, body, timestamp=None, signature=None):
-        timestamp = str(int(time.time())) if timestamp is None else timestamp
-        secret = (self.state / 'callback.secret').read_bytes().strip()
-        signature = fixture.callback_signature(secret, timestamp, body) if signature is None else signature
-        request = Request(self.base + fixture.EVENTS_PATH, data=body, headers={
-            'Content-Type': 'application/json', 'X-Media-Timestamp': timestamp, 'X-Media-Signature': signature})
+    def send_event(self, body):
+        request = Request(self.base + fixture.EVENTS_PATH, data=body, headers={'Content-Type': 'application/json'})
         try:
             with urlopen(request, timeout=3) as response:
                 return response.status, json.load(response)
@@ -90,22 +86,13 @@ class FixtureTest(unittest.TestCase):
                            'sourceId': str(uuid4()), 'sourceType': 'rtmpConn',
                            'occurredAt': '2026-10-24T00:00:00Z'}).encode()
 
-    def test_signed_callback_and_duplicate_are_recorded_once(self):
+    def test_callback_and_duplicate_are_recorded_once(self):
         body = self.event_body()
         self.assertEqual((200, {'accepted': True, 'duplicate': False}), self.send_event(body))
         self.assertEqual((200, {'accepted': True, 'duplicate': True}), self.send_event(body))
         event_id = json.loads(body)['eventId']
         records = [json.loads(line) for line in (self.state / 'events.jsonl').read_text().splitlines()]
         self.assertEqual(1, sum(record['eventId'] == event_id for record in records))
-
-    def test_invalid_hmac_stale_timestamp_and_tampered_body_are_rejected(self):
-        body = self.event_body()
-        self.assertEqual(401, self.send_event(body, signature='sha256=bad')[0])
-        self.assertEqual(401, self.send_event(body, signature='sha256=é')[0])
-        self.assertEqual(401, self.send_event(body, timestamp=str(int(time.time()) - 120))[0])
-        timestamp = str(int(time.time()))
-        signature = fixture.callback_signature((self.state / 'callback.secret').read_bytes().strip(), timestamp, body)
-        self.assertEqual(401, self.send_event(body + b' ', timestamp=timestamp, signature=signature)[0])
 
     def test_query_and_oversize_payload_are_rejected(self):
         event = json.loads(self.event_body())

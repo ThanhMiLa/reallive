@@ -94,7 +94,7 @@ React --> Gateway :8888 --> Stream Service :8082 --> PostgreSQL Stream
                                   +--> User Service / Channel Service
 
 MEDIA VỚI BACKEND, LOCAL DEVELOPMENT:
-MediaMTX --> Gateway :8888 --> Stream Service: GET JWKS / POST callback có chữ ký
+MediaMTX --> Stream Service :8082: GET JWKS / POST callback trực tiếp
 Stream Service --> MediaMTX :9997: Control API với JWT quyền api
 ```
 
@@ -107,17 +107,17 @@ Stream Service --> MediaMTX :9997: Control API với JWT quyền api
 | OBS → MediaMTX | `rtmp://localhost:1935/live` | Địa chỉ public ingest tách khỏi địa chỉ Control API |
 | Browser → HLS | `http://localhost:8898` | Docker map `127.0.0.1:8898:8888`, tránh trùng port Gateway |
 | Backend → MediaMTX Control API | `http://127.0.0.1:9997` | Docker map `127.0.0.1:9997:9997` trong local |
-| MediaMTX → JWKS | `http://host.docker.internal:8888/stream/api/media/jwks` | Qua Gateway để không cần mở port business của Stream Service cho container |
-| MediaMTX → callback | `http://host.docker.internal:8888/stream/api/media/events` | Không gửi account cookie; có HMAC riêng |
+| MediaMTX → JWKS | `http://host.docker.internal:8082/stream/api/media/jwks` | Trực tiếp tới Stream Service trong mạng local/Docker |
+| MediaMTX → callback | `http://host.docker.internal:8082/stream/api/media/events` | Trực tiếp tới Stream Service trong mạng local/Docker; không qua Gateway, không cần HMAC secret cho MVP local |
 
 MediaMTX HLS mặc định dùng port 8888, được xác nhận trong [config v1.21.2](https://github.com/bluenviron/mediamtx/blob/v1.21.2/mediamtx.yml#L289-L318). Port 8898 là lựa chọn của ứng dụng ở phía host, không thay đổi port Gateway.
 
 ### 3.2. Ranh giới truy cập
 
-- Các API business vẫn đi qua Gateway. `CustomJwtDecoder` downstream hiện tin kết quả xác thực từ Gateway, nên không mở trực tiếp port 8082 ra Internet để giải quyết kết nối Docker.
-- JWKS là endpoint không yêu cầu account cookie. Callback được đi qua lớp account auth bằng ngoại lệ method/path cụ thể, nhưng bắt buộc qua kiểm tra HMAC ở Stream Service.
+- Các API business của người dùng vẫn đi qua Gateway.
+- MediaMTX gọi trực tiếp Stream Service (port 8082) cho JWKS và callback trong mạng nội bộ local/Docker; Gateway không mở public route cho các endpoint media này.
+- Stream Service cấu hình permitAll cho exact GET `/api/media/jwks` và exact POST `/api/media/events` mà không cần account cookie.
 - Local macOS dùng `host.docker.internal`; hướng dẫn Linux thêm `host-gateway` và kiểm tra kết nối thực tế trong giai đoạn đầu.
-- Production dùng RTMPS/HTTPS và DNS media/API được cấu hình. Control API giữ trong mạng riêng; JWKS/callback có thể đi trực tiếp qua mạng nội bộ tin cậy thay vì Gateway.
 - Địa chỉ public trả cho browser/OBS không được lấy từ tên service Docker hoặc từ `Host` header do client cung cấp.
 
 ## 4. Thiết kế database
@@ -318,7 +318,7 @@ Thêm tên lỗi riêng vào `common.exception.ErrorCode` với số code duy nh
 | Publish JWT | Stream Service | MediaMTX | Query `token` trong thông tin RTMP của OBS |
 | Read JWT | Stream Service | MediaMTX khi mở phiên HLS | Authorization Bearer từ hls.js |
 | Control API JWT | Stream Service | MediaMTX | Authorization Bearer, backend giữ riêng |
-| Chữ ký callback | Helper MediaMTX | Stream Service | HMAC header với secret nội bộ |
+| Callback media | MediaMTX hook | Stream Service | POST JSON trực tiếp trong mạng local/Docker |
 
 Giữ nguyên account signer/cookie flow hiện có. Media JWT dùng cặp khóa RSA riêng và không được chấp nhận như account access token. Custom claim phân loại token chỉ hỗ trợ ứng dụng; quyền mà MediaMTX thực thi nằm trong `mediamtx_permissions`.
 
@@ -667,10 +667,8 @@ Tham khảo [API hls.js v1.7.3](https://github.com/video-dev/hls.js/blob/v1.7.3/
 | `STREAM_RTMP_PUBLIC_URL` | `rtmp://localhost:1935/live` | Trả cho OBS |
 | `STREAM_HLS_PUBLIC_BASE_URL` | `http://localhost:8898` | Ghép playbackUrl |
 | `STREAM_MEDIAMTX_CONTROL_URL` | `http://127.0.0.1:9997` | Backend adapter |
-| `STREAM_MEDIAMTX_JWKS_URL` | URL qua host Gateway như mục 3 | Env override `authJWTJWKS` của MediaMTX |
-| `STREAM_MEDIA_CALLBACK_URL` | URL callback qua host Gateway | Helper |
-| `STREAM_MEDIA_CALLBACK_SECRET` | Bắt buộc, hai bên cùng giá trị | Helper và Stream Service |
-| `STREAM_MEDIA_CALLBACK_MAX_SKEW` | `60s`, đề xuất | Kiểm tra HMAC timestamp |
+| `STREAM_MEDIAMTX_JWKS_URL` | `http://host.docker.internal:8082/stream/api/media/jwks` | Env override `authJWTJWKS` của MediaMTX (gọi trực tiếp Stream Service) |
+| `STREAM_MEDIA_CALLBACK_URL` | `http://host.docker.internal:8082/stream/api/media/events` | URL callback trực tiếp tới Stream Service |
 | `STREAM_RECONNECT_SWEEP_DELAY` | `1s`, đề xuất | Chỉ quét deadline reconnect |
 | `STREAM_MEDIAMTX_CONNECT_TIMEOUT` / `STREAM_MEDIAMTX_READ_TIMEOUT` | `2s` / `5s`, đề xuất | Adapter |
 | `STREAM_MEDIA_ALLOWED_ORIGINS` | `http://localhost:5173` | Map sang `hlsAllowOrigins` đúng dạng list |

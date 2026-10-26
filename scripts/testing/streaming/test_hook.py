@@ -13,10 +13,8 @@ import fixture
 class HookTest(unittest.TestCase):
     def setUp(self):
         self.bodies = []
-        self.signatures_valid = []
         self.received = threading.Event()
         self.failures = 2
-        secret = b'local-hook-test-secret-0123456789abcdef'
         owner = self
 
         class Receiver(BaseHTTPRequestHandler):
@@ -25,9 +23,7 @@ class HookTest(unittest.TestCase):
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers['Content-Length']))
-                timestamp = self.headers['X-Media-Timestamp']
                 owner.bodies.append(body)
-                owner.signatures_valid.append(self.headers['X-Media-Signature'] == fixture.callback_signature(secret, timestamp, body))
                 status = 503 if len(owner.bodies) <= owner.failures else 200
                 self.send_response(status)
                 self.send_header('Content-Length', '0')
@@ -37,7 +33,7 @@ class HookTest(unittest.TestCase):
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Receiver)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
-        self.environment = dict(os.environ, STREAM_MEDIA_CALLBACK_SECRET=secret.decode(),
+        self.environment = dict(os.environ,
                                 STREAM_MEDIA_CALLBACK_URL='http://127.0.0.1:' + str(self.server.server_port),
                                 MTX_PATH='live/' + str(uuid4()), MTX_SOURCE_ID=str(uuid4()),
                                 MTX_SOURCE_TYPE='rtmpConn', MTX_QUERY='token=must-never-be-sent')
@@ -56,12 +52,11 @@ class HookTest(unittest.TestCase):
         self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'infra/mediamtx/media_hook.py'), 'online'],
                                         env=self.environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    def test_retry_keeps_body_and_event_id_and_signs_each_attempt(self):
+    def test_retry_keeps_body_and_event_id(self):
         self.launch()
         stdout, stderr = self.process.communicate(timeout=8)
         self.assertEqual(0, self.process.returncode)
         self.assertEqual(3, len(self.bodies))
-        self.assertTrue(all(self.signatures_valid))
         self.assertEqual(1, len(set(self.bodies)))
         event = json.loads(self.bodies[0])
         self.assertEqual('ONLINE', event['eventType'])

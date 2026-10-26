@@ -33,8 +33,5 @@ if ! cmp -s "$key_work_dir/derived.der" "$key_work_dir/public.der"; then
     echo 'Private/public keys do not match; existing keys were not changed.' >&2
     exit 1
 fi
-if [ ! -e "$key_dir/callback.secret" ]; then
-    openssl rand -hex 32 >"$key_dir/callback.secret"
-fi
-chmod 600 "$key_dir/private.pem" "$key_dir/public.pem" "$key_dir/callback.secret"
-echo "$key_action and verified RSA key pair; callback secret ready in $key_dir"
+chmod 600 "$key_dir/private.pem" "$key_dir/public.pem"
+echo "$key_action and verified RSA key pair in $key_dir"

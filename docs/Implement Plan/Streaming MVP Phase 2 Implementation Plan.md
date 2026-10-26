@@ -3,7 +3,7 @@
 - Ngày: 2026-10-26.
 - Trạng thái: STR-201–208 hoàn tất, M2 đạt; Stream 103/103 test, kiểm chứng Gateway/Stream/MediaMTX thật 1/1. Số test của từng service và các test Redis chưa bật được ghi trong báo cáo kiểm chứng.
 - Nguồn: [Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md), [STR-201–208](Streaming%20MVP%20Task%20Breakdown.md#4-giai-đoạn-2--auth-eligibility-và-jwt-media), [Auth State](../contracts/Auth%20State.md).
-- Phạm vi: xây contract, kiểm tra điều kiện phát qua User/Channel Service, ký media JWT, phục vụ JWKS và xác thực callback. Giữ mô hình MVP gọi đồng bộ, hai bảng session/history và pessimistic locking của M1.
+- Phạm vi: xây contract, kiểm tra điều kiện phát qua User/Channel Service, ký media JWT, phục vụ JWKS và nhận callback trực tiếp từ MediaMTX (cho MVP local gọi trực tiếp Stream Service không qua Gateway và không cần HMAC callback secret). Giữ mô hình MVP gọi đồng bộ, hai bảng session/history và pessimistic locking của M1.
 
 ## 1. Các quyết định đã chốt
 
@@ -18,8 +18,8 @@
 | Account status | Gateway tiếp tục kiểm tra ACTIVE theo Auth State |
 | Điều kiện phát | User tồn tại, email verified, streamer ACTIVE, channel ACTIVE/chưa xóa/đúng owner, category hợp lệ |
 | Client nội bộ | Feign đồng bộ, connect 2 giây/read 5 giây, không retry; không chuyển tiếp account cookie |
-| Callback | HMAC-SHA256 với secret riêng ít nhất 32 byte; timestamp lệch tối đa 60 giây, body tối đa 16 KiB |
-| Callback business | Chưa có ở giai đoạn 2; HMAC hợp lệ đi tới 404, không trả 200 giả |
+| Callback | MediaMTX gọi trực tiếp Stream Service (port 8082, permitAll); cho MVP local đơn giản hóa không dùng HMAC secret |
+| Callback business | Chưa có ở giai đoạn 2; callback trực tiếp đi tới 404, không trả 200 giả |
 
 TTL 8h/5m/5m thay thế đề xuất cũ 24h/15m/5m. JWT mới không thu hồi JWT cũ; TTL không bảo đảm ngắt phiên HLS đang mở. Không lưu JWT/stream key/hash vào database.
 
@@ -52,36 +52,34 @@ Các endpoint internal dựa trên ranh giới mạng backend tin cậy hiện h
 ## 5. STR-204–205 — Cấu hình và phát hành JWT
 
 - `MediaProperties`, `MediaConfiguration`, `MediaKeyMaterial` trong `common.configuration` bind cấu hình, parse cặp khóa, kiểm tra modulus/độ dài và ký/verify thử để xác nhận cặp khóa.
-- Thiếu/sai khóa, TTL, URL hoặc callback secret phải dừng startup bằng thông báo đã loại dữ liệu bí mật. Không in secret hoặc private key qua toString/log.
+- Thiếu/sai khóa, TTL, URL phải dừng startup bằng thông báo đã loại dữ liệu bí mật. Không in private key qua toString/log.
 - `MediaJwtIssuer` thuộc `stream.adapter.media`; dùng Clock UTC, RS256, `typ=JWT`, `kid`, `iss`, `aud`, `sub`, `iat`, `exp`, `jti` mới mỗi lần cấp.
 - `mediamtx_permissions` chỉ có một quyền: publish/read tại exact path `live/{sessionId}`, hoặc api cho backend. Không dùng wildcard hay quyền đọc/phát chéo session.
 - Server OBS lấy từ cấu hình; stream key `{sessionId}?token={PublishJWT}`. DTO chứa credential có toString che token.
 - Hướng dẫn chuyển PEM local sang Base64 DER tại [Stream Service README](../../stream-service/README.md). Các khóa test được tạo trong bộ nhớ, không commit key thật.
 
-## 6. STR-206 — JWKS và ranh giới account/media
+## 6. STR-206 — Phục vụ JWKS trực tiếp và phân định ranh giới Gateway
 
-- `GET /stream/api/media/jwks` qua Gateway trả raw `{keys:[...]}` chứa `kty/kid/use/alg/n/e`, không chứa private parameters hoặc ApiResponse.
-- Chỉ exact GET được anonymous. Method khác, path con hoặc business endpoint vẫn yêu cầu account.
-- Cookie gửi kèm vẫn được kiểm tra theo Auth State, kể cả ở route public. Media JWT không dùng thay account cookie.
-- MediaMTX tự verify bằng JWKS; không gọi backend để verify từng token. Cấu hình issuer/audience/kid phải thống nhất với MediaMTX.
+- `GET /stream/api/media/jwks` được Stream Service phục vụ trực tiếp (port 8082, permitAll), trả raw `{keys:[...]}` chứa `kty/kid/use/alg/n/e`, không chứa private parameters hoặc ApiResponse.
+- Gateway không mở route `/stream/api/media/**`; các request từ ngoài vào toàn hệ thống vẫn qua Gateway theo đúng kiến trúc.
+- Cookie gửi kèm vẫn được kiểm tra theo Auth State nếu client gửi token cookie. Media JWT không dùng thay account cookie.
+- MediaMTX tự verify bằng JWKS gọi trực tiếp tới Stream Service; không gọi backend để verify từng token. Cấu hình issuer/audience/kid phải thống nhất với MediaMTX.
 
-## 7. STR-207 — Xác thực callback
+## 7. STR-207 — Tiếp nhận callback trực tiếp từ MediaMTX
 
-- Exact `POST /stream/api/media/events` được Gateway bỏ yêu cầu account cookie và CSRF; không miễn toàn bộ `/stream/**`.
-- Header `X-Media-Timestamp` là epoch second; `X-Media-Signature` là `sha256=<hex>`.
-- Tính HMAC trên `timestamp + "\n" + raw body` chính xác, so sánh constant-time trước khi parse JSON.
-- Giới hạn body cả khi không có Content-Length; quá 16 KiB trả 413. Sai/thiếu chữ ký hoặc timestamp trả 401; DTO sai sau xác thực trả 400.
+- `POST /api/media/events` được Stream Service cho phép gọi trực tiếp (permitAll, không yêu cầu account cookie). Gateway không proxy route này.
+- Cho MVP local, MediaMTX gọi trực tiếp Stream Service trong mạng Docker/host, đơn giản hóa bằng cách bỏ secret HMAC và header ký.
 - DTO đúng sáu field: eventId, eventType ONLINE/OFFLINE, path live/UUID, sourceId, sourceType rtmpConn/rtmpsConn, occurredAt.
-- Filter giữ raw body đọc lại được và gắn DTO đã verify để handler giai đoạn 4 dùng. Chưa ghi session/history, chưa xử lý dedupe/lifecycle.
-- ERROR dispatch được phép trả lỗi HTTP gốc thay vì biến 404 thành 401. Request ngoài vẫn chịu kiểm tra method/path như trên.
+- DTO sai trả 400; callback hợp lệ tới endpoint chưa có business handler giai đoạn 4 sẽ trả 404 (không trả 200 giả). Chưa ghi session/history, chưa xử lý dedupe/lifecycle.
+- ERROR dispatch được phép trả lỗi HTTP gốc thay vì nuốt lỗi.
 
 ## 8. STR-208 — Kiểm chứng và điều kiện nghiệm thu
 
-1. `clean verify` tại stream-service, user-service, channel-service và api-gateway: DTO, khóa/JWT/JWKS, HMAC, ownership/eligibility, lỗi HTTP/timeout và account regression.
+1. `clean verify` tại stream-service, user-service, channel-service và api-gateway: DTO, khóa/JWT/JWKS, ownership/eligibility, lỗi HTTP/timeout và account regression.
 2. Producer endpoint tests dùng controller/security/repository thật với H2 cô lập; Stream Feign tests gọi HTTP server cô lập với contract tương ứng. Không coi đây là bốn service production chạy chung.
 3. PostgreSQL 17 Testcontainers tiếp tục kiểm tra migration, index, khóa, idempotency và rollback M1.
-4. Chạy riêng `MediaMtxAuthenticationIT` với Gateway JAR thật, Stream Service HTTP thật và một container MediaMTX dùng cổng ngẫu nhiên. MediaMTX tải JWKS qua Gateway và nhận JWT Java cho api/publish/read.
-5. Kiểm tra thiếu token, sai action/path/chữ ký/issuer/audience, hết hạn; không dùng media JWT làm account cookie; callback qua Gateway với CSRF bật.
+4. Chạy riêng `MediaMtxAuthenticationIT` với Stream Service HTTP thật và một container MediaMTX dùng cổng ngẫu nhiên. MediaMTX tải JWKS trực tiếp từ Stream Service và nhận JWT Java cho api/publish/read.
+5. Kiểm tra thiếu token, sai action/path/chữ ký/issuer/audience, hết hạn; không dùng media JWT làm account cookie; callback trực tiếp từ MediaMTX tới Stream Service.
 6. Nguồn H.264/AAC tổng hợp bằng FFmpeg; dọn container/path/process của test. Giữ MediaMTX, OBS và database ứng dụng hiện hữu nguyên cấu hình.
 7. Đồng bộ TTL fixture M0 và chạy lại unit test fixture/helper. Không chạy lại thao tác OBS/browser bằng tự động hóa.
 

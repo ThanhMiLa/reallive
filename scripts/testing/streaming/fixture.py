@@ -150,7 +150,7 @@ def prepare(state):
     environment = state / 'mediamtx.env'
     descriptor = os.open(environment, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, 'w') as output:
-        output.write('STREAM_MEDIA_CALLBACK_SECRET=' + (state / 'callback.secret').read_text().strip() + '\n')
+        output.write('# MediaMTX env\n')
     print('Prepared fixtures.json and public-only jwks.json; token values were not printed.', flush=True)
 
 
@@ -176,9 +176,6 @@ def validate_event(event):
 
 
 def make_server(state, host='127.0.0.1', port=18082):
-    secret = (state / 'callback.secret').read_bytes().strip()
-    if len(secret) < 32:
-        raise ValueError('Callback secret is too short')
     events_file = state / 'events.jsonl'
     seen = set()
     if events_file.exists():
@@ -270,14 +267,6 @@ def make_server(state, host='127.0.0.1', port=18082):
                     self.fixture_post(value)
                 except (ValueError, TypeError, KeyError, AttributeError):
                     self.respond(400, {'error': 'invalid_fixture_request'})
-                return
-            timestamp = self.headers.get('X-Media-Timestamp', '')
-            signature = self.headers.get('X-Media-Signature', '')
-            if (not re.fullmatch(r'sha256=[0-9a-f]{64}', signature)
-                    or not timestamp.isascii() or not timestamp.isdigit() or len(timestamp) > 12
-                    or abs(time.time() - int(timestamp)) > 60
-                    or not hmac.compare_digest(signature, callback_signature(secret, timestamp, body))):
-                self.respond(401, {'error': 'invalid_callback_auth'})
                 return
             try:
                 event = json.loads(body)

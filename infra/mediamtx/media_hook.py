@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-"""Send authenticated MediaMTX source events without copying publisher queries."""
+"""Send MediaMTX source events to stream-service without copying publisher queries."""
 
 from datetime import datetime, timezone
-import hashlib
-import hmac
 import json
 import os
 import signal
@@ -18,10 +16,9 @@ from uuid import UUID, uuid4
 def main():
     if len(sys.argv) != 2 or sys.argv[1] not in ['online', 'offline']:
         raise ValueError('Expected online or offline')
-    secret = os.environ.get('STREAM_MEDIA_CALLBACK_SECRET', '').encode()
-    url = os.environ.get('STREAM_MEDIA_CALLBACK_URL', '')
-    if len(secret) < 32 or not url.startswith(('http://', 'https://')):
-        raise ValueError('Missing callback URL/secret configuration')
+    url = os.environ.get('STREAM_MEDIA_CALLBACK_URL', 'http://host.docker.internal:8082/stream/api/media/events')
+    if not url.startswith(('http://', 'https://')):
+        raise ValueError('Missing callback URL configuration')
     path = os.environ.get('MTX_PATH', '')
     if not path.startswith('live/'):
         raise ValueError('Unexpected media path namespace')
@@ -41,10 +38,7 @@ def main():
     for delay in [0, 1, 2, 4, 8]:
         if stopped.wait(delay) or time.monotonic() >= deadline:
             return 1
-        timestamp = str(int(time.time()))
-        signature = hmac.new(secret, timestamp.encode() + b'\n' + body, hashlib.sha256).hexdigest()
-        request = Request(url, data=body, headers={'Content-Type': 'application/json',
-                          'X-Media-Timestamp': timestamp, 'X-Media-Signature': 'sha256=' + signature})
+        request = Request(url, data=body, headers={'Content-Type': 'application/json'})
         try:
             with urlopen(request, timeout=min(3, max(0.1, deadline - time.monotonic()))) as response:
                 if 200 <= response.status < 300:

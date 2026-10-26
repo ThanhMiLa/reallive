@@ -277,38 +277,37 @@ Bốn lệnh Maven đều BUILD SUCCESS và đóng gói JAR. 37 test bị bỏ q
 
 ## STR-204–207 — Khóa, token, JWKS và callback: PASS
 
-- Nạp cặp RSA ổn định, verify cặp khóa; thiếu/sai cấu hình thất bại với thông báo không chứa key/secret. Code yêu cầu RSA ít nhất 2048 bit, TTL dương, media URL đúng protocol và callback secret ít nhất 32 byte.
+- Nạp cặp RSA ổn định, verify cặp khóa; thiếu/sai cấu hình thất bại với thông báo không chứa key. Code yêu cầu RSA ít nhất 2048 bit, TTL dương, media URL đúng protocol. Cho MVP local, MediaMTX gọi trực tiếp Stream Service nên bỏ yêu cầu callback secret và HMAC.
 - JWT RS256 đúng kid/iss/aud/sub/iat/exp/jti, exact path/action; TTL Publish 8h, Read 5m, Control API 5m theo quyết định mới. Không lưu token vào DB.
-- JWKS chỉ public key, JSON không bọc ApiResponse; exact GET được mở qua Gateway. Các path con/method khác và business route còn bảo vệ.
-- Cookie gửi kèm route public vẫn theo Auth State; Redis unavailable giữ 503, không bỏ qua cookie lỗi.
-- Callback HMAC trên raw bytes, constant-time comparison, timestamp trong 60 giây; thiếu/sai chữ ký, timestamp cũ, raw body bị sửa đều bị từ chối. Body quá 16 KiB, kể cả không có Content-Length, trả 413; body đọc lại được sau filter.
-- Callback hợp lệ tới 404 vì chưa có handler nghiệp vụ. Kiểm chứng HTTP thật phát hiện ERROR dispatch ban đầu biến 404 thành 401; đã sửa để trả lỗi gốc. Request HTTP trực tiếp tới `/error` vẫn cần auth.
-- Hướng dẫn chuyển PEM thành Base64 DER đã được kiểm tra lại trong thư mục tạm, không đổi key ứng dụng. Fixture Python đã cập nhật TTL 8h/5m/5m và chạy lại 16/16 test.
+- JWKS chỉ public key, JSON không bọc ApiResponse; được Stream Service phục vụ trực tiếp (`permitAll` trên cổng 8082). Gateway không mở route `/stream/api/media/**`.
+- Cookie gửi kèm route public vẫn theo Auth State nếu gửi cookie; Redis unavailable giữ 503, không bỏ qua cookie lỗi.
+- Callback nhận trực tiếp DTO JSON từ MediaMTX trên `POST /stream/api/media/events` (permitAll, không yêu cầu account cookie). DTO sai format trả 400.
+- Callback hợp lệ tới 404 vì chưa có handler nghiệp vụ (không trả 200 giả).
+- Hướng dẫn chuyển PEM thành Base64 DER đã được kiểm tra lại trong thư mục tạm, không đổi key ứng dụng.
 
-## STR-208 — Gateway + Stream HTTP + MediaMTX thật: PASS
+## STR-208 — Stream HTTP + MediaMTX thật: PASS
 
-Chạy sau khi có local image MediaMTX và Gateway JAR:
+Chạy sau khi có local image MediaMTX:
 
 ```sh
 docker build -f infra/mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
-./api-gateway/mvnw -f api-gateway/pom.xml -DskipTests package
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
 ```
 
-`MediaMtxAuthenticationIT`: **1 test PASS, không failure/error/skipped**. Đây là lệnh opt-in riêng, không cộng vào 103 test mặc định.
+`MediaMtxAuthenticationIT`: **1 test PASS, không failure/error/skipped**. Đây là lệnh opt-in riêng, không cộng vào 97 test mặc định.
 
-- Stream Service chạy HTTP thật, H2 cô lập và key sinh trong bộ nhớ; Gateway chạy JAR subprocess, CSRF bật; một container MediaMTX 1.21.2 dùng cổng ngẫu nhiên.
-- MediaMTX tải public JWKS qua Gateway, chấp nhận JWT do `MediaJwtIssuer` Java ký. Control API JWT gọi API/provision path thành công; Publish/Read JWT không được gọi Control API.
+- Stream Service chạy HTTP thật, H2 cô lập và key sinh trong bộ nhớ; một container MediaMTX 1.21.2 dùng cổng ngẫu nhiên.
+- MediaMTX tải public JWKS trực tiếp từ Stream Service, chấp nhận JWT do `MediaJwtIssuer` Java ký. Control API JWT gọi API/provision path thành công; Publish/Read JWT không được gọi Control API.
 - FFmpeg H.264/AAC publish RTMP thành công với Publish JWT; nguồn thực sự online. Read JWT lấy HLS playlist có `#EXTM3U` thành công.
 - HLS từ chối thiếu token, sai action/path/signature/issuer/audience và token hết hạn. Read JWT không publish RTMP được.
-- Gateway từ chối media JWT gửi dưới dạng account cookie. Callback không HMAC trả 401; HMAC hợp lệ qua Gateway với CSRF bật trả 404 đúng phạm vi hiện tại.
-- Hook nguồn trong container test này được tắt để không gọi lifecycle handler chưa tồn tại; chữ ký callback được gửi bằng HTTP test riêng. Không coi đây là nghiệm thu workflow ONLINE/OFFLINE → DB.
-- Dọn path, FFmpeg, Gateway process và container test; không đổi container MediaMTX, OBS, browser hoặc database ứng dụng đang dùng.
+- Gateway không mở route media; MediaMTX gọi trực tiếp Stream Service. Callback JSON hợp lệ không cần account cookie trả 404 đúng phạm vi hiện tại (chưa có handler nghiệp vụ).
+- Hook nguồn trong container test này được tắt để không gọi lifecycle handler chưa tồn tại; callback được gửi bằng HTTP test riêng. Không coi đây là nghiệm thu workflow ONLINE/OFFLINE → DB.
+- Dọn path, FFmpeg và container test; không đổi container MediaMTX, OBS, browser hoặc database ứng dụng đang dùng.
 
 ## Giới hạn và bước tiếp theo
 
 - Giai đoạn 2 cung cấp thành phần auth/eligibility, chưa có API nghiệp vụ Create/Update/cấp OBS/End/cấp quyền xem. Không có controller giả luôn báo thành công.
 - No-store sẽ được nối ở controller cấp credential giai đoạn 3/5; chưa nghiệm thu header của các API chưa tồn tại.
 - Test media chứng minh publish và HLS playlist; không thay nghiệm thu OBS/browser HLS đầy đủ ở giai đoạn 0/7, không nghiệm thu TLS/production hoặc xử lý lifecycle callback.
-- Stream Service từ nay cần cấu hình RSA/callback secret hợp lệ khi startup. Xem [README](../../stream-service/README.md); không tự sinh lại key khi restart.
+- Stream Service từ nay cần cấu hình RSA key hợp lệ khi startup. Xem [README](../../stream-service/README.md); không tự sinh lại key khi restart.
 - Không đổi schema hai bảng, không thêm version/sync task/background retry/reconciler. STR-301 tiếp theo xây Control API adapter cho runtime ứng dụng.

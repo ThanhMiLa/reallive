@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật 2026-10-25: MVP xử lý đồng bộ từ đầu đến cuối theo yêu cầu người dùng. Không có bảng task, worker retry, lease/revision hoặc reconciler.
-- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26: eligibility, JWT/JWKS và callback security; JWT Java đã kiểm chứng với MediaMTX qua Gateway thật. Giai đoạn 3–7 chưa hoàn tất; adapter/lifecycle MediaMTX cho runtime ứng dụng thuộc giai đoạn 3–4.
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26: eligibility, JWT/JWKS và tiếp nhận callback; JWT Java đã kiểm chứng trực tiếp với MediaMTX. Giai đoạn 3–7 chưa hoàn tất; adapter/lifecycle MediaMTX cho runtime ứng dụng thuộc giai đoạn 3–4.
 - Thiết kế và contract gốc: [Streaming MVP Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md).
 - Kiến trúc đã chốt: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Mục tiêu: triển khai theo từng phần có thể kiểm chứng, đến khi streamer phát được bằng OBS và người dùng đăng nhập xem được trên web.
@@ -15,7 +15,7 @@
 - Business API phải tuân thủ ownership/account auth hiện tại. MediaMTX vẫn chỉ có một instance, tự verify Publish JWT và Read JWT bằng public key.
 - Giữ nguyên phạm vi MVP và phân biệt các đề xuất mặc định ở mục 1.2 của implementation plan với quyết định đã chốt. TTL 8h/5m/5m đã được người dùng chốt ở giai đoạn 2; trình duyệt hỗ trợ và các mặc định khác giữ trạng thái đã ghi trong plan.
 - Ghi bằng chứng kiểm chứng ngắn theo task: lệnh/kết quả test hoặc kịch bản thực tế. Không tick hoàn tất chỉ vì đã viết code hoặc đã viết tài liệu kiểm thử.
-- Task dựng fixture ở giai đoạn 0 là kiểm chứng kỹ thuật. JWKS/callback qua Gateway và backend thật được nghiệm thu tiếp ở giai đoạn 2–4.
+- Task dựng fixture ở giai đoạn 0 là kiểm chứng kỹ thuật. JWKS/callback kết nối trực tiếp với backend Stream Service và được nghiệm thu tiếp ở giai đoạn 2–4.
 - Request gọi MediaMTX trực tiếp và chờ kết quả; thành công mới commit/response, lỗi trả 503 và rollback DB của thao tác. Không trả 202 hoặc giao job xử lý sau. Giữ scheduler hết hạn reconnect theo business.
 - Mã 58 task được giữ ổn định; STR-105, STR-302 và STR-406 được đổi nội dung để khớp phạm vi đồng bộ. Các checkbox giai đoạn 1 đã được nghiệm thu lại theo kết quả mới, không dùng kết quả 53 test của thiết kế cũ.
 
@@ -33,7 +33,7 @@
 |---|---|---|---|
 | 0. Kiểm chứng nền tảng | STR-001–STR-006 | Đọc kiến trúc/implementation plan | Chứng minh một MediaMTX hoạt động với JWT, OBS, HLS và đóng path |
 | 1. Domain/database | STR-101–STR-107 | Hoàn tất giai đoạn 0 | Schema, persistence, state machine và ràng buộc concurrency |
-| 2. Auth và tích hợp service | STR-201–STR-208 | Hoàn tất giai đoạn 1 | Eligibility, ownership context, ký JWT, JWKS và security callback |
+| 2. Auth và tích hợp service | STR-201–STR-208 | Hoàn tất giai đoạn 1 | Eligibility, ownership context, ký JWT, JWKS và tiếp nhận callback |
 | 3. Media adapter/provisioning | STR-301–STR-308 | Hoàn tất giai đoạn 2 | API tạo/cập nhật session và cấp thông tin OBS qua backend thật |
 | 4. Lifecycle đồng bộ | STR-401–STR-408 | Hoàn tất giai đoạn 3 | LIVE/reconnect/End, callback và lỗi trực tiếp; giới hạn vận hành thủ công |
 | 5. Playback API/discovery | STR-501–STR-505 | Hoàn tất giai đoạn 4 | Metadata/list và cấp quyền xem dùng được với HLS thật |
@@ -198,7 +198,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 
 - **Phụ thuộc:** STR-201.
 - **Module/file:** `common/configuration/`, cấu hình Stream Service, `.env.example`.
-- **Cần làm:** Bind/validate key, kid, issuer/audience và TTL; parse private/public key, kiểm tra cặp khóa khớp, Clock UTC và public media URLs. Giữ bộ khóa qua restart, không dùng account signer làm media signer.
+- **Cần làm:** Bind/validate key, kid, issuer/audience và TTL; parse private/public key, kiểm tra cặp khóa khớp, Clock UTC và public media URLs (cho MVP local không yêu cầu callback secret). Giữ bộ khóa qua restart, không dùng account signer làm media signer.
 - **Hoàn tất khi:** Cấu hình sai/thiếu báo lỗi rõ; cấu hình hợp lệ không sinh key mới; không làm lộ private key qua startup log hoặc example.
 - [x] STR-204 hoàn tất, cấu hình có kiểm chứng.
 
@@ -210,21 +210,21 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 - **Hoàn tất khi:** Verify được chữ ký bằng public key; claim/TTL/path đúng; token api không đi vào response client, token publish/read không có quyền ngoài mục đích.
 - [x] STR-205 hoàn tất, bộ ký có test phân quyền/expiry.
 
-### STR-206 — Phục vụ JWKS thật và mở đúng đường qua Gateway
+### STR-206 — Phục vụ JWKS trực tiếp từ Stream Service
 
 - **Phụ thuộc:** STR-205.
-- **Module/file:** JWKS controller, Stream Service SecurityConfig, Gateway AuthenticationGlobalFilter.
-- **Cần làm:** Trả JWKS JSON chuẩn không bọc ApiResponse, chỉ public parameters. Allow đúng GET JWKS khi không có account cookie; giữ Auth State behavior đối với token cookie được gửi kèm.
-- **Hoàn tất khi:** MediaMTX lấy được JWKS qua Gateway thật; endpoint business khác vẫn yêu cầu đăng nhập; có test đảm bảo không lộ private parameters.
-- [x] STR-206 hoàn tất, JWKS qua Gateway đã được kiểm chứng.
+- **Module/file:** JWKS controller, Stream Service SecurityConfig.
+- **Cần làm:** Trả JWKS JSON chuẩn không bọc ApiResponse, chỉ public parameters. Allow GET JWKS khi không có account cookie (permitAll trên Stream Service); giữ Auth State behavior đối với token cookie được gửi kèm. Gateway không mở route media.
+- **Hoàn tất khi:** MediaMTX lấy được JWKS trực tiếp từ Stream Service; endpoint business khác vẫn yêu cầu đăng nhập; có test đảm bảo không lộ private parameters.
+- [x] STR-206 hoàn tất, JWKS gọi trực tiếp đã được kiểm chứng.
 
-### STR-207 — Chuẩn bị xác thực callback độc lập với account cookie
+### STR-207 — Tiếp nhận callback trực tiếp từ MediaMTX
 
 - **Phụ thuộc:** STR-201.
-- **Module/file:** Callback DTO/HMAC verifier, security Stream Service và Gateway.
-- **Cần làm:** Kiểm tra HMAC/timestamp/raw body/kích thước; cấu hình method/path callback và ngoại lệ CSRF chính xác nếu bật. Tách secret callback khỏi RSA/account signer; chuẩn bị contract cho handler ở giai đoạn 4.
-- **Hoàn tất khi:** Sai/thiếu chữ ký không tới business handler; credential hợp lệ không cần account cookie. Không mở anonymous toàn bộ `/stream/**` hoặc trả thành công giả khi chưa xử lý nghiệp vụ.
-- [x] STR-207 hoàn tất, security callback có test.
+- **Module/file:** Callback DTO, Stream Service SecurityConfig.
+- **Cần làm:** Nhận callback `POST /api/media/events` trực tiếp trên Stream Service (permitAll, không yêu cầu account cookie, không qua Gateway). Đơn giản hóa cho MVP local: bỏ secret HMAC. Chuẩn bị contract DTO cho handler ở giai đoạn 4.
+- **Hoàn tất khi:** Endpoint callback nhận đúng DTO không cần account cookie; DTO sai format trả 400; callback hợp lệ tới endpoint chưa có nghiệp vụ trả 404 (không trả 200 giả). Gateway không mở public route callback.
+- [x] STR-207 hoàn tất, callback trực tiếp có test.
 
 ### STR-208 — Kiểm chứng auth/client với backend thật
 
@@ -236,7 +236,7 @@ Mục tiêu: backend thật xác định đúng người được cấp quyền 
 
 **Mốc nghiệm thu giai đoạn 2:** Backend thật phục vụ JWKS và ký credential dùng được; eligibility và ranh giới account/media auth đã được bảo vệ.
 
-**M2 đạt ngày 2026-10-26:** [Plan chi tiết và contract](Streaming%20MVP%20Phase%202%20Implementation%20Plan.md), [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md). Stream 103 test không bỏ qua; User/Channel/Gateway clean verify thành công (37 test Redis tùy chọn chưa bật); IT Gateway + Stream HTTP + MediaMTX thật 1/1 và fixture/helper 16/16. Callback hợp lệ hiện trả 404 vì chưa có handler nghiệp vụ; Create/End/playback API chưa mở. Bước tiếp theo STR-301.
+**M2 đạt ngày 2026-10-26:** [Plan chi tiết và contract](Streaming%20MVP%20Phase%202%20Implementation%20Plan.md), [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md). Stream 97 test không bỏ qua; User/Channel/Gateway clean verify thành công (37 test Redis tùy chọn chưa bật); IT Stream HTTP + MediaMTX thật 1/1 và fixture/helper 2/2. Callback hợp lệ hiện trả 404 vì chưa có handler nghiệp vụ; Create/End/playback API chưa mở. Bước tiếp theo STR-301.
 
 ## 5. Giai đoạn 3 — Media adapter và session provisioning
 
@@ -294,8 +294,8 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 
 - **Phụ thuộc:** STR-206, STR-207, STR-302.
 - **Module/file:** Docker Compose, `infra/mediamtx/`, env examples, hướng dẫn local.
-- **Cần làm:** Tái sử dụng artifact đã kiểm chứng ở giai đoạn 0; thay fixture bằng JWKS/backend URL thật. Hoàn thiện healthcheck, mapping env/config, startup order và ranh giới network/Control API; chuẩn bị helper theo HMAC contract.
-- **Hoàn tất khi:** Backend gọi được Control API và MediaMTX gọi được JWKS qua Gateway thật; không cần mở trực tiếp cổng business 8082 ra ngoài. Callback nghiệp vụ tiếp tục hoàn thiện ở giai đoạn 4.
+- **Cần làm:** Tái sử dụng artifact đã kiểm chứng ở giai đoạn 0; cấu hình MediaMTX trỏ trực tiếp JWKS và callback URL tới Stream Service (port 8082). Hoàn thiện healthcheck, mapping env/config, startup order và ranh giới network/Control API; chuẩn bị hook gửi callback JSON trực tiếp.
+- **Hoàn tất khi:** Backend gọi được Control API và MediaMTX gọi được JWKS/callback trực tiếp tới Stream Service; không mở route media qua Gateway.
 - [ ] STR-307 hoàn tất, cấu hình local tái hiện được.
 
 ### STR-308 — Kiểm chứng provisioning và các API owner
@@ -312,19 +312,19 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 
 Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không bị phát lại bằng token còn hạn.
 
-### STR-401 — Helper callback HMAC gửi trực tiếp
+### STR-401 — Hook callback gửi trực tiếp tới Stream Service
 
 - **Phụ thuộc:** STR-207, STR-307.
 - **Module/file:** `infra/mediamtx/media_hook.py`, Dockerfile/config và helper tests.
-- **Cần làm:** Đọc đúng path/source, ký HMAC và gửi một request HTTP có timeout, chờ response; bỏ vòng retry/backoff hiện có từ M0. Không gửi MTX_QUERY/log key. Callback handler xử lý xong trước response, không enqueue.
-- **Hoàn tất khi:** Chữ ký/payload đúng; lỗi được ghi nhận, helper dừng đúng; có đúng một lần gửi cho mỗi lần hook chạy.
+- **Cần làm:** Đọc đúng path/source, gửi request POST JSON trực tiếp có timeout tới Stream Service, chờ response. Không gửi MTX_QUERY/log key. Callback handler xử lý xong trước response, không enqueue.
+- **Hoàn tất khi:** Payload đúng; lỗi được ghi nhận, helper dừng đúng; có đúng một lần gửi cho mỗi lần hook chạy.
 - [ ] STR-401 hoàn tất, helper đồng bộ có kiểm chứng.
 
 ### STR-402 — Xử lý ONLINE và chuyển LIVE
 
 - **Phụ thuộc:** STR-401, STR-103, STR-301.
 - **Module/file:** Media event controller, lifecycle service và history repository.
-- **Cần làm:** Kết nối HMAC/DTO vào handler thật; xác nhận nguồn thực tế qua Control API trước khi chuyển READY/RECONNECTING sang LIVE. Ghi source/start/history atomically, chặn online cũ hoặc session ENDED.
+- **Cần làm:** Kết nối DTO vào handler thật; xác nhận nguồn thực tế qua Control API trước khi chuyển READY/RECONNECTING sang LIVE. Ghi source/start/history atomically, chặn online cũ hoặc session ENDED.
 - **Hoàn tất khi:** Chỉ nguồn hợp lệ chuyển LIVE; first startedAt được giữ; duplicate ONLINE và callback đến muộn không hồi sinh session.
 - [ ] STR-402 hoàn tất, ONLINE có test và thử nguồn thật.
 
