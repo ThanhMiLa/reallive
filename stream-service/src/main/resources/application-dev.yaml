@@ -74,7 +74,18 @@ app:
     channel: ${CHANNEL_SERVICE_BASE_URL:http://localhost:8081/channel}
 
 stream:
+  media:
+    private-key-base64: ${STREAM_MEDIA_PRIVATE_KEY_BASE64:}
+    public-key-base64: ${STREAM_MEDIA_PUBLIC_KEY_BASE64:}
+    key-id: ${STREAM_MEDIA_KEY_ID:stream-rs256-v1}
+    issuer: ${STREAM_MEDIA_ISSUER:reallive-stream}
+    audience: ${STREAM_MEDIA_AUDIENCE:reallive-media}
+    publish-token-ttl: ${STREAM_PUBLISH_TOKEN_TTL:8h}
+    read-token-ttl: ${STREAM_READ_TOKEN_TTL:5m}
+    control-token-ttl: ${STREAM_CONTROL_TOKEN_TTL:5m}
+    rtmp-public-url: ${STREAM_RTMP_PUBLIC_URL:rtmp://localhost:1935/live}
+    hls-public-base-url: ${STREAM_HLS_PUBLIC_BASE_URL:http://localhost:8898}
   lifecycle:
     reconnect-grace: ${STREAM_RECONNECT_GRACE:60s}
 
-# Add Media Server connection properties with the media adapter implementation.
+# Control API connection properties are added with the phase 3 media adapter.

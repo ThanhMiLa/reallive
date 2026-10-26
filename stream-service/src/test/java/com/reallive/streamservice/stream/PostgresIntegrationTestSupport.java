@@ -43,6 +43,7 @@ public abstract class PostgresIntegrationTestSupport {
     }
 
     protected static void configureDatabase(DynamicPropertyRegistry registry, String schema) {
+        MediaTestSupport.register(registry);
         registry.add("spring.datasource.url", () -> POSTGRES == null ? SYSTEM_PROPERTY_URL : POSTGRES.getJdbcUrl());
         registry.add("spring.datasource.username", () -> POSTGRES == null
                 ? System.getProperty("stream.test.database-username", "stream_service") : POSTGRES.getUsername());
