@@ -84,7 +84,7 @@ class StreamStateMachineServiceTest {
         UUID streamerId = UUID.randomUUID();
         UUID categoryId = UUID.randomUUID();
 
-        when(sessionRepository.findByOwnerUserIdAndCreationRequestId(ownerId, requestId)).thenReturn(Optional.empty());
+        when(sessionRepository.findCreationForUpdate(ownerId, requestId)).thenReturn(Optional.empty());
         when(sessionRepository.findSlotOccupyingByChannelIdForUpdate(channelId)).thenReturn(Optional.empty());
         when(sessionRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -116,7 +116,7 @@ class StreamStateMachineServiceTest {
         UUID ownerId = UUID.randomUUID();
         UUID requestId = UUID.randomUUID();
 
-        when(sessionRepository.findByOwnerUserIdAndCreationRequestId(ownerId, requestId)).thenReturn(Optional.empty());
+        when(sessionRepository.findCreationForUpdate(ownerId, requestId)).thenReturn(Optional.empty());
         when(sessionRepository.findSlotOccupyingByChannelIdForUpdate(channelId)).thenReturn(
                 Optional.of(StreamSessionEntity.builder().channelId(channelId).status(StreamSessionStatus.READY).build())
         );

@@ -77,7 +77,7 @@ python3 scripts/testing/streaming/generate_test_video.py
 8. Đưa token xem về Hợp lệ nếu muốn tiếp tục xem. Trong OBS Stop Streaming rồi Start Streaming lại bằng cùng key; bấm ghi nhận reconnect. Source ID phải đổi, có OFFLINE nguồn cũ và ONLINE nguồn mới.
 9. Khi đang phát, bấm **Đóng path đang phát**. Thử Start Streaming lại trong OBS bằng key đang lưu: phải thất bại. Bấm ghi nhận old-key bị từ chối; không tạo lại path trước khi xác nhận case này.
 
-Trang chỉ cấp token publish/read test qua POST cùng origin localhost; không cấp token api cho browser, không lưu token vào browser persistent storage. Callback vẫn bắt buộc HMAC riêng. Bản ghi quan sát chỉ chứa số đo, xác nhận người dùng và source metadata trong `.local/streaming/manual-results.jsonl`.
+Trang chỉ cấp token publish/read test qua POST cùng origin localhost; không cấp token api cho browser, không lưu token vào browser persistent storage. Callback dùng JSON trực tiếp, không HMAC theo contract local MVP từ Giai đoạn 2. Bản ghi quan sát chỉ chứa số đo, xác nhận người dùng và source metadata trong `.local/streaming/manual-results.jsonl`.
 
 Kiểm tra phần còn thiếu:
 
@@ -88,6 +88,22 @@ python3 scripts/testing/streaming/acceptance.py
 Lệnh đối chiếu smoke với hook, quan sát OBS và số đo browser; trả PENDING nếu chưa đủ. Không tự đánh dấu checkbox backlog. Bằng chứng OBS/browser phải được review trước khi chốt STR-004–006; protocol smoke không thay thế thao tác thực tế này.
 
 Khi người dùng đã thực hiện và xác nhận trực tiếp các case browser nhưng không bấm lưu từng lượt, review có thể ghi xác nhận đó vào `.local/streaming/user-confirmation.json` với source `user-message`, sessionId, statement nguyên văn và confirmedChecks tương ứng. Validator in rõ các case theo xác nhận này; không sinh số đo HTTP giả và không dùng chúng để bỏ qua smoke lỗi hoặc bằng chứng OBS còn thiếu.
+
+## Kiểm tra HLS của session đã tạo bằng backend thật
+
+Khi OBS đang phát, dùng helper chỉ đọc đúng session hiện tại:
+
+```sh
+python3 scripts/testing/streaming/inspect_playback.py --session-id '<SESSION_UUID>'
+```
+
+Yêu cầu FFmpeg/ffprobe, Stream Service tại `localhost:8082`, MediaMTX Control API tại `localhost:9997` và HLS tại `localhost:8898`. Helper dùng cặp dev key trong `.local/streaming/`; public key phải khớp JWKS backend. Không tự tạo/đổi key hoặc thay cấu hình media. Đây là token test local; không thay API cấp quyền xem và kiểm tra nghiệp vụ Giai đoạn 5.
+
+Helper chỉ GET source/HLS: xác nhận nguồn online, lấy master/rendition playlist bằng Read JWT đúng path, tải init + segment fMP4, giải mã audio/video và kiểm tra playlist có segment mới. `EXT-X-MEDIA-SEQUENCE` có thể giữ 0 khi cửa sổ HLS chưa đầy, nên tiến trình được xác nhận bằng segment cuối thay đổi.
+
+Report không JWT, clip ngắn `sample.mp4` và frame `sample-frame.jpg` nằm trong `.local/streaming/playback-check/<SESSION_UUID>/`. Tự mở clip/frame để đối chiếu hình/tiếng với nguồn OBS; HLS có độ trễ. Helper không mở/điều khiển OBS, tạo/xóa path hoặc kick publisher. Không chạy smoke tổng hợp để thay bằng chứng của session hiện tại.
+
+URL xem đúng là `http://localhost:8898/live/<SESSION_UUID>/index.m3u8`; URL RTMP port 1935 dùng cho nguồn phát. HLS yêu cầu Read JWT qua `Authorization: Bearer ...`; Publish JWT trong stream key không có quyền read. Tải master playlist rồi giữ nguyên URL/query mà playlist trả về khi tải playlist con, init và segment; không ghi các URL phiên HLS vào report/log.
 
 ## Dừng fixture
 

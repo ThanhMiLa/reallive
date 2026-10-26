@@ -18,10 +18,17 @@ public class StreamSessionMapper {
     }
 
     public StreamSessionResponse toOwnerResponse(StreamSessionEntity entity, Instant serverTime) {
+        boolean ready = entity.getMediaPathState() == MediaPathState.OPEN && entity.getStatus() != StreamSessionStatus.ENDED
+                && (entity.getStatus() != StreamSessionStatus.RECONNECTING || (entity.getReconnectDeadlineAt() != null
+                && serverTime.isBefore(utc(entity.getReconnectDeadlineAt()))));
+        return toOwnerResponse(entity, serverTime, ready);
+    }
+
+    public StreamSessionResponse toOwnerResponse(StreamSessionEntity entity, Instant serverTime, boolean publishReady) {
         return new StreamSessionResponse(entity.getId(), entity.getChannelId(), entity.getTitle(), entity.getCategoryId(),
                 entity.getVisibility(), entity.getStatus(), utc(entity.getStartedAt()), utc(entity.getEndedAt()),
                 utc(entity.getReconnectDeadlineAt()), serverTime,
-                entity.getMediaPathState() == MediaPathState.OPEN && entity.getStatus() != StreamSessionStatus.ENDED);
+                publishReady);
     }
 
     public StreamMetadataResponse toMetadataResponse(StreamSessionEntity entity, Instant serverTime) {

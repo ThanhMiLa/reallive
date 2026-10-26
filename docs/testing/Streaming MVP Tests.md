@@ -311,3 +311,54 @@ docker build -f infra/mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
 - Test media chứng minh publish và HLS playlist; không thay nghiệm thu OBS/browser HLS đầy đủ ở giai đoạn 0/7, không nghiệm thu TLS/production hoặc xử lý lifecycle callback.
 - Stream Service từ nay cần cấu hình RSA key hợp lệ khi startup. Xem [README](../../stream-service/README.md); không tự sinh lại key khi restart.
 - Không đổi schema hai bảng, không thêm version/sync task/background retry/reconciler. STR-301 tiếp theo xây Control API adapter cho runtime ứng dụng.
+
+# Giai đoạn 3 — Media adapter và provisioning (2026-10-26)
+
+**STR-301–307 đạt; STR-308 đã có code/test tự động/smoke script, còn chờ người dùng tự nghiệm thu OBS. Chưa đánh dấu M3 đạt.** [Implementation](../Implement%20Plan/Streaming%20MVP%20Phase%203%20Implementation%20Plan.md), [Phase 3 Test Plan](Streaming%20MVP%20Phase%203%20Test%20Plan.md).
+
+## Build và kiểm chứng tự động
+
+Thực thi trên Java 21.0.11, Docker Desktop và PostgreSQL 17 Testcontainers; dùng schema/container test riêng, không migrate DB ứng dụng.
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml clean verify
+./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamProvisioningMediaIT -Dstream.provisioning.it=true test
+python3 -m unittest discover -s scripts/testing/streaming -p 'test_*.py' -v
+docker compose config --quiet
+docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml config --quiet
+```
+
+| Kiểm chứng | Kết quả | Phạm vi được chứng minh |
+|---|---|---|
+| Stream Service clean verify | **125 test, 0 failure/error/skipped; BUILD SUCCESS** | Toàn bộ regression domain/database/auth cùng suite mới; package/repackage thành công |
+| MediaMtxAdapterTest | **9/9 PASS** | Exact path, ensure không replace, race add idempotent, source/config, pagination, api JWT, RTMP/RTMPS connection ID, auth/error/404/timeout/no retry |
+| StreamSessionControllerTest | **6/6 PASS** | Authenticated owner, create 201/replay 200, response envelope, DTO/PATCH validation, current null, no-store và error mapping |
+| StreamProvisioningPostgresTest | **14/14 PASS** | Reserve/provision/commit, response chờ I/O, rollback session/history/slot, concurrent request ID/slot, metadata/reissue/current, grace boundary, closure idempotent/rollback, End cạnh tranh Create/credential, kick actual source |
+| StreamProvisioningMediaIT | **3 PASS, 1 OBS opt-in skipped; BUILD SUCCESS** | Stream HTTP + PostgreSQL + MediaMTX thật, Java JWT/Control API, FFmpeg publish, update giữ source, cấp lại credential, exact path/list, close media trước ENDED, missing-path không restore, Create timeout/rollback/retry với media test bị pause; Python smoke gọi API thật |
+| Python fixture/helper regression | **15/15 PASS** | Không làm hỏng fixture JWT/callback hiện có; callback retry hữu hạn cũ còn được điều chỉnh ở STR-401 |
+| Root Compose và fixture Compose | **Cả hai config --quiet exit 0** | Config parse được sau khi bỏ dependency callback env file |
+
+9 + 6 + 14 là suite Giai đoạn 3 mới trong tổng 125, không cộng lần nữa vào tổng. Integration opt-in là lượt riêng; skip duy nhất trong lượt đó là test OBS chưa được người dùng chạy.
+
+## STR-301–307 — Bằng chứng hành vi
+
+- Adapter gọi HTTP thật đến server contract test; backend Control API JWT chỉ có quyền api. Endpoint/path được tạo từ UUID, không nhận URL/path tùy ý. API auth lỗi, 5xx, JSON sai và timeout map sang 503 với exception không chứa upstream body/cause/token.
+- Ensure existing publisher path chỉ GET, không replace/add. Race add kiểm tra lại path; incompatible config bị từ chối. Actual runtime ensure trong lúc FFmpeg phát giữ nguyên source connection ID.
+- PostgreSQL test giữ media I/O bằng latch: response chưa hoàn tất và query từ connection khác chưa thấy session/history cho tới khi cho phép commit. Media failure rollback cả slot/session/history, sau đó retry cùng request ID được.
+- HTTP integration pause đúng MediaMTX container test: Create thật chờ timeout, trả 503/code 1014/result null, DB session/history không đổi và slot trống. Unpause rồi retry cùng request ID trả 201 và mở được path. Không pause hoặc restart MediaMTX ứng dụng.
+- Hai Create đồng thời cùng request ID chỉ có một session/history/provision; request thua đọc lại sau transaction rollback. Khác request ID cùng channel nhận 409.
+- User/Channel checks được thực hiện trước transaction ghi. PATCH giữ các field thiếu và playback path; category failure không lưu title một phần. Unauthorized owner không gọi media/cấp token.
+- Credential kiểm tra path hiện có, status và deadline dưới khóa. Tại deadline reconnect, current vẫn trả session đang chiếm slot nhưng publishReady=false, không cấp thêm token.
+- End foundation giữ khóa trong lúc xóa/kiểm tra nguồn; lỗi giữ DB READY/slot/history cũ. Create chờ End commit mới lấy slot; credential chờ End rồi recheck ENDED và bị chặn. Kick sử dụng actual RTMPS connection ID trong contract test, không dùng session ID.
+- MediaMTX test lấy JWKS trực tiếp từ Stream Service. Create HTTP trả no-store và credential phát được nguồn H.264/AAC tổng hợp. Metadata PATCH không đổi nguồn; nguồn online vẫn giữ DB READY đúng giới hạn Giai đoạn 3. Xóa path xác nhận trước ENDED/CLOSED; session ENDED không được cấp credential hoặc mở lại.
+- Python owner smoke gọi Create/replay/current/PATCH/publish-credentials trên HTTP Stream thật, kiểm tra response/status/no-store, lưu credential riêng và không in JWT/account cookie. Temp cookie/state/credential được dọn sau test.
+- Compose reuse một image MediaMTX 1.21.2, direct JWKS/callback; không route media hoặc Control API qua Gateway. Local callback không HMAC, root Compose không còn đòi env file callback secret.
+
+## Giới hạn nghiệm thu
+
+- Theo yêu cầu người dùng, **không mở/điều khiển OBS**. OBS opt-in chưa chạy, không coi FFmpeg là bằng chứng OBS. [Test plan](Streaming%20MVP%20Phase%203%20Test%20Plan.md) có lệnh/helper chỉ chờ người dùng tự cấu hình và phát, kèm report PASS/FAIL không JWT.
+- Integration test dùng Redis authorities và eligibility/channel stub riêng; không tuyên bố đã nghiệm thu stack account/Gateway/User/Channel thực tế của ứng dụng trong lượt Giai đoạn 3 này. Client/auth integration Giai đoạn 2 vẫn có regression. Test plan có smoke cho stack thật.
+- RTMPS endpoint/ID được test theo contract; TLS/RTMPS thật chưa chạy, không ghi runtime pass.
+- End foundation chỉ là service dùng bởi luồng đồng bộ và test cleanup. Chưa có End HTTP, callback lifecycle hoặc scheduler; callback hợp lệ vẫn 404, chưa chuyển READY → LIVE.
+- DB/media không atomic khi timeout/crash/DB commit failure. Không task, worker, tự retry, restore path hoặc reconciler. Credential issuance không khôi phục path bị mất.
+- Không thay schema/migration hay DB ứng dụng; không chỉnh OBS, player hoặc dashboard. Bản MVP vẫn chờ Giai đoạn 4–7.

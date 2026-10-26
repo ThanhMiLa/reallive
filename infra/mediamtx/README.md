@@ -1,10 +1,12 @@
 # MediaMTX cho Streaming MVP
 
-Một container MediaMTX `1.21.2`, custom image có shell/Python standard library/CA certificates để chạy hook HMAC. Không có FFmpeg/transcoding trong container.
+Một container MediaMTX `1.21.2`, custom image có shell/Python standard library/CA certificates để chạy hook HTTP JSON trực tiếp. Không có FFmpeg/transcoding trong container.
 
-Chuẩn bị key và env local bằng [fixture README](../../scripts/testing/streaming/README.md), hoặc cung cấp callback env riêng qua `STREAM_MEDIA_ENV_FILE`. File env này phải tồn tại trước khi chạy Compose. Service `mediamtx` được khai báo trực tiếp trong [docker-compose.yml ở root](../../docker-compose.yml), chạy cùng các service khác bằng `docker compose up -d`. Thư mục này giữ Dockerfile, cấu hình MediaMTX và helper callback.
+Service `mediamtx` được khai báo trực tiếp trong [docker-compose.yml ở root](../../docker-compose.yml), chạy cùng các service khác bằng `docker compose up -d`. Không cần env file callback secret hoặc fixture trước khi chạy backend thật. Thư mục này giữ Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
 
 Backend thật (JWKS/callback gọi trực tiếp Stream Service):
+
+Chuẩn bị key/DB/Redis và chạy Stream Service theo [README](../../stream-service/README.md), sau đó chạy media trước khi gọi Create API. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
 
 ```sh
 docker compose up -d --build --wait mediamtx
@@ -25,9 +27,12 @@ Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 
 - Cấu hình `paths: {}` không có catch-all; chỉ exact path được tạo qua Control API mới nhận publish.
 - `overridePublisher: false`; publish/read/api đều dùng JWT, không có action được bỏ qua xác thực.
 - Root mặc định trỏ JWKS/callback trực tiếp tới Stream Service tại `host.docker.internal:8082`, không qua Gateway; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
-- `STREAM_MEDIAMTX_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` có thể override cấu hình backend thật.
-- Callback secret đọc từ env file được ignore, mặc định `.local/streaming/mediamtx.env`; override đường dẫn bằng `STREAM_MEDIA_ENV_FILE`. Không in `docker compose config` đầy đủ vì có thể làm lộ env; dùng `config --quiet`.
-- Healthcheck kiểm tra listener RTMP/HLS/Control API. JWT/JWKS phải kiểm thêm bằng `media.py probe`, không suy ra auth pass chỉ từ container healthy.
+- Khai báo `STREAM_MEDIAMTX_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` ở root theo `.env.example`. Compose đọc ba biến bắt buộc này và map sang env của container; không giữ URL mặc định trong Compose.
+- Local MVP không yêu cầu callback HMAC/secret. Không in `docker compose config` đầy đủ vì có thể làm lộ env của service khác; dùng `config --quiet`.
+- Healthcheck kiểm tra listener RTMP/HLS/Control API. Backend thật dùng provisioning integration test; `media.py probe` dùng fixture riêng. Không suy ra auth pass chỉ từ container healthy.
+- Stream Service gọi Control API qua `STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997` khi chạy trên host. Timeout connect/request mặc định 2s/5s; token api chỉ backend giữ. Khi chạy backend trong Docker, đổi URL theo network/service name tương ứng.
 - Production cần HTTPS/RTMPS và network/secret riêng; cấu hình local này chưa là bằng chứng production pass.
 
-Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Path tạo qua API không được coi là dữ liệu bền vững qua restart; backend thật sẽ phục hồi từ DB ở giai đoạn 4.
+Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Path tạo qua API có thể mất khi MediaMTX restart; MVP chưa tự phục hồi từ DB hoặc đối soát. Khi mất path, current báo publishReady=false và API cấp credential trả 503; cần kiểm tra/xử lý thủ công.
+
+Giai đoạn 3 đã có adapter/provisioning API; callback nghiệp vụ và End HTTP chưa mở. Callback hợp lệ hiện trả 404, không phải báo LIVE. Xem [Phase 3 Test Plan](../../docs/testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md) để chạy test cô lập và tự nghiệm thu OBS.

@@ -18,7 +18,7 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
-import org.hibernate.exception.ConstraintViolationException;
+import com.reallive.streamservice.stream.util.StreamCreationConstraints;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -54,7 +54,7 @@ public class StreamSessionDomainServiceImpl implements StreamSessionDomainServic
         try {
             return transaction.execute(status -> createSessionInTransaction(command));
         } catch (DataIntegrityViolationException exception) {
-            if (TransactionSynchronizationManager.isActualTransactionActive() || !isCreationUniqueConflict(exception)) {
+            if (TransactionSynchronizationManager.isActualTransactionActive() || !StreamCreationConstraints.isCreationConflict(exception)) {
                 throw exception;
             }
             return transaction.execute(status -> resolveCreationConflict(command));
@@ -68,7 +68,7 @@ public class StreamSessionDomainServiceImpl implements StreamSessionDomainServic
     }
 
     private SessionCreationResult createSessionInTransaction(CreateSessionCommand command) {
-        var existingByRequest = sessionRepository.findByOwnerUserIdAndCreationRequestId(
+        var existingByRequest = sessionRepository.findCreationForUpdate(
                 command.ownerUserId(), command.creationRequestId());
         if (existingByRequest.isPresent()) {
             return existingCreation(existingByRequest.get(), command);
@@ -105,7 +105,7 @@ public class StreamSessionDomainServiceImpl implements StreamSessionDomainServic
     }
 
     private SessionCreationResult resolveCreationConflict(CreateSessionCommand command) {
-        return sessionRepository.findByOwnerUserIdAndCreationRequestId(command.ownerUserId(), command.creationRequestId())
+        return sessionRepository.findCreationForUpdate(command.ownerUserId(), command.creationRequestId())
                 .map(existing -> existingCreation(existing, command))
                 .orElseThrow(() -> new AppException(ErrorCode.STREAM_SESSION_ALREADY_ACTIVE));
     }
@@ -115,18 +115,6 @@ public class StreamSessionDomainServiceImpl implements StreamSessionDomainServic
             throw new AppException(ErrorCode.STREAM_CREATION_REQUEST_CONFLICT);
         }
         return new SessionCreationResult(existing, false);
-    }
-
-    private boolean isCreationUniqueConflict(DataIntegrityViolationException exception) {
-        Throwable cause = exception;
-        while (cause != null) {
-            if (cause instanceof ConstraintViolationException constraint) {
-                return "uq_stream_sessions_channel_slot".equals(constraint.getConstraintName())
-                        || "uk_stream_sessions_owner_creation_request".equals(constraint.getConstraintName());
-            }
-            cause = cause.getCause();
-        }
-        return false;
     }
 
     @Override

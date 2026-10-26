@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật 2026-10-25: MVP xử lý đồng bộ từ đầu đến cuối theo yêu cầu người dùng. Không có bảng task, worker retry, lease/revision hoặc reconciler.
-- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26: eligibility, JWT/JWKS và tiếp nhận callback; JWT Java đã kiểm chứng trực tiếp với MediaMTX. Giai đoạn 3–7 chưa hoàn tất; adapter/lifecycle MediaMTX cho runtime ứng dụng thuộc giai đoạn 3–4.
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26: eligibility, JWT/JWKS và tiếp nhận callback; JWT Java đã kiểm chứng trực tiếp với MediaMTX. STR-301–307 đã triển khai và kiểm chứng tự động; STR-308/M3 chờ người dùng tự nghiệm thu OBS theo [Phase 3 Test Plan](../testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md). Lifecycle Giai đoạn 4–7 chưa hoàn tất.
 - Thiết kế và contract gốc: [Streaming MVP Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md).
 - Kiến trúc đã chốt: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Mục tiêu: triển khai theo từng phần có thể kiểm chứng, đến khi streamer phát được bằng OBS và người dùng đăng nhập xem được trên web.
@@ -248,7 +248,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** `stream/adapter/media/`, remote DTO và HTTP configuration.
 - **Cần làm:** Get/ensure/delete exact path, đọc nguồn thực tế, list phân trang và kick đúng RTMP/RTMPS ID. Dùng token api, timeout hữu hạn; map lỗi/404/idempotency đúng contract đã kiểm chứng ở giai đoạn 0.
 - **Hoàn tất khi:** Adapter test đạt cho success/auth/error/timeout; ensure không replace path LIVE vô điều kiện, URL/path không do client tùy ý điều khiển.
-- [ ] STR-301 hoàn tất, adapter có test contract.
+- [x] STR-301 hoàn tất, adapter có test contract.
 
 ### STR-302 — Xây use case gọi MediaMTX đồng bộ
 
@@ -256,7 +256,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** Session/lifecycle use case, transaction và MediaMTX adapter.
 - **Cần làm:** Gọi adapter trực tiếp và chờ kết quả/timeout; không @Async, queue hoặc worker. MVP một replica dùng transaction/row lock serialize thao tác cùng session; reserve slot trước Create, đóng path trước commit End. Các lời gọi User/Channel nằm trước transaction ghi.
 - **Hoàn tất khi:** Test chứng minh response chờ I/O; lỗi rollback DB và trả 503; không enqueue task, retry ngầm hoặc trả 202. Ghi rõ DB/media không atomic khi crash/timeout.
-- [ ] STR-302 hoàn tất, luồng đồng bộ có test chờ kết quả/lỗi.
+- [x] STR-302 hoàn tất, luồng đồng bộ có test chờ kết quả/lỗi.
 
 ### STR-303 — Xây API Create Stream Session
 
@@ -264,7 +264,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** Session controller/service, repository và DTO.
 - **Cần làm:** Check principal/eligibility/channel/category; transaction reserve slot READY/OPEN chưa commit, provision path trực tiếp, ghi history rồi commit; sau đó trả thông tin OBS. Lỗi media rollback và trả 503; xử lý request ID trùng/slot bị chiếm.
 - **Hoàn tất khi:** Create hợp lệ trả đúng session/credential; không cấp key cho ENDED hoặc media chưa provision; retry không tạo thêm session.
-- [ ] STR-303 hoàn tất, API create có test thành công và lỗi.
+- [x] STR-303 hoàn tất, API create có test thành công và lỗi.
 
 ### STR-304 — Xây API Update Stream Session
 
@@ -272,7 +272,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** Session controller/service, update DTO, category client.
 - **Cần làm:** Owner cập nhật title/category ở trạng thái cho phép; validate PATCH theo contract. Chặn sửa field hệ thống hoặc cập nhật session ENDED; không đổi path/key vì đổi metadata.
 - **Hoàn tất khi:** Metadata cập nhật đúng, user khác bị chặn, lỗi category không ghi thay đổi một phần và stream hiện tại không bị restart bởi update.
-- [ ] STR-304 hoàn tất, API update có test.
+- [x] STR-304 hoàn tất, API update có test.
 
 ### STR-305 — Xây API cấp lại thông tin OBS
 
@@ -280,7 +280,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** Publish credentials use case/controller và DTO.
 - **Cần làm:** Check owner/eligibility/status/grace/path, ký Publish JWT mới và trả serverUrl/streamKey/expiresAt với no-store. Không lưu JWT hoặc hash, không tuyên bố token cũ đã revoke.
 - **Hoàn tất khi:** Có thể lấy credential sau reload bằng API; không cấp token cho session ENDED/hết grace hoặc user khác; response không chứa token api.
-- [ ] STR-305 hoàn tất, cấp lại credential có test.
+- [x] STR-305 hoàn tất, cấp lại credential có test.
 
 ### STR-306 — Xây API current session cho owner
 
@@ -288,7 +288,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** Current session query/service/controller và metadata DTO.
 - **Cần làm:** Trả session active hiện tại hoặc result null. Trả deadline/serverTime/publishReady; không JWT trong polling metadata, không mediaCleanupPending/job status.
 - **Hoàn tất khi:** Dashboard có thể phục hồi tiến trình sau create bị mất response hoặc reload, biết lúc nào chưa được tạo session mới, không nhận credential qua API metadata.
-- [ ] STR-306 hoàn tất, query/current contract có test.
+- [x] STR-306 hoàn tất, query/current contract có test.
 
 ### STR-307 — Chuẩn hóa Docker/env để tích hợp backend thật
 
@@ -296,7 +296,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Module/file:** Docker Compose, `infra/mediamtx/`, env examples, hướng dẫn local.
 - **Cần làm:** Tái sử dụng artifact đã kiểm chứng ở giai đoạn 0; cấu hình MediaMTX trỏ trực tiếp JWKS và callback URL tới Stream Service (port 8082). Hoàn thiện healthcheck, mapping env/config, startup order và ranh giới network/Control API; chuẩn bị hook gửi callback JSON trực tiếp.
 - **Hoàn tất khi:** Backend gọi được Control API và MediaMTX gọi được JWKS/callback trực tiếp tới Stream Service; không mở route media qua Gateway.
-- [ ] STR-307 hoàn tất, cấu hình local tái hiện được.
+- [x] STR-307 hoàn tất, cấu hình local tái hiện được.
 
 ### STR-308 — Kiểm chứng provisioning và các API owner
 
@@ -305,6 +305,8 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 - **Cần làm:** Kiểm tra API thật với OBS, owner khác, double-submit, mất response sau commit và lỗi/timeout MediaMTX trước commit. Kiểm tra path đúng, JWT đúng và metadata không lộ token.
 - **Hoàn tất khi:** Dùng API tạo session rồi copy sang OBS phát được nguồn. Chưa gắn lifecycle handler thì không tự giả lập LIVE; phần đó được nghiệm thu ở giai đoạn 4.
 - [ ] STR-308 hoàn tất, kết thúc giai đoạn 3.
+
+**Tiến độ 2026-10-26:** STR-301–307 đạt; backend clean verify 125/125, integration provisioning MediaMTX thật 3/3 (OBS opt-in chưa chạy). Code, smoke script và plan OBS của STR-308 đã có; chưa tick STR-308/M3 trước khi người dùng nghiệm thu. Xem [implementation](Streaming%20MVP%20Phase%203%20Implementation%20Plan.md) và [kết quả](../testing/Streaming%20MVP%20Tests.md).
 
 **Mốc nghiệm thu giai đoạn 3:** Backend gọi MediaMTX và hoàn tất provisioning trước response; lỗi trả trực tiếp, không còn key mẫu hoặc task nền.
 
@@ -555,7 +557,7 @@ Mục tiêu: chứng minh các phần đã tích hợp hoạt động cùng nhau
 | M0 — Chứng minh kiến trúc media — ĐẠT 2026-10-24 | STR-006 | OBS/JWT/HLS/đóng path bằng fixture |
 | M1 — Nền tảng dữ liệu đúng — ĐẠT 2026-10-25 | STR-107 | Hai bảng session/history, constraint/concurrency/deadline, 77/77 test |
 | M2 — Auth backend thật | STR-208 | JWT/JWKS/eligibility/account boundary |
-| M3 — Tạo stream bằng API | STR-308 | Backend mở path trực tiếp và cấp thông tin OBS sau commit |
+| M3 — Tạo stream bằng API — chờ OBS | STR-308 | Backend mở path trực tiếp và cấp thông tin OBS sau commit |
 | M4 — Vòng đời và kết thúc đồng bộ | STR-408 | LIVE/reconnect/End với OBS thật, lỗi trực tiếp và giới hạn thủ công |
 | M5 — Xem bằng API thật | STR-505 | Read JWT backend cấp phát được trên player fixture |
 | M6 — Dùng trọn luồng trên web | STR-610 | Dashboard + browse/watch không còn dữ liệu giả |

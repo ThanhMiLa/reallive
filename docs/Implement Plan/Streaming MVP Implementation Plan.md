@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật phạm vi: 2026-10-25, theo yêu cầu người dùng, MVP xử lý đồng bộ từ đầu đến cuối; chưa xây hàng đợi task hoặc recovery tự động.
-- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 hoàn tất ngày 2026-10-26; JWT/JWKS kiểm chứng với MediaMTX gọi trực tiếp Stream Service, Stream Service clean verify 103 test không bỏ qua. Giai đoạn 3–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 hoàn tất ngày 2026-10-26; JWT/JWKS kiểm chứng với MediaMTX gọi trực tiếp Stream Service, Stream Service clean verify 103 test không bỏ qua. STR-301–307 đã triển khai, clean verify 125 test và provisioning MediaMTX thật 3/3 đạt; STR-308/M3 chờ người dùng tự nghiệm thu [OBS](../testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md). Giai đoạn 4–7 chưa hoàn tất; xem [kết quả kiểm chứng](../testing/Streaming%20MVP%20Tests.md).
 - Kết quả cần đạt: streamer tạo session, cấu hình OBS, phát video/audio; người dùng đăng nhập có thể vào web xem và nhận đúng trạng thái khi nguồn mất kết nối hoặc kết thúc.
 - Module chính: `stream-service`, `web-app`, `api-gateway`, cấu hình Docker/MediaMTX. Bổ sung API nội bộ nhỏ trong `user-service` và `channel-service` khi cần.
 - Kiến trúc nguồn: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
@@ -300,7 +300,7 @@ readExpiresAt      = ISO-8601
 | Đã có session, session đã kết thúc, chưa LIVE | 409 | Nạp lại metadata/current session hoặc hiển thị trạng thái |
 | Title/category/request không hợp lệ | 400 | Lỗi form theo convention hiện tại |
 | User/Channel/MediaMTX không truy cập được | 503 | Giữ dữ liệu nhập và cho thử lại; không tạo request ID mới cho retry create |
-| Callback sai HMAC/thời gian | 401/403 | Không thay đổi session |
+| Callback DTO/path sai | 400 | Không thay đổi session; local MVP nhận trực tiếp, không HMAC |
 
 Thêm tên lỗi riêng vào `common.exception.ErrorCode` với số code duy nhất sau các code hiện có. Ví dụ: `STREAM_SESSION_NOT_FOUND`, `STREAM_SESSION_NOT_OWNED`, `STREAM_SESSION_ALREADY_ACTIVE`, `STREAM_SESSION_STATE_INVALID`, `STREAM_NOT_LIVE`, `STREAMER_NOT_ELIGIBLE`, `MEDIA_SERVER_UNAVAILABLE`, `MEDIA_CALLBACK_UNAUTHORIZED`. Dùng `new AppException(ErrorCode...)`, không tạo exception class theo từng feature.
 
@@ -373,9 +373,9 @@ scripts/testing/streaming/
 ```
 
 - Pin binary/image MediaMTX `1.21.2`; không dùng tag `latest` hoặc `1` trôi phiên bản trong nghiệm thu.
-- Image chuẩn là `scratch`, không có shell/công cụ HTTP. Tạo custom image nhẹ có `/bin/sh`, Python 3 và CA certificates; copy binary từ image đã pin và helper vào cùng container. Python helper chỉ dùng thư viện chuẩn cho JSON/HMAC/HTTP, không thêm một media server/container khác. Xem [Dockerfile chính thức](https://github.com/bluenviron/mediamtx/blob/v1.21.2/docker/standard.Dockerfile) và [hướng dẫn custom image](https://mediamtx.org/docs/kickoff/install).
+- Image chuẩn là `scratch`, không có shell/công cụ HTTP. Tạo custom image nhẹ có `/bin/sh`, Python 3 và CA certificates; copy binary từ image đã pin và helper vào cùng container. Python helper chỉ dùng thư viện chuẩn cho JSON/HTTP, không thêm một media server/container khác. Xem [Dockerfile chính thức](https://github.com/bluenviron/mediamtx/blob/v1.21.2/docker/standard.Dockerfile) và [hướng dẫn custom image](https://mediamtx.org/docs/kickoff/install).
 - Không thêm FFmpeg vào runtime để chỉ gọi callback.
-- Mount config read-only. Secret callback đưa qua env/secret file, không bake vào image. Các file key sinh local phải được ignore và không in private key vào log.
+- Mount config read-only. Local MVP không yêu cầu secret callback; không bake credential vào image. Các file key sinh local phải được ignore và không in private key vào log.
 
 ### 8.2. Cấu hình tối thiểu cần hiện thực và kiểm chứng
 
@@ -452,10 +452,8 @@ Contract lấy từ [OpenAPI v1.21.2](https://github.com/bluenviron/mediamtx/blo
 ```
 
 - OFFLINE dùng cùng cấu trúc. Helper lấy `MTX_PATH`, `MTX_SOURCE_ID`, `MTX_SOURCE_TYPE` từ môi trường của hook, không dùng `runOnConnect` để kết luận nguồn LIVE.
-- Mỗi lần gửi: `X-Media-Timestamp` là Unix timestamp theo giây; `X-Media-Signature` là `sha256=<hex HMAC-SHA256>` trên `timestamp + newline + rawBody` với timestamp đúng chuỗi header. Content-Type là `application/json`.
-- Backend kiểm tra kích thước, timestamp lệch trong cửa sổ cấu hình, chữ ký constant-time, DTO và path đúng namespace/UUID.
-- Shared secret callback tách khỏi account signer và RSA private key.
-- Gateway cho phép đúng POST callback đi qua khi không có account cookie. Nếu bật CSRF ở Gateway, loại trừ đúng webhook này khỏi CSRF, không loại trừ toàn bộ `/stream/**`.
+- Helper gửi POST `application/json` trực tiếp tới Stream Service port 8082, không qua Gateway, không account cookie hoặc HMAC secret trong local MVP.
+- Backend validate DTO/path namespace/UUID; handler Giai đoạn 4 đối chiếu source qua Control API trước thay đổi nghiệp vụ. Gateway không mở route media public.
 - Handler xử lý ngay trong request callback; response 2xx chỉ sau commit hoặc xác định duplicate/stale/no-op. Lỗi trả 503, không enqueue sự kiện xử lý sau.
 - Log event/session/source ID và kết quả, không log Authorization, Stream Key, raw query hoặc secret.
 - Helper gửi một HTTP request có timeout và chờ response; ghi nhận lỗi nếu thất bại, không có vòng retry/backoff. Helper hiện tại từ M0 còn retry hữu hạn; điều chỉnh ở STR-401 theo phạm vi mới.
@@ -464,7 +462,7 @@ Hook vẫn được kích hoạt theo sự kiện nguồn, độc lập với re
 
 ### 9.2. Chống sai thứ tự và callback lặp
 
-1. Kiểm tra HMAC trước khi thực hiện bất kỳ thay đổi DB hoặc Control API nào.
+1. Validate DTO/path của callback trực tiếp trước khi thực hiện thay đổi DB hoặc Control API.
 2. Parse session ID từ path và đối chiếu path mà backend đã cấp.
 3. Với ONLINE, xác nhận path đang online với source ID/type tương ứng qua Control API; không tin một callback cũ để chuyển LIVE.
 4. Với OFFLINE, đối chiếu source hiện tại trong DB và nguồn thực tế; nếu connection mới đã online thì bỏ qua offline của connection cũ.
@@ -714,17 +712,19 @@ Thực hiện theo [plan chi tiết giai đoạn 2](Streaming%20MVP%20Phase%202%
 
 ### Giai đoạn 3 — MediaMTX adapter và provisioning
 
-- [ ] Thêm service Docker, config/helper/healthcheck/env example và hướng dẫn mạng local.
-- [ ] Implement get/ensure/delete path, source inspection, kick đúng protocol, timeout và token Control API.
-- [ ] Implement gọi MediaMTX trực tiếp, serialize theo session, chờ kết quả/timeout và rollback DB khi lỗi; bỏ task/worker khỏi đường chạy.
-- [ ] Create API chỉ trả credential sau mở path và commit; lỗi trả 503, client chủ động thử lại cùng request ID.
-- [ ] Test ensurePath không replace nguồn LIVE; Create/End được serialize, response chỉ trả sau hoàn tất.
+- [x] Thêm service Docker, config/helper/healthcheck/env example và hướng dẫn mạng local.
+- [x] Implement get/ensure/delete path, source inspection, kick đúng protocol, timeout và token Control API.
+- [x] Implement gọi MediaMTX trực tiếp, serialize theo session, chờ kết quả/timeout và rollback DB khi lỗi; bỏ task/worker khỏi đường chạy.
+- [x] Create API chỉ trả credential sau mở path và commit; lỗi trả 503, client chủ động thử lại cùng request ID.
+- [x] Test ensurePath không replace nguồn LIVE; Create/End được serialize, response chỉ trả sau hoàn tất.
+
+Code STR-301–307 đã kiểm chứng; STR-308/M3 chờ OBS do người dùng tự thao tác theo [Phase 3 Test Plan](../testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md). [Chi tiết triển khai](Streaming%20MVP%20Phase%203%20Implementation%20Plan.md).
 
 **Hoàn tất khi:** dashboard/API tạo session, copy sang OBS và MediaMTX nhận media với path đúng, không có callback verify key về backend.
 
 ### Giai đoạn 4 — Lifecycle, callback và End đồng bộ
 
-- [ ] Helper ký callback gửi một lần có timeout; backend xử lý đồng bộ, xác thực/dedupe/source check và commit state/history trước response.
+- [ ] Helper gửi callback JSON trực tiếp một lần có timeout; backend xử lý đồng bộ, xác thực/dedupe/source check và commit state/history trước response.
 - [ ] ONLINE/OFFLINE, RECONNECTING 60 giây, scheduler hết hạn gọi đóng media trực tiếp và xử lý callback đến muộn.
 - [ ] End idempotent: đóng media trực tiếp rồi commit ENDED/CLOSED; lỗi trả 503, không có task hoặc 202.
 - [ ] Ghi giới hạn và hướng dẫn kiểm tra thủ công khi mất callback, crash/timeout hoặc MediaMTX restart; hoãn reconciler sau MVP.
@@ -766,7 +766,7 @@ Thực hiện theo [plan chi tiết giai đoạn 2](Streaming%20MVP%20Phase%202%
 ### 15.1. Backend tự động
 
 - Unit/service test cho policy/transition/TTL với `Clock` kiểm soát được, không dùng sleep để chờ 60 giây.
-- Controller/security test cho method/path, owner, auth cookie, raw JWKS, callback HMAC và HTTP/error envelope.
+- Controller/security test cho method/path, owner, auth cookie, raw JWKS, callback JSON trực tiếp và HTTP/error envelope.
 - Adapter test với HTTP stub cho JSON contract, token api, timeout, idempotency và lỗi response; xác nhận không retry ngầm.
 - PostgreSQL integration test cho Flyway, partial unique index, transaction/history, deadline và concurrent create/End. H2 hiện có không thay thế phần kiểm chứng PostgreSQL này.
 - Giữ test mặc định chạy được không cần OBS/MediaMTX thật. Tạo profile integration rõ ràng nếu bổ sung Testcontainers/Failsafe; đánh dấu lệnh dự kiến và prerequisite trong README.
@@ -832,7 +832,7 @@ Media/browser:   smoke test và các case OBS/HLS thật ở trên
 ### 16.1. Runbook local cần viết kèm implementation
 
 1. Chuẩn bị PostgreSQL Stream/Redis và các User/Channel/Gateway service cần cho login/eligibility. Không yêu cầu các feature donate/chat chạy để phát MVP.
-2. Sinh hoặc nạp cặp khóa media ổn định, callback secret và env; không ghi secret vào tài liệu, lịch sử shell hoặc output kiểm thử.
+2. Sinh hoặc nạp cặp khóa media ổn định và env; không ghi secret vào tài liệu, lịch sử shell hoặc output kiểm thử.
 3. Chạy Stream Service và Gateway, kiểm tra raw JWKS không cần account cookie và protected API vẫn yêu cầu login.
 4. Build/start một container MediaMTX; kiểm tra callback helper, host networking, Control API auth và map port HLS.
 5. Login streamer → dashboard → tạo session → copy server/key vào OBS → Start Streaming.

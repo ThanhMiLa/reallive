@@ -23,6 +23,10 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
     Optional<StreamSessionEntity> findByOwnerUserIdAndCreationRequestId(UUID ownerUserId, UUID creationRequestId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from StreamSessionEntity s where s.ownerUserId = :ownerUserId and s.creationRequestId = :requestId")
+    Optional<StreamSessionEntity> findCreationForUpdate(@Param("ownerUserId") UUID ownerUserId, @Param("requestId") UUID requestId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from StreamSessionEntity s where s.id = :id")
     Optional<StreamSessionEntity> findByIdForUpdate(@Param("id") UUID id);
 

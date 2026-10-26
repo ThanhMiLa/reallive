@@ -33,7 +33,7 @@ The development profile defaults to `http://localhost:8082/stream`, PostgreSQL a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-`application-dev.yaml` includes the database, JPA/Flyway, Redis, Kafka producer, access-token cookie and downstream service settings. Flyway is enabled and Hibernate validates the schema. Migrations V1–V3 under `src/main/resources/db/migration` produce the two-table session/history schema. Media authentication properties are configured; the Control API adapter is planned for phase 3.
+`application-dev.yaml` includes the database, JPA/Flyway, Redis, Kafka producer, access-token cookie and downstream service settings. Flyway is enabled and Hibernate validates the schema. Migrations V1–V3 under `src/main/resources/db/migration` produce the two-table session/history schema. Media authentication and the synchronous Control API adapter are configured; see the phase 3 section below.
 
 ## Validation
 
@@ -45,8 +45,8 @@ Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontaine
 
 ## Streaming phase 2: eligibility and media authentication
 
-Phase 1 domain/persistence and phase 2 authentication are implemented. Business Create/Update/End,
-playback-access APIs and the lifecycle callback handler are planned for phases 3–5.
+Phase 1 domain/persistence, phase 2 authentication and phase 3 provisioning APIs are implemented.
+End HTTP, playback-access and the lifecycle callback handler remain in phases 4–5.
 Session writes use pessimistic row locks; no session version or media-sync task is used.
 
 The service requires stable RSA keys at startup. From repository root:
@@ -93,3 +93,38 @@ misuse are rejected. Direct callback JSON is checked against Stream Service. RTM
 FFmpeg source; no OBS/browser automation is performed. Paths and container are cleaned up.
 The existing application MediaMTX and databases are not reconfigured. This opt-in IT is not part of the
 default Surefire test selection and must be executed before recording phase 2 runtime acceptance.
+
+## Streaming phase 3: synchronous provisioning
+
+Owner endpoints (Gateway prefix `/stream`; controller prefix `/api/streams`):
+
+| Method/path | Behavior |
+|---|---|
+| POST `/stream/api/streams` | Create PUBLIC READY session, provision exact media path and commit before returning OBS credentials; 201 first time, 200 for the same owner/request ID |
+| PATCH `/stream/api/streams/{id}` | Update supplied title/category only; owner and nonterminal session required |
+| GET `/stream/api/streams/me/current` | Active owner session or result null; media readiness/deadline/serverTime without credentials |
+| POST `/stream/api/streams/{id}/publish-credentials` | Fresh Publish JWT for the same session/path after owner, eligibility, state, grace and media checks |
+
+Create takes `requestId` (UUID), `title` and `categoryId`. Keep the same request ID after timeout/lost response; replay preserves the original metadata. A different request ID while the channel has an active session returns 409. Create and publish-credentials use `Cache-Control: no-store`. Tokens are not persisted or hashed, and issuing another JWT does not revoke previous tokens.
+
+`MediaMtxAdapter` uses `stream/adapter/media`; User/Channel clients stay under `stream/client`. Control API settings:
+
+```dotenv
+STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997
+STREAM_MEDIA_CONTROL_CONNECT_TIMEOUT=2s
+STREAM_MEDIA_CONTROL_REQUEST_TIMEOUT=5s
+```
+
+Requests block until media success/timeout, with no retry, redirect or background task. The use case owns the write transaction, reserves the channel slot before media I/O and holds session locks through provisioning/credential checks. A media failure returns 503 and rolls back session/history. Missing paths are not restored automatically. Current reports publishReady=false when a path is absent; credential issuance returns 503. Reconnect at/after its stored deadline cannot obtain credentials, even before phase 4 expiry cleanup runs.
+
+`StreamSessionClosureService` provides the synchronous close-before-commit foundation; its HTTP endpoint, callback lifecycle handlers and reconnect scheduler remain phase 4 work. With no lifecycle handler, an actual publisher still leaves DB READY; callback returns 404. Ended sessions cannot receive credentials or be reopened.
+
+Database rollback cannot undo MediaMTX effects. A timeout/crash/failed DB commit can leave an orphaned or missing media path; the MVP requires manual inspection and has no reconciler or automatic restore.
+
+Additional runtime verification (isolated PostgreSQL + Stream HTTP + MediaMTX + synthetic FFmpeg publisher + Python owner smoke script):
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamProvisioningMediaIT -Dstream.provisioning.it=true test
+```
+
+The OBS method is deliberately opt-in and is skipped by this command. [Phase 3 Test Plan](../docs/testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md) provides the operator-controlled OBS command and full-stack owner smoke instructions. Neither mode opens or controls OBS. M3 awaits the user's OBS acceptance.
