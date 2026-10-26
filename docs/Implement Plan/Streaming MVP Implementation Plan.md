@@ -72,10 +72,9 @@ TTL Publish/Read/Control API đã được người dùng chốt ngày 2026-10-2
 | DB Stream Service | V1–V3 đã kiểm chứng schema hai bảng session/history, không task runtime | Áp dụng migration theo môi trường khi triển khai; không để Hibernate tự tạo schema production |
 | `api-gateway` | Route `/stream/api/**` đến port 8082; account auth qua cookie | Không mở ngoại lệ public cho JWKS/callback; MediaMTX gọi trực tiếp Stream Service; giữ các API stream được bảo vệ |
 | `user-service` | API nội bộ tìm streamer ACTIVE theo user ID | Bổ sung contract eligibility có email verification nếu API hiện tại chưa đủ |
-| `channel-service` | Channel, category, validation category nội bộ | Tra cứu channel theo streamer, kiểm tra sở hữu/trạng thái; batch metadata nếu cần cho danh sách |
-| `web-app` | React/TypeScript/Vite, Axios, TanStack Query, Zustand, hls.js | Nối dashboard với API, danh sách stream và trang xem thật |
+| `channel-service` | Channel, category, validation category nội bộ | Tra cứu channel theo streamer, kiểm tra sở hữu/trạng thái |
+| `web-app` | React/TypeScript/Vite, Axios, TanStack Query, Zustand, hls.js | Nối dashboard với API và trang xem thật |
 | Dashboard | Có `StreamerDashboardPage.tsx`, route `/dashboard`; server/key đang là giá trị mẫu | Giữ bố cục hiện có, thay mock bằng dữ liệu và hành động thật |
-| Browse livestream | `BrowseLivestreamsTab.tsx` hiện chưa hiển thị danh sách | Hiển thị danh sách LIVE tối thiểu và link vào trang xem |
 | Docker | PostgreSQL/Redis/Kafka và một service MediaMTX đã kiểm chứng ở M0 | Dùng lại config/helper/healthcheck, nối endpoint backend thật |
 | Test web | Đã có `npm test` dùng `node --test tests/*.test.mjs` | Giữ bộ test hiện tại; thêm kiểm chứng hành vi mới phù hợp, cộng kiểm thử browser thật cho HLS |
 
@@ -235,7 +234,6 @@ Controller của Stream Service dùng `/api/...`; Gateway thấy tiền tố `/s
 | `PATCH /stream/api/streams/{id}` | Owner, session chưa ENDED | Cập nhật title/category; không đổi JWT/path vì thay metadata |
 | `POST /stream/api/streams/{id}/publish-credentials` | Owner, streamer đủ điều kiện | Cấp Publish JWT mới cho session đang hoạt động và path sẵn sàng |
 | `POST /stream/api/streams/{id}/end` | Đăng nhập và đúng owner | Kết thúc idempotent, yêu cầu đóng path; READY dùng API này để hủy |
-| `GET /stream/api/streams` | Đăng nhập trong MVP | Danh sách PUBLIC/LIVE có phân trang, chưa có recommendation |
 | `GET /stream/api/streams/{id}` | Đăng nhập | Metadata/trạng thái, không trả Publish JWT |
 | `POST /stream/api/streams/{id}/playback-access` | Đăng nhập, session PUBLIC/LIVE | Trả playbackUrl + Read JWT và thời hạn |
 
@@ -284,8 +282,6 @@ playbackUrl        = http://localhost:8898/live/{sessionId}/index.m3u8
 readToken          = Read JWT
 readExpiresAt      = ISO-8601
 ```
-
-Danh sách dùng `ApiResponse<PageResponse<StreamListItem>>`; không tạo wrapper `StreamListResponse` khác. `PageResponse` có `content`, `page`, `size`, `totalElements`, `totalPages` theo convention hiện tại của Channel Service. `page` mặc định 0, `size` 20; `page < 0`, `size < 1` hoặc `size > 100` trả `400`. Lọc PUBLIC/LIVE và sort `started_at DESC, id ASC` trong DB trước pagination; count dùng cùng predicate. Metadata channel được lấy theo batch nếu hiển thị, không gọi từng service theo từng card.
 
 ### 6.3. HTTP và lỗi
 
@@ -608,7 +604,6 @@ web-app/src/
   pages/dashboard/StreamerDashboardPage.tsx   # nối vào màn hình hiện có
   pages/watch/WatchStreamPage.tsx
   components/stream/StreamPlayer.tsx
-  pages/browse/tabs/BrowseLivestreamsTab.tsx
   App.tsx                                   # thêm /watch/:sessionId
 ```
 
@@ -644,13 +639,6 @@ Giữ Axios/account refresh, auth store, TanStack Query và style hiện có. C�
 - `Hls.isSupported()` false thì hiển thị phạm vi hỗ trợ MVP; không dùng native video fallback có URL công khai mà bỏ xác thực.
 
 Tham khảo [API hls.js v1.7.3](https://github.com/video-dev/hls.js/blob/v1.7.3/docs/API.md) cho loader, error recovery và destroy lifecycle; giữ version trong lockfile, không update dependency ngoài nhu cầu.
-
-### 12.4. Danh sách livestream
-
-- Nối `BrowseLivestreamsTab` với API list LIVE, loading/error/empty state và pagination.
-- Card có title, metadata channel/category sẵn có và link trang xem; không hiển thị viewer count hoặc ảnh preview giả như dữ liệu thật.
-- Khi session vừa kết thúc nhưng card chưa refresh, trang watch phải xử lý metadata mới đúng trạng thái.
-- Poll khi cần và ngừng poll tab ẩn/session đã kết thúc; không thêm recommendation/following logic vào đợt này.
 
 ## 13. Cấu hình cần bổ sung
 

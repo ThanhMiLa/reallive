@@ -36,8 +36,8 @@
 | 2. Auth và tích hợp service | STR-201–STR-208 | Hoàn tất giai đoạn 1 | Eligibility, ownership context, ký JWT, JWKS và tiếp nhận callback |
 | 3. Media adapter/provisioning | STR-301–STR-308 | Hoàn tất giai đoạn 2 | API tạo/cập nhật session và cấp thông tin OBS qua backend thật |
 | 4. Lifecycle đồng bộ | STR-401–STR-408 | Hoàn tất giai đoạn 3 | LIVE/reconnect/End, callback và lỗi trực tiếp; giới hạn vận hành thủ công |
-| 5. Playback API/discovery | STR-501–STR-505 | Hoàn tất giai đoạn 4 | Metadata/list và cấp quyền xem dùng được với HLS thật |
-| 6. Frontend | STR-601–STR-610 | Hoàn tất giai đoạn 5 | Dashboard và trang xem kết nối đầy đủ API thật |
+| 5. Playback API | STR-501, STR-503–STR-505 | Hoàn tất giai đoạn 4 | Metadata và cấp quyền xem dùng được với HLS thật |
+| 6. Frontend | STR-601–STR-608, STR-610 | Hoàn tất giai đoạn 5 | Dashboard và trang xem kết nối đầy đủ API thật |
 | 7. Nghiệm thu/bàn giao | STR-701–STR-706 | Hoàn tất giai đoạn 6 | Bằng chứng MVP hoạt động, runbook và các giới hạn rõ ràng |
 
 ## 2. Giai đoạn 0 — Kiểm chứng nền tảng
@@ -378,9 +378,9 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 
 **Mốc nghiệm thu giai đoạn 4:** Streamer phát, reconnect và kết thúc được qua API; vòng đời và media cleanup hoạt động thật, không chỉ dựa trên status trong DB.
 
-## 7. Giai đoạn 5 — Playback API và discovery tối thiểu
+## 7. Giai đoạn 5 — Playback API và xem stream trực tiếp
 
-Mục tiêu: viewer nhận đúng quyền xem và có API để tìm/mở một buổi phát.
+Mục tiêu: viewer nhận đúng quyền xem theo session ID và mở được buổi phát.
 
 ### STR-501 — Xây API metadata cho trang xem
 
@@ -390,14 +390,6 @@ Mục tiêu: viewer nhận đúng quyền xem và có API để tìm/mở một 
 - **Hoàn tất khi:** Viewer nhận đủ dữ liệu trạng thái mà không thể lấy Publish JWT; session không tồn tại được xử lý đúng HTTP/error contract.
 - [ ] STR-501 hoàn tất, API detail có test.
 
-### STR-502 — Xây danh sách stream PUBLIC/LIVE
-
-- **Phụ thuộc:** STR-501, STR-203.
-- **Module/file:** List request/query/response và channel batch client khi cần.
-- **Cần làm:** Lọc/sort/pagination/count trong DB; giới hạn page size theo contract. Enrich metadata channel theo batch, không thêm viewer count/recommendation hoặc gọi remote theo từng card.
-- **Hoàn tất khi:** Page/content/count đúng, chỉ trả stream thuộc phạm vi, lỗi metadata remote được xử lý rõ và không ảnh hưởng API channel cũ.
-- [ ] STR-502 hoàn tất, list/pagination có test.
-
 ### STR-503 — Xây API playback access
 
 - **Phụ thuộc:** STR-501, STR-205.
@@ -406,13 +398,13 @@ Mục tiêu: viewer nhận đúng quyền xem và có API để tìm/mở một 
 - **Hoàn tất khi:** Chỉ session xem được mới được cấp access; URL không chứa token, không dùng hostname Docker và không lấy tùy ý từ input client.
 - [ ] STR-503 hoàn tất, access API có test.
 
-### STR-504 — Kiểm thử contract/security playback và discovery
+### STR-504 — Kiểm thử contract/security playback
 
-- **Phụ thuộc:** STR-502, STR-503.
+- **Phụ thuộc:** STR-501, STR-503.
 - **Module/file:** Controller/service/security tests và integration suite.
-- **Cần làm:** Test thiếu account token, state không LIVE, session sai/không tồn tại, action/path của Read JWT và pagination. Kiểm tra metadata/polling không chứa credential.
+- **Cần làm:** Test thiếu account token, state không LIVE, session sai/không tồn tại, action/path của Read JWT. Kiểm tra metadata/polling không chứa credential.
 - **Hoàn tất khi:** Contract đủ rõ cho frontend và không có đường cấp quyền xem/phát ngoài phạm vi; test các module bị sửa đạt.
-- [ ] STR-504 hoàn tất, playback/discovery regression đạt.
+- [ ] STR-504 hoàn tất, playback regression đạt.
 
 ### STR-505 — Kiểm chứng Read JWT thật với MediaMTX
 
@@ -422,7 +414,7 @@ Mục tiêu: viewer nhận đúng quyền xem và có API để tìm/mở một 
 - **Hoàn tất khi:** Fixture player xem được hình/tiếng qua backend/media thật; hành vi expiry/session khớp contract trước khi nối trang watch production.
 - [ ] STR-505 hoàn tất, kết thúc giai đoạn 5.
 
-**Mốc nghiệm thu giai đoạn 5:** Viewer có thể lấy access từ backend và xem HLS thật; API discovery/detail sẵn sàng để frontend dùng.
+**Mốc nghiệm thu giai đoạn 5:** Viewer có thể lấy access từ backend và xem HLS thật qua session ID.
 
 ## 8. Giai đoạn 6 — Nối frontend
 
@@ -492,19 +484,11 @@ Mục tiêu: hoàn thành quy trình streamer/viewer trên giao diện hiện c�
 - **Hoàn tất khi:** Reload/reconnect/đổi stream/unmount không để tài nguyên cũ chạy; phiên đang xem không bị destroy chỉ vì JWT đến exp; token không bị gửi sang stream/origin khác.
 - [ ] STR-608 hoàn tất, recovery/resource lifecycle có kiểm chứng.
 
-### STR-609 — Nối danh sách livestream và link xem
-
-- **Phụ thuộc:** STR-601, STR-502.
-- **Module/file:** `pages/browse/tabs/BrowseLivestreamsTab.tsx` và card/query liên quan.
-- **Cần làm:** Hiện list/pagination/loading/error/empty state bằng dữ liệu thật, link watch theo session. Không thêm viewer count hoặc preview giả; xử lý card đã cũ khi stream vừa kết thúc.
-- **Hoàn tất khi:** Viewer tìm và mở stream từ web được; list rỗng/lỗi/page cuối hiển thị đúng, không gây request dư theo từng card.
-- [ ] STR-609 hoàn tất, discovery UI có kiểm chứng.
-
 ### STR-610 — Kiểm thử frontend và regression hiện có
 
-- **Phụ thuộc:** STR-603, STR-604, STR-605, STR-608, STR-609.
+- **Phụ thuộc:** STR-603, STR-604, STR-605, STR-608.
 - **Module/file:** Web tests hiện có, test mới phù hợp và browser chạy local.
-- **Cần làm:** Chạy test/build/lint; kiểm tra auth/dashboard/profile/browse cũ không bị hỏng. Thử hai browser session với OBS và kiểm tra Network, cleanup, autoplay và lỗi quyền trên UI thật.
+- **Cần làm:** Chạy test/build/lint; kiểm tra auth/dashboard/profile cũ không bị hỏng. Thử hai browser session với OBS và kiểm tra Network, cleanup, autoplay và lỗi quyền trên UI thật.
 - **Hoàn tất khi:** Toàn bộ luồng streamer/viewer thao tác được bằng UI; có kiểm chứng runtime, không chỉ test kiểm tra chuỗi source.
 - [ ] STR-610 hoàn tất, kết thúc giai đoạn 6.
 

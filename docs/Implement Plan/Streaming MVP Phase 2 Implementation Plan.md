@@ -27,8 +27,7 @@ TTL 8h/5m/5m thay thế đề xuất cũ 24h/15m/5m. JWT mới không thu hồi 
 
 - Request Create: `creationRequestId`, title trim/không rỗng/tối đa 255 ký tự, category UUID.
 - PATCH title/category: phân biệt không gửi field với gửi null; từ chối null rõ ràng, payload rỗng và field lạ. Không cho phép client gán các cờ theo dõi field nội bộ.
-- Pagination: page từ 0, size 1–100, mặc định 20; PageResponse theo envelope hiện có.
-- Tách owner response, metadata, list item, publish credentials và playback access. Metadata không chứa JWT/stream key/Control API token. Mapper trả thời gian UTC.
+- Tách owner response, metadata, publish credentials và playback access. Metadata không chứa JWT/stream key/Control API token. Mapper trả thời gian UTC.
 - Giữ `ApiResponse` cho API nghiệp vụ và `AppException(ErrorCode)` cho lỗi; JWKS là JSON chuẩn riêng.
 - Thêm lỗi eligibility/channel/category/callback theo mã độc nhất; dữ liệu remote sai, timeout và lỗi dịch vụ trả 503; từ chối nghiệp vụ trả 400/403 theo contract.
 - Chưa mở Create/Update/End/playback API. Header no-store sẽ được đặt ở controller cấp credential khi triển khai giai đoạn 3/5.
