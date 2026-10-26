@@ -50,6 +50,8 @@ public class EmailVerificationMessageReader {
         }
     }
 
-    private record Recipient(@Email String email) {
-    }
+    private record Recipient(
+            @Email
+            String email
+    ) {}
 }
