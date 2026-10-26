@@ -9,6 +9,7 @@ import com.reallive.channelservice.channel.dto.response.ChannelResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
 import com.reallive.channelservice.channel.dto.response.OwnChannelResponse;
 import com.reallive.channelservice.common.dto.PageResponse;
+import com.reallive.channelservice.channel.dto.response.StreamingChannelContextResponse;
 import com.reallive.channelservice.common.exception.AppException;
 
 import java.util.UUID;
@@ -116,4 +117,13 @@ public interface ChannelService {
      *                      storage configuration or upload fails
      */
     ChannelResponse updateChannel(UUID userId, UpdateChannelRequest request);
+
+    /**
+     * Resolves an active, non-deleted channel with an explicit owner for a trusted streamer lookup.
+     *
+     * @param streamerId the streamer identifier already resolved by User Service
+     * @return channel, streamer and owner identifiers with the ACTIVE channel status
+     * @throws AppException if the channel is absent, inactive or has no recorded owner
+     */
+    StreamingChannelContextResponse getStreamingContext(UUID streamerId);
 }

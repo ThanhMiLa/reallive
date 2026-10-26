@@ -31,7 +31,8 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS_GET = {
             "/api/channels",
-            "/api/categories"
+            "/api/categories",
+            "/internal/api/channels/by-streamer/*/streaming-context"
     };
 
     private static final String[] PUBLIC_ENDPOINTS_POST = {

@@ -6,6 +6,7 @@ import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
+import com.reallive.channelservice.channel.dto.response.StreamingChannelContextResponse;
 import com.reallive.channelservice.channel.dto.response.ChannelListResponse;
 import com.reallive.channelservice.channel.dto.response.OwnChannelResponse;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
@@ -63,6 +64,20 @@ public class ChannelServiceImpl implements ChannelService {
     ChannelMapper channelMapper;
     UserCategoryPreferenceResolver userCategoryPreferenceResolver;
     R2StorageService r2StorageService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public StreamingChannelContextResponse getStreamingContext(UUID streamerId) {
+        ChannelEntity channel = channelRepository.findByStreamerId(streamerId)
+                .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
+        if (channel.getStatus() != ChannelStatus.ACTIVE || channel.getDeletedAt() != null) {
+            throw new AppException(ErrorCode.CHANNEL_NOT_ACTIVE);
+        }
+        if (channel.getUserId() == null) {
+            throw new AppException(ErrorCode.ACCESS_DENIED);
+        }
+        return new StreamingChannelContextResponse(channel.getId(), channel.getStreamerId(), channel.getUserId(), channel.getStatus());
+    }
 
     @Override
     @Transactional(readOnly = true)
