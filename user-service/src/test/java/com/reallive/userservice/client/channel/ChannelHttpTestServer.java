@@ -197,7 +197,12 @@ public class ChannelHttpTestServer implements AutoCloseable {
         executor.shutdownNow();
     }
 
-    public record CapturedRequest(String method, String path, Map<String, List<String>> headers, String body) {
+    public record CapturedRequest(
+            String method,
+            String path,
+            Map<String, List<String>> headers,
+            String body
+    ) {
         public String header(String name) {
             return headers.entrySet().stream().filter(entry -> entry.getKey().equalsIgnoreCase(name))
                     .flatMap(entry -> entry.getValue().stream()).findFirst().orElse(null);

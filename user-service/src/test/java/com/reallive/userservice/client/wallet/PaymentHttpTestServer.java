@@ -136,7 +136,11 @@ public class PaymentHttpTestServer implements AutoCloseable {
         executor.shutdownNow();
     }
 
-    public record CapturedRequest(String method, String path, Map<String, List<String>> headers) {
+    public record CapturedRequest(
+            String method,
+            String path,
+            Map<String, List<String>> headers
+    ) {
         public String header(String name) {
             return headers.entrySet().stream().filter(entry -> entry.getKey().equalsIgnoreCase(name))
                     .flatMap(entry -> entry.getValue().stream()).findFirst().orElse(null);
