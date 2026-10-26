@@ -1,6 +1,7 @@
 package com.reallive.userservice.streamer.service;
 
 import com.reallive.userservice.common.exception.AppException;
+import com.reallive.userservice.streamer.dto.response.StreamingEligibilityResponse;
 
 import java.util.UUID;
 
@@ -15,4 +16,12 @@ public interface StreamerService {
      *                      or its status is not {@code ACTIVE}
      */
     UUID getActiveStreamerIdByUserId(UUID userId);
+    /**
+     * Resolves a verified-email user and their ACTIVE streamer without changing account state.
+     *
+     * @param userId the authenticated user identifier supplied by a trusted service
+     * @return matching user and streamer identifiers when streaming eligibility checks pass
+     * @throws AppException if the user/streamer is missing, email is unverified or streamer is inactive
+     */
+    StreamingEligibilityResponse getStreamingEligibility(UUID userId);
 }

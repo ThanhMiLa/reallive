@@ -2,6 +2,7 @@ package com.reallive.userservice.streamer.controller.internal;
 
 import com.reallive.userservice.common.dto.ApiResponse;
 import com.reallive.userservice.streamer.dto.response.ActiveStreamerResponse;
+import com.reallive.userservice.streamer.dto.response.StreamingEligibilityResponse;
 import com.reallive.userservice.streamer.service.StreamerService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,18 @@ public class InternalStreamerController {
                 .code(1000)
                 .message("Active streamer found successfully")
                 .result(response)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
+
+    @GetMapping("/by-user/{userId}/streaming-eligibility")
+    public ResponseEntity<ApiResponse<StreamingEligibilityResponse>> getStreamingEligibility(@PathVariable UUID userId) {
+        var result = streamerService.getStreamingEligibility(userId);
+        return ResponseEntity.ok(ApiResponse.<StreamingEligibilityResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Streaming eligibility confirmed")
+                .result(result)
                 .timestamp(Instant.now().toString())
                 .build());
     }

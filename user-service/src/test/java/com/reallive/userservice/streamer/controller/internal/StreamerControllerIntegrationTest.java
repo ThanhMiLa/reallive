@@ -173,6 +173,44 @@ class StreamerControllerIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void eligibilityReturnsVerifiedUserAndActiveStreamerWithoutCookie() throws Exception {
+        UserEntity user = createUser();
+        StreamerEntity streamer = createStreamer(user, StreamerStatus.ACTIVE);
+        mvc.perform(get(CONTEXT_PATH + "/internal/api/streamers/by-user/{id}/streaming-eligibility", user.getId()).contextPath(CONTEXT_PATH))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.userId").value(user.getId().toString()))
+                .andExpect(jsonPath("$.result.streamerId").value(streamer.getId().toString()));
+    }
+
+    @Test
+    void eligibilityRejectsUnverifiedEmailButLegacyActiveLookupKeepsItsContract() throws Exception {
+        UserEntity user = createUser();
+        user.setEmailVerified(false);
+        users.saveAndFlush(user);
+        createStreamer(user, StreamerStatus.ACTIVE);
+        mvc.perform(get(CONTEXT_PATH + "/internal/api/streamers/by-user/{id}/streaming-eligibility", user.getId()).contextPath(CONTEXT_PATH))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_NOT_VERIFIED.getCode()));
+        mvc.perform(get(ENDPOINT, user.getId()).contextPath(CONTEXT_PATH)).andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = StreamerStatus.class, names = {"PENDING", "SUSPENDED", "BANNED"})
+    void eligibilityRejectsInactiveStreamers(StreamerStatus streamerStatus) throws Exception {
+        UserEntity user = createUser();
+        createStreamer(user, streamerStatus);
+        mvc.perform(get(CONTEXT_PATH + "/internal/api/streamers/by-user/{id}/streaming-eligibility", user.getId()).contextPath(CONTEXT_PATH))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(ErrorCode.STREAMER_NOT_ACTIVE.getCode()));
+    }
+
+    @Test
+    void eligibilityRejectsMissingUsersAndStreamers() throws Exception {
+        mvc.perform(get(CONTEXT_PATH + "/internal/api/streamers/by-user/{id}/streaming-eligibility", UUID.randomUUID()).contextPath(CONTEXT_PATH))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(ErrorCode.USER_NOT_FOUND.getCode()));
+        mvc.perform(get(CONTEXT_PATH + "/internal/api/streamers/by-user/{id}/streaming-eligibility", createUser().getId()).contextPath(CONTEXT_PATH))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(ErrorCode.STREAMER_NOT_FOUND.getCode()));
+    }
+
     private UserEntity createUser() {
         String identifier = UUID.randomUUID().toString();
         return users.saveAndFlush(UserEntity.builder()
