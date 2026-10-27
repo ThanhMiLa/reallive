@@ -33,39 +33,39 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class StreamSessionController {
 
-    StreamSessionService service;
+    StreamSessionService streamSessionService;
 
     @PostMapping
-    public ResponseEntity<ApiResponse<CreateStreamSessionResponse>> create(
+    public ResponseEntity<ApiResponse<CreateStreamSessionResponse>> createStreamSession(
             @AuthenticationPrincipal Jwt principal, @Valid @RequestBody CreateStreamSessionRequest request) {
-        var result = service.create(AuthenticationUserId.getAuthenticatedUserId(principal), request);
+        var result = streamSessionService.create(AuthenticationUserId.getAuthenticatedUserId(principal), request);
         int status = result.created() ? 201 : 200;
         return ResponseEntity.status(status).cacheControl(CacheControl.noStore())
-                .body(response(result.response(), status, "Stream session provisioned successfully"));
+                .body(buildApiResponse(result.response(), status, "Stream session provisioned successfully"));
     }
 
     @GetMapping("/me/current")
-    public ResponseEntity<ApiResponse<StreamSessionResponse>> current(@AuthenticationPrincipal Jwt principal) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(
-                service.current(AuthenticationUserId.getAuthenticatedUserId(principal)), 200, "Current stream session retrieved"));
+    public ResponseEntity<ApiResponse<StreamSessionResponse>> getCurrentStreamSession(@AuthenticationPrincipal Jwt principal) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
+                streamSessionService.current(AuthenticationUserId.getAuthenticatedUserId(principal)), 200, "Current stream session retrieved"));
     }
 
     @PatchMapping("/{sessionId}")
-    public ResponseEntity<ApiResponse<StreamSessionResponse>> update(
+    public ResponseEntity<ApiResponse<StreamSessionResponse>> updateStreamSession(
             @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal,
             @Valid @RequestBody UpdateStreamSessionRequest request) {
-        return ResponseEntity.ok(response(service.update(sessionId,
+        return ResponseEntity.ok(buildApiResponse(streamSessionService.update(sessionId,
                 AuthenticationUserId.getAuthenticatedUserId(principal), request), 200, "Stream session updated successfully"));
     }
 
     @PostMapping("/{sessionId}/publish-credentials")
-    public ResponseEntity<ApiResponse<StreamPublishCredentialsResponse>> publishCredentials(
+    public ResponseEntity<ApiResponse<StreamPublishCredentialsResponse>> issuePublishCredentials(
             @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response(service.publishCredentials(
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(streamSessionService.publishCredentials(
                 sessionId, AuthenticationUserId.getAuthenticatedUserId(principal)), 200, "Publish credentials issued successfully"));
     }
 
-    private <T> ApiResponse<T> response(T result, int status, String message) {
+    private <T> ApiResponse<T> buildApiResponse(T result, int status, String message) {
         return ApiResponse.<T>builder().status(status).code(1000).message(message).result(result)
                 .timestamp(Instant.now().toString()).build();
     }
