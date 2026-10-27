@@ -21,7 +21,7 @@ Suite mặc định dùng PostgreSQL Testcontainers/schema riêng, không dùng 
 Kiểm thử thêm MediaMTX thật, cần FFmpeg hỗ trợ libx264/AAC và Python 3.10+:
 
 ```sh
-docker build -f infra/mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
+docker build -f mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamProvisioningMediaIT -Dstream.provisioning.it=true test
 ```
 

@@ -49,7 +49,7 @@ class HookTest(unittest.TestCase):
 
     def launch(self):
         import sys
-        self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'infra/mediamtx/media_hook.py'), 'online'],
+        self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'mediamtx/media_hook.py'), 'online'],
                                         env=self.environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_retry_keeps_body_and_event_id(self):

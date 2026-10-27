@@ -360,7 +360,7 @@ Read JWT dùng `action: read` trên cùng path. Token Control API dùng `action:
 Các file dự kiến:
 
 ```text
-infra/mediamtx/
+mediamtx/
   Dockerfile
   mediamtx.yml
   media_hook.py

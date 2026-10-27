@@ -56,7 +56,7 @@ class MediaMtxAuthenticationIT {
 
     @Test
     void javaTokensAuthenticateAgainstMediaMtxUsingDirectStreamServiceJwks() throws Exception {
-        Path repository = Files.exists(Path.of("infra/mediamtx/mediamtx.yml"))
+        Path repository = Files.exists(Path.of("mediamtx/mediamtx.yml"))
                 ? Path.of(".").toAbsolutePath() : Path.of("..").toAbsolutePath();
         String jwksUrl = "http://127.0.0.1:" + streamPort + "/stream/api/media/jwks";
         var jwks = mapper.readTree(request("GET", jwksUrl, null, null).body());
@@ -72,7 +72,7 @@ class MediaMtxAuthenticationIT {
         assertEquals(404, http.send(callbackRequest, HttpResponse.BodyHandlers.ofString()).statusCode(),
                 "Direct callback must reach stream-service (returns 404 before phase 4 handler exists)");
 
-        String config = Files.readString(repository.resolve("infra/mediamtx/mediamtx.yml"))
+        String config = Files.readString(repository.resolve("mediamtx/mediamtx.yml"))
                 .replaceAll("(?m)^\\s*runOn(?:Online|Offline):[^\\n]*\\n", "");
         try (var media = new GenericContainer<>(DockerImageName.parse("reallive-mediamtx:1.21.2"))
                 .withCopyToContainer(Transferable.of(config), "/mediamtx.yml")

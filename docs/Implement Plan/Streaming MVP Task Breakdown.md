@@ -65,11 +65,11 @@ Mục tiêu: xác nhận cách tích hợp media trước khi xây toàn bộ ng
 ### STR-003 — Dựng một MediaMTX container và kiểm tra mạng local
 
 - **Phụ thuộc:** STR-002.
-- **Module/file:** `infra/mediamtx/Dockerfile`, `infra/mediamtx/mediamtx.yml`, Docker Compose và fixture config.
+- **Module/file:** `mediamtx/Dockerfile`, `mediamtx/mediamtx.yml`, Docker Compose và fixture config.
 - **Cần làm:** Pin MediaMTX 1.21.2; custom image có shell/Python helper; bật RTMP/HLS/Control API, JWT auth, không catch-all path. Map HLS host 8898, giới hạn Control API và kiểm tra container truy cập được fixture trên host.
 - **Hoàn tất khi:** Một container khởi động được, không trùng Gateway 8888, đọc JWKS được và Control API chấp nhận đúng token api. Có ghi lại cấu hình mạng macOS/Linux cần dùng.
 - [x] STR-003 hoàn tất, có kết quả startup/network check.
-- **Kết quả 2026-10-24:** Một container healthy với binary `v1.21.2`; JWKS từ host truy cập được; Control API nhận token api và từ chối token publish/read. HLS host 8898, RTMP 1935 và Control API 9997 chỉ bind loopback. [Cấu hình/hướng dẫn](../../infra/mediamtx/README.md), [bằng chứng](../testing/Streaming%20MVP%20Tests.md).
+- **Kết quả 2026-10-24:** Một container healthy với binary `v1.21.2`; JWKS từ host truy cập được; Control API nhận token api và từ chối token publish/read. HLS host 8898, RTMP 1935 và Control API 9997 chỉ bind loopback. [Cấu hình/hướng dẫn](../../mediamtx/README.md), [bằng chứng](../testing/Streaming%20MVP%20Tests.md).
 
 ### STR-004 — Kiểm chứng OBS phát bằng Publish JWT
 
@@ -293,7 +293,7 @@ Mục tiêu: tạo session/cấp thông tin OBS qua API thật bằng lời gọ
 ### STR-307 — Chuẩn hóa Docker/env để tích hợp backend thật
 
 - **Phụ thuộc:** STR-206, STR-207, STR-302.
-- **Module/file:** Docker Compose, `infra/mediamtx/`, env examples, hướng dẫn local.
+- **Module/file:** Docker Compose, `mediamtx/`, env examples, hướng dẫn local.
 - **Cần làm:** Tái sử dụng artifact đã kiểm chứng ở giai đoạn 0; cấu hình MediaMTX trỏ trực tiếp JWKS và callback URL tới Stream Service (port 8082). Hoàn thiện healthcheck, mapping env/config, startup order và ranh giới network/Control API; chuẩn bị hook gửi callback JSON trực tiếp.
 - **Hoàn tất khi:** Backend gọi được Control API và MediaMTX gọi được JWKS/callback trực tiếp tới Stream Service; không mở route media qua Gateway.
 - [x] STR-307 hoàn tất, cấu hình local tái hiện được.
@@ -317,7 +317,7 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 ### STR-401 — Hook callback gửi trực tiếp tới Stream Service
 
 - **Phụ thuộc:** STR-207, STR-307.
-- **Module/file:** `infra/mediamtx/media_hook.py`, Dockerfile/config và helper tests.
+- **Module/file:** `mediamtx/media_hook.py`, Dockerfile/config và helper tests.
 - **Cần làm:** Đọc đúng path/source, gửi request POST JSON trực tiếp có timeout tới Stream Service, chờ response. Không gửi MTX_QUERY/log key. Callback handler xử lý xong trước response, không enqueue.
 - **Hoàn tất khi:** Payload đúng; lỗi được ghi nhận, helper dừng đúng; có đúng một lần gửi cho mỗi lần hook chạy.
 - [ ] STR-401 hoàn tất, helper đồng bộ có kiểm chứng.

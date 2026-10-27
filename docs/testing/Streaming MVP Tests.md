@@ -115,7 +115,7 @@ python3 scripts/testing/streaming/acceptance.py
 - PASS: 16 test, gồm key/JWT/JWKS/callback, same-origin credential fixture, không lộ api token, giới hạn record, giữ PENDING nếu thiếu bằng chứng, helper retry/SIGINT.
 - PASS: JS/shell syntax, root/fixture Compose config, link tài liệu và 58 mã task duy nhất.
 - Kiểm chứng trước khi bỏ profile: root Compose không yêu cầu env streaming khi profile chưa bật. Cấu hình hiện tại đã bỏ profile theo cách khởi động chung của người dùng; callback env phải được chuẩn bị trước khi chạy `docker compose up -d`.
-- PASS sau khi gộp service MediaMTX trực tiếp vào docker-compose.yml root: cấu hình runtime đã resolve của toàn bộ service root và service fixture khớp trước/sau khi di chuyển. Fixture kế thừa root và dùng project directory root; stack.py status chạy được. File infra/mediamtx/compose.yml riêng đã được bỏ.
+- PASS sau khi gộp service MediaMTX trực tiếp vào docker-compose.yml root: cấu hình runtime đã resolve của toàn bộ service root và service fixture khớp trước/sau khi di chuyển. Fixture kế thừa root và dùng project directory root; stack.py status chạy được. File mediamtx/compose.yml riêng đã được bỏ.
 - PASS: artifact key/token/env/result được Git ignore, mode 0600. Docker build context whitelist chỉ đưa helper cần thiết vào build.
 - `acceptance.py` cuối cùng: protocol/STR-004/STR-005/STR-006 đều PASS; STR-005 in rõ nguồn xác nhận người dùng cho ba case thiếu record. Lệnh không tự sửa checkbox và không cho xác nhận thủ công thay thế smoke bị lỗi.
 
@@ -290,7 +290,7 @@ Bốn lệnh Maven đều BUILD SUCCESS và đóng gói JAR. 37 test bị bỏ q
 Chạy sau khi có local image MediaMTX:
 
 ```sh
-docker build -f infra/mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
+docker build -f mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
 ```
 

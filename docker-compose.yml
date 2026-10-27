@@ -1,6 +1,6 @@
 # Requires Docker Compose 2.23.1+ for inline MongoDB initialization.
 # Copy .env.example to .env, set passwords, then run: docker compose up -d --wait
-# MediaMTX uses the direct Stream Service JWKS/callback; see infra/mediamtx/README.md.
+# MediaMTX uses the direct Stream Service JWKS/callback; see mediamtx/README.md.
 name: reallive
 
 services:
@@ -8,7 +8,7 @@ services:
     image: reallive-mediamtx:1.21.2
     build:
       context: .
-      dockerfile: infra/mediamtx/Dockerfile
+      dockerfile: mediamtx/Dockerfile
     restart: unless-stopped
     environment:
       MTX_AUTHJWTJWKS: ${STREAM_MEDIAMTX_JWKS_URL:?Set STREAM_MEDIAMTX_JWKS_URL in .env}
@@ -21,7 +21,7 @@ services:
       - "127.0.0.1:8898:8888"
       - "127.0.0.1:9997:9997"
     volumes:
-      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
     healthcheck:
       test:
         - CMD

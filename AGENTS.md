@@ -5,6 +5,7 @@
 This monorepo contains independently built applications:
 - `api-gateway/`, `user-service/`, `channel-service/`, `stream-service/`, `vod-service/`, `payment-service/`, and `notification-service/`: Java 21 Spring Boot services. Code lives in `src/main/java`, configuration in `src/main/resources`, and tests in `src/test/java`.
 - `chat-service/`: NestJS and TypeScript; implementation and unit tests are in `src/`, with end-to-end tests in `test/`.
+- `mediamtx/`: MediaMTX media server container configuration and webhook scripts.
 - `web-app/`: React, TypeScript, and Vite; code and imported assets are in `src/`, static assets in `public/`.
 - `mobile-app/`: Kotlin and Jetpack Compose Android app; code and resources are under `app/src/main/`, with `test/` and `androidTest/` alongside it.
 - `docs/`: product requirements, architecture, and database design.

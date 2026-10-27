@@ -2,11 +2,11 @@
 
 Một container MediaMTX `1.21.2`, custom image có shell/Python standard library/CA certificates để chạy hook HTTP JSON trực tiếp. Không có FFmpeg/transcoding trong container.
 
-Service `mediamtx` được khai báo trực tiếp trong [docker-compose.yml ở root](../../docker-compose.yml), chạy cùng các service khác bằng `docker compose up -d`. Không cần env file callback secret hoặc fixture trước khi chạy backend thật. Thư mục này giữ Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
+Service `mediamtx` được khai báo trực tiếp trong [docker-compose.yml ở root](../docker-compose.yml), chạy cùng các service khác bằng `docker compose up -d`. Không cần env file callback secret hoặc fixture trước khi chạy backend thật. Thư mục này giữ Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
 
 Backend thật (JWKS/callback gọi trực tiếp Stream Service):
 
-Chuẩn bị key/DB/Redis và chạy Stream Service theo [README](../../stream-service/README.md), sau đó chạy media trước khi gọi Create API. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
+Chuẩn bị key/DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media trước khi gọi Create API. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
 
 ```sh
 docker compose up -d --build --wait mediamtx
@@ -35,4 +35,4 @@ Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 
 
 Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Path tạo qua API có thể mất khi MediaMTX restart; MVP chưa tự phục hồi từ DB hoặc đối soát. Khi mất path, current báo publishReady=false và API cấp credential trả 503; cần kiểm tra/xử lý thủ công.
 
-Giai đoạn 3 đã có adapter/provisioning API; callback nghiệp vụ và End HTTP chưa mở. Callback hợp lệ hiện trả 404, không phải báo LIVE. Xem [Phase 3 Test Plan](../../docs/testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md) để chạy test cô lập và tự nghiệm thu OBS.
+Giai đoạn 3 đã có adapter/provisioning API; callback nghiệp vụ và End HTTP chưa mở. Callback hợp lệ hiện trả 404, không phải báo LIVE. Xem [Phase 3 Test Plan](../docs/testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md) để chạy test cô lập và tự nghiệm thu OBS.
