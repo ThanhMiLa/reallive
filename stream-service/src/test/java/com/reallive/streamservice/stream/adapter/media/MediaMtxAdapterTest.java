@@ -41,6 +41,7 @@ class MediaMtxAdapterTest {
     private final CountDownLatch release = new CountDownLatch(1);
     private HttpServer server;
     private ExecutorService executor;
+    private MediaControlProperties properties;
     private MediaMtxAdapter adapter;
     private Function<Call, Reply> respond;
 
@@ -71,7 +72,7 @@ class MediaMtxAdapterTest {
             }
         });
         server.start();
-        var properties = new MediaControlProperties();
+        properties = new MediaControlProperties();
         properties.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
         properties.setRequestTimeout(Duration.ofSeconds(2));
         var keys = new MediaKeyMaterial((RSAPrivateKey) MediaTestSupport.KEYS.getPrivate(),
@@ -210,6 +211,15 @@ class MediaMtxAdapterTest {
         var properties = new MediaControlProperties();
         properties.setRequestTimeout(Duration.ZERO);
         assertThrows(IllegalStateException.class, () -> configuration.mediaControlWebClient(properties));
+    }
+
+    @Test
+    void usesConfiguredEndpointsWhenProvided() {
+        properties.getPaths().setConfigGet("/custom/config/get/");
+        properties.getPaths().setStreamPrefix("channel/");
+        respond = call -> new Reply(200, "{\"name\":\"channel/" + session + "\",\"source\":\"publisher\",\"overridePublisher\":false}", false);
+        adapter.getPath(session);
+        assertEquals("/custom/config/get/channel/" + session, calls.get(0).uri());
     }
 
     private Reply config(boolean override) {

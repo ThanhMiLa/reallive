@@ -89,5 +89,14 @@ stream:
       base-url: ${STREAM_MEDIA_CONTROL_API_URL:http://localhost:9997}
       connect-timeout: ${STREAM_MEDIA_CONTROL_CONNECT_TIMEOUT:2s}
       request-timeout: ${STREAM_MEDIA_CONTROL_REQUEST_TIMEOUT:5s}
+      paths:
+        config-get: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_GET:/v3/config/paths/get/}
+        config-add: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_ADD:/v3/config/paths/add/}
+        config-delete: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_DELETE:/v3/config/paths/delete/}
+        config-list: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_LIST:/v3/config/paths/list}
+        status-get: ${STREAM_MEDIA_CONTROL_PATHS_GET_PATH:/v3/paths/get/}
+        status-list: ${STREAM_MEDIA_CONTROL_PATHS_LIST_PATH:/v3/paths/list}
+        conns-kick: ${STREAM_MEDIA_CONTROL_CONNS_KICK_PATH:/v3/%s/conns/kick/}
+        stream-prefix: ${STREAM_MEDIA_STREAM_PATH_PREFIX:live/}
   lifecycle:
     reconnect-grace: ${STREAM_RECONNECT_GRACE:60s}

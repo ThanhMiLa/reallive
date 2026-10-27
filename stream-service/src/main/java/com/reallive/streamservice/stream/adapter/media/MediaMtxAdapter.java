@@ -36,7 +36,7 @@ public class MediaMtxAdapter implements MediaServerAdapter {
     @Override
     public Optional<MediaPathConfiguration> getPath(UUID sessionId) {
         String name = path(sessionId);
-        var response = request(HttpMethod.GET, "/v3/config/paths/get/" + name, null);
+        var response = request(HttpMethod.GET, paths().getConfigGet() + name, null);
         if (missing(response, "path configuration not found")) {
             return Optional.empty();
         }
@@ -55,7 +55,7 @@ public class MediaMtxAdapter implements MediaServerAdapter {
             requirePublisher(existing.get());
             return;
         }
-        var response = request(HttpMethod.POST, "/v3/config/paths/add/" + path(sessionId),
+        var response = request(HttpMethod.POST, paths().getConfigAdd() + path(sessionId),
                 Map.of("source", "publisher", "overridePublisher", false));
         if (response.status() == 400 && "path already exists".equals(response.body().path("error").asString())) {
             requirePublisher(getPath(sessionId).orElseThrow(this::unavailable));
@@ -67,7 +67,7 @@ public class MediaMtxAdapter implements MediaServerAdapter {
 
     @Override
     public void deletePath(UUID sessionId) {
-        var response = request(HttpMethod.DELETE, "/v3/config/paths/delete/" + path(sessionId), null);
+        var response = request(HttpMethod.DELETE, paths().getConfigDelete() + path(sessionId), null);
         if (!missing(response, "path not found")) {
             requireSuccess(response);
         }
@@ -76,7 +76,7 @@ public class MediaMtxAdapter implements MediaServerAdapter {
     @Override
     public Optional<MediaPathStatus> getSource(UUID sessionId) {
         String name = path(sessionId);
-        var response = request(HttpMethod.GET, "/v3/paths/get/" + name, null);
+        var response = request(HttpMethod.GET, paths().getStatusGet() + name, null);
         if (missing(response, "path not found")) {
             return Optional.empty();
         }
@@ -90,12 +90,12 @@ public class MediaMtxAdapter implements MediaServerAdapter {
 
     @Override
     public MediaPage<MediaPathConfiguration> listConfigurations(int page, int size) {
-        return page("/v3/config/paths/list", page, size, this::configuration);
+        return page(paths().getConfigList(), page, size, this::configuration);
     }
 
     @Override
     public MediaPage<MediaPathStatus> listPaths(int page, int size) {
-        return page("/v3/paths/list", page, size, this::source);
+        return page(paths().getStatusList(), page, size, this::source);
     }
 
     @Override
@@ -103,7 +103,11 @@ public class MediaMtxAdapter implements MediaServerAdapter {
         Objects.requireNonNull(sourceType);
         Objects.requireNonNull(connectionId);
         String protocol = sourceType == MediaSourceType.RTMP_CONN ? "rtmp" : "rtmps";
-        var response = request(HttpMethod.POST, "/v3/" + protocol + "/conns/kick/" + connectionId, null);
+        String template = paths().getConnsKick();
+        String endpoint = template.contains("{protocol}")
+                ? template.replace("{protocol}", protocol)
+                : String.format(template, protocol);
+        var response = request(HttpMethod.POST, endpoint + connectionId, null);
         if (!missing(response, "connection not found")) {
             requireSuccess(response);
         }
@@ -192,7 +196,11 @@ public class MediaMtxAdapter implements MediaServerAdapter {
     }
 
     private String path(UUID sessionId) {
-        return "live/" + Objects.requireNonNull(sessionId);
+        return paths().getStreamPrefix() + Objects.requireNonNull(sessionId);
+    }
+
+    private MediaControlProperties.Paths paths() {
+        return properties != null && properties.getPaths() != null ? properties.getPaths() : new MediaControlProperties.Paths();
     }
 
     private AppException unavailable() {
