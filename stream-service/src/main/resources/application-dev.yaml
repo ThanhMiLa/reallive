@@ -94,9 +94,12 @@ stream:
         config-add: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_ADD:/v3/config/paths/add/}
         config-delete: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_DELETE:/v3/config/paths/delete/}
         config-list: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_LIST:/v3/config/paths/list}
-        status-get: ${STREAM_MEDIA_CONTROL_PATHS_GET_PATH:/v3/paths/get/}
-        status-list: ${STREAM_MEDIA_CONTROL_PATHS_LIST_PATH:/v3/paths/list}
-        conns-kick: ${STREAM_MEDIA_CONTROL_CONNS_KICK_PATH:/v3/%s/conns/kick/}
+        status-get: ${STREAM_MEDIA_CONTROL_PATH_STATUS_GET:/v3/paths/get/}
+        status-list: ${STREAM_MEDIA_CONTROL_PATH_STATUS_LIST:/v3/paths/list}
+        conns-kick: ${STREAM_MEDIA_CONTROL_PATH_CONNS_KICK:/v3/%s/conns/kick/}
         stream-prefix: ${STREAM_MEDIA_STREAM_PATH_PREFIX:live/}
   lifecycle:
     reconnect-grace: ${STREAM_RECONNECT_GRACE:60s}
+    reconnect-sweep-enabled: ${STREAM_RECONNECT_SWEEP_ENABLED:true}
+    reconnect-sweep-delay: ${STREAM_RECONNECT_SWEEP_DELAY:1s}
+    reconnect-sweep-batch-size: ${STREAM_RECONNECT_SWEEP_BATCH_SIZE:20}

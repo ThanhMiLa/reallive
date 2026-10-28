@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -27,7 +28,7 @@ import java.util.UUID;
 @Transactional(propagation = Propagation.NEVER)
 public class StreamSessionClosureServiceImpl implements StreamSessionClosureService {
 
-    StreamSessionRepository sessions;
+    StreamSessionRepository streamSessionRepository;
     StreamSessionDomainService domain;
     MediaServerAdapter media;
     StreamSessionMapper mapper;
@@ -37,7 +38,7 @@ public class StreamSessionClosureServiceImpl implements StreamSessionClosureServ
     @Override
     public StreamSessionResponse end(UUID sessionId, UUID ownerUserId, String reason) {
         return new TransactionTemplate(transactionManager).execute(status -> {
-            var session = sessions.findByIdForUpdate(sessionId)
+            var session = streamSessionRepository.findByIdForUpdate(sessionId)
                     .orElseThrow(() -> new AppException(ErrorCode.STREAM_SESSION_NOT_FOUND));
             if (!session.getOwnerUserId().equals(ownerUserId)) {
                 throw new AppException(ErrorCode.STREAM_SESSION_NOT_OWNED);
@@ -45,18 +46,42 @@ public class StreamSessionClosureServiceImpl implements StreamSessionClosureServ
             if (session.getStatus() == StreamSessionStatus.ENDED) {
                 return mapper.toOwnerResponse(session, streamClock.instant());
             }
-            media.deletePath(sessionId);
-            if (media.getPath(sessionId).isPresent()) {
-                throw new AppException(ErrorCode.MEDIA_SERVER_UNAVAILABLE);
-            }
-            var source = media.getSource(sessionId);
-            if (source.isPresent() && source.get().online()) {
-                media.kick(source.get().sourceType(), source.get().sourceId());
-                if (media.getSource(sessionId).filter(observed -> observed.online()).isPresent()) {
-                    throw new AppException(ErrorCode.MEDIA_SERVER_UNAVAILABLE);
-                }
-            }
+            closeMedia(sessionId);
             return mapper.toOwnerResponse(domain.endSession(sessionId, ownerUserId, reason), streamClock.instant());
         });
+    }
+
+    @Override
+    public boolean expireReconnectIfDue(UUID sessionId) {
+        return Boolean.TRUE.equals(new TransactionTemplate(transactionManager).execute(status -> {
+            var sessionOpt = streamSessionRepository.findByIdForUpdate(sessionId);
+            if (sessionOpt.isEmpty()) {
+                return false;
+            }
+            var session = sessionOpt.get();
+            if (session.getStatus() != StreamSessionStatus.RECONNECTING) {
+                return false;
+            }
+            LocalDateTime now = LocalDateTime.now(streamClock);
+            if (session.getReconnectDeadlineAt() == null || now.isBefore(session.getReconnectDeadlineAt())) {
+                return false;
+            }
+            closeMedia(sessionId);
+            return domain.expireReconnectIfDue(sessionId).isPresent();
+        }));
+    }
+
+    private void closeMedia(UUID sessionId) {
+        media.deletePath(sessionId);
+        if (media.getPath(sessionId).isPresent()) {
+            throw new AppException(ErrorCode.MEDIA_SERVER_UNAVAILABLE);
+        }
+        var source = media.getSource(sessionId);
+        if (source.isPresent() && source.get().online()) {
+            media.kick(source.get().sourceType(), source.get().sourceId());
+            if (media.getSource(sessionId).filter(observed -> observed.online()).isPresent()) {
+                throw new AppException(ErrorCode.MEDIA_SERVER_UNAVAILABLE);
+            }
+        }
     }
 }

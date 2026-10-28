@@ -23,3 +23,7 @@ auth:
   cookie:
     access-token:
       name: access_token
+
+stream:
+  lifecycle:
+    reconnect-sweep-enabled: false
