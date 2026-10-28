@@ -19,7 +19,11 @@ public interface EmailNotificationRepository extends JpaRepository<EmailNotifica
     Optional<EmailNotificationEntity> findByEventId(UUID eventId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select notification from EmailNotificationEntity notification where notification.eventId = :eventId")
+    @Query("""
+            SELECT notification
+            FROM EmailNotificationEntity notification
+            WHERE notification.eventId = :eventId
+            """)
     Optional<EmailNotificationEntity> findByEventIdForUpdate(@Param("eventId") UUID eventId);
 
     boolean existsByEventId(UUID eventId);
