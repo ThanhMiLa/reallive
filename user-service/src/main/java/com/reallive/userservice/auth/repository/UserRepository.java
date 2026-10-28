@@ -23,17 +23,33 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
      * Load roles separately to avoid locking collection outer joins on PostgreSQL.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select user from UserEntity user where user.id = :userId")
+    @Query("""
+            SELECT user
+            FROM UserEntity user
+            WHERE user.id = :userId
+            """)
     Optional<UserEntity> findByIdForUpdate(UUID userId);
 
     @EntityGraph(attributePaths = {"roles", "roles.permissions"})
-    @Query("select user from UserEntity user where user.id = :userId")
+    @Query("""
+            SELECT user
+            FROM UserEntity user
+            WHERE user.id = :userId
+            """)
     Optional<UserEntity> findWithAuthoritiesById(UUID userId);
 
-    @Query("select user.id from UserEntity user")
+    @Query("""
+            SELECT user.id
+            FROM UserEntity user
+            """)
     Page<UUID> findAllIds(Pageable pageable);
 
-    @Query("select user.id from UserEntity user join user.roles role where role.id = :roleId")
+    @Query("""
+            SELECT user.id
+            FROM UserEntity user
+            JOIN user.roles role
+            WHERE role.id = :roleId
+            """)
     Page<UUID> findIdsByRoleId(UUID roleId, Pageable pageable);
 
     boolean existsByUsername(String username);

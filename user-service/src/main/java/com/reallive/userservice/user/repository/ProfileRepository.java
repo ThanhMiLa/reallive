@@ -18,6 +18,10 @@ public interface ProfileRepository extends JpaRepository<ProfileEntity, UUID> {
     Optional<ProfileEntity> findByUserId(UUID userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select profile from ProfileEntity profile where profile.user.id = :userId")
+    @Query("""
+            SELECT profile
+            FROM ProfileEntity profile
+            WHERE profile.user.id = :userId
+            """)
     Optional<ProfileEntity> findByUserIdForUpdate(UUID userId);
 }

@@ -14,7 +14,11 @@ import java.util.UUID;
 public interface AuthStateSyncTaskRepository extends JpaRepository<AuthStateSyncTask, UUID> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select task from AuthStateSyncTask task where task.userId = :userId")
+    @Query("""
+            SELECT task
+            FROM AuthStateSyncTask task
+            WHERE task.userId = :userId
+            """)
     Optional<AuthStateSyncTask> findForUpdate(UUID userId);
 
     List<AuthStateSyncTask> findTop100ByNextAttemptAtLessThanEqualOrderByNextAttemptAt(LocalDateTime dueAt);

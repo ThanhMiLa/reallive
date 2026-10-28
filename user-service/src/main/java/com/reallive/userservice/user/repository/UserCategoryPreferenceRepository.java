@@ -13,10 +13,12 @@ import java.util.UUID;
 @Repository
 public interface UserCategoryPreferenceRepository extends JpaRepository<UserCategoryPreferenceEntity, UserCategoryPreferenceId> {
 
-    @Query("SELECT p.id.categoryId " +
-            "FROM UserCategoryPreferenceEntity p " +
-            "WHERE p.id.userId = :userId " +
-            "ORDER BY p.createdAt ASC")
+    @Query("""
+            SELECT p.id.categoryId
+            FROM UserCategoryPreferenceEntity p
+            WHERE p.id.userId = :userId
+            ORDER BY p.createdAt ASC
+            """)
     List<UUID> findCategoryIdsByUserId(@Param("userId") UUID userId);
 
     List<UserCategoryPreferenceEntity> findAllById_UserId(UUID userId);
