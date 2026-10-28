@@ -1,6 +1,6 @@
 ---
 name: code-style
-description: Apply this repository's Java code-organization, Lombok, record formatting, naming, import, and commenting conventions when writing, editing, or reviewing Java code.
+description: Apply this repository's Java code-organization, Lombok, record formatting, repository query, naming, import, and commenting conventions when writing, editing, or reviewing Java code.
 ---
 
 # Java Code Style Conventions
@@ -141,6 +141,35 @@ public record StreamSessionResponse(UUID id, UUID channelId, String title, UUID 
         StreamVisibility visibility, StreamSessionStatus status, Instant startedAt, Instant endedAt,
         Instant reconnectDeadlineAt, Instant serverTime, boolean publishReady) {
 }
+```
+
+## Repository Queries
+
+- Write all JPQL and native SQL keywords in uppercase in repository queries, including queries in `@Query`, `@NamedQuery`, `@NamedNativeQuery`, and query strings in custom repository implementations.
+- Apply this to every clause and keyword, for example `SELECT`, `DISTINCT`, `FROM`, `WHERE`, `JOIN`, `LEFT JOIN`, `ON`, `AND`, `OR`, `IN`, `IS NULL`, `GROUP BY`, `HAVING`, `ORDER BY`, `ASC`, `DESC`, `INSERT INTO`, `VALUES`, `UPDATE`, `SET`, and `DELETE`.
+- Preserve the spelling and case of entity names, property names, table and column identifiers, aliases, parameter names, and string literals. Change keyword casing only; preserve query behavior.
+- Put each main clause (`SELECT`, `FROM`, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `UPDATE`, `SET`, `INSERT INTO`, `VALUES`, and `DELETE`) on its own line. Keep a short clause expression on that line; for a long projection or assignment list, put each item on its own continuation line.
+- Put each `JOIN` on its own line. For multi-condition `ON` or `WHERE` expressions, put the first condition after the clause and each following `AND` or `OR` condition on a new line, indented consistently beneath the clause. Keep simple, short conditions together when that remains easy to scan.
+- In Java text blocks, indent query lines consistently within the text block. Do not add line breaks inside string literals or expressions in ways that alter query semantics.
+
+```java
+@Query("""
+        SELECT s
+        FROM StreamSessionEntity s
+        WHERE s.ownerUserId = :ownerUserId
+          AND s.endedAt IS NULL
+        ORDER BY s.startedAt DESC
+        """)
+List<StreamSessionEntity> findActiveSessionsByOwnerUserId(UUID ownerUserId);
+
+@Query(value = """
+        SELECT s.*
+        FROM stream_sessions s
+        WHERE s.owner_user_id = :ownerUserId
+          AND s.ended_at IS NULL
+        ORDER BY s.started_at DESC
+        """, nativeQuery = true)
+List<StreamSessionEntity> findActiveSessionsNative(UUID ownerUserId);
 ```
 
 ## Naming
