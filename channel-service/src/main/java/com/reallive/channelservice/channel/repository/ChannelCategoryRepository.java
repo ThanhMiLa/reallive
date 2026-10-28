@@ -13,8 +13,13 @@ public interface ChannelCategoryRepository extends JpaRepository<ChannelCategory
 
     List<ChannelCategoryEntity> findAllById_ChannelId(UUID channelId);
 
-    @Query("select association from ChannelCategoryEntity association join fetch association.category " +
-            "where association.id.channelId = :channelId order by association.category.name, association.category.id")
+    @Query("""
+            SELECT association
+            FROM ChannelCategoryEntity association
+            JOIN FETCH association.category
+            WHERE association.id.channelId = :channelId
+            ORDER BY association.category.name, association.category.id
+            """)
     List<ChannelCategoryEntity> findCategoriesByChannelId(@Param("channelId") UUID channelId);
 
     List<ChannelCategoryEntity> findAllById_CategoryId(UUID categoryId);

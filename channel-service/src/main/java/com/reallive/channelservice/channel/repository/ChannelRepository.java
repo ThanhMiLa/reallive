@@ -20,7 +20,11 @@ public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID>, J
     Optional<ChannelEntity> findByUserId(UUID userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select channel from ChannelEntity channel where channel.streamerId = :streamerId")
+    @Query("""
+            SELECT channel
+            FROM ChannelEntity channel
+            WHERE channel.streamerId = :streamerId
+            """)
     Optional<ChannelEntity> findByStreamerIdForUpdate(@Param("streamerId") UUID streamerId);
 
     Optional<ChannelEntity> findBySlug(String slug);
@@ -30,25 +34,33 @@ public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID>, J
     /**
      * Checks the unique streamer ownership across visible and soft-deleted channel records.
      */
-    @Query(value = "select exists(select 1 from {h-schema}channels " +
-            "where streamer_id = :streamerId)",
-            nativeQuery = true)
+    @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM {h-schema}channels
+                WHERE streamer_id = :streamerId
+            )
+            """, nativeQuery = true)
     boolean existsByStreamerIdIncludingDeleted(@Param("streamerId") UUID streamerId);
 
     boolean existsBySlug(String slug);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value =
-            "UPDATE {h-schema}channels " +
-            "SET follower_count = follower_count + 1 " +
-            "WHERE id = :channelId AND deleted_at IS NULL",
-            nativeQuery = true)
+    @Query(value = """
+            UPDATE {h-schema}channels
+            SET follower_count = follower_count + 1
+            WHERE id = :channelId
+              AND deleted_at IS NULL
+            """, nativeQuery = true)
     int incrementFollowerCount(@Param("channelId") UUID channelId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query(value =
-            "UPDATE {h-schema}channels " +
-            "SET follower_count = follower_count - 1 " +
-            "WHERE id = :channelId AND deleted_at IS NULL AND follower_count > 0", nativeQuery = true)
+    @Query(value = """
+            UPDATE {h-schema}channels
+            SET follower_count = follower_count - 1
+            WHERE id = :channelId
+              AND deleted_at IS NULL
+              AND follower_count > 0
+            """, nativeQuery = true)
     int decrementFollowerCount(@Param("channelId") UUID channelId);
 }

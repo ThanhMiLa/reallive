@@ -15,12 +15,18 @@ public interface ChannelFollowerRepository extends JpaRepository<ChannelFollower
      * Uses the composite primary key to atomically reject an existing follow, including concurrent inserts.
      */
     @Modifying
-    @Query(value = "INSERT INTO {h-schema}channel_followers (channel_id, user_id) "
-            + "VALUES (:channelId, :userId) ON CONFLICT DO NOTHING", nativeQuery = true)
+    @Query(value = """
+            INSERT INTO {h-schema}channel_followers (channel_id, user_id)
+            VALUES (:channelId, :userId)
+            ON CONFLICT DO NOTHING
+            """, nativeQuery = true)
     int insertFollowIfAbsent(@Param("channelId") UUID channelId, @Param("userId") UUID userId);
 
     @Modifying
-    @Query("DELETE FROM ChannelFollowerEntity follower "
-            + "WHERE follower.id.channelId = :channelId AND follower.id.userId = :userId")
+    @Query("""
+            DELETE FROM ChannelFollowerEntity follower
+            WHERE follower.id.channelId = :channelId
+              AND follower.id.userId = :userId
+            """)
     int deleteFollow(@Param("channelId") UUID channelId, @Param("userId") UUID userId);
 }
