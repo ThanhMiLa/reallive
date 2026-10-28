@@ -391,27 +391,31 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 
 Mục tiêu: viewer nhận đúng quyền xem theo session ID và mở được buổi phát.
 
+**Workflow chốt 2026-10-28:** Dùng hai endpoint riêng. Frontend gọi GET metadata khi mở trang và polling (đề xuất khoảng 3 giây khi tab hiển thị); khi `status = LIVE` và cần mở HLS mới gọi POST playback-access. POST vẫn tự kiểm tra đầy đủ điều kiện tại backend; backend không tự gọi POST sau GET. Không POST cấp token theo mỗi lần poll và không thêm WebSocket/SSE. Xem [workflow/contract giai đoạn 5](Streaming%20MVP%20Phase%205%20Implementation%20Plan.md).
+
+Giai đoạn 5 xây backend và kiểm chứng bằng fixture; trang watch, polling và player production thuộc giai đoạn 6. Current của owner đã có ở giai đoạn 3; discovery/list LIVE cần contract/task riêng và không nằm trong mốc M5 này.
+
 ### STR-501 — Xây API metadata cho trang xem
 
 - **Phụ thuộc:** STR-408.
 - **Module/file:** Stream detail query/controller và viewer DTO.
-- **Cần làm:** Trả metadata/status/time theo session ID; áp dụng account auth và không lộ token/chi tiết nội bộ. Phân biệt không tồn tại, READY, RECONNECTING và ENDED để frontend hiển thị.
-- **Hoàn tất khi:** Viewer nhận đủ dữ liệu trạng thái mà không thể lấy Publish JWT; session không tồn tại được xử lý đúng HTTP/error contract.
+- **Cần làm:** GET `/stream/api/streams/{sessionId}` trả metadata/status/time theo session ID; account auth và no-store, không URL playback/token/chi tiết nội bộ. Trả 200 cho READY/LIVE/RECONNECTING/ENDED để frontend mở trang/polling; không tồn tại trả 404. Không ký JWT, gọi Control API hoặc thay đổi lifecycle khi đọc metadata.
+- **Hoàn tất khi:** Viewer đăng nhập không cần là owner có thể đọc đủ trạng thái, metadata không chứa credential; auth/not-found đúng HTTP/error contract và các lần GET lặp không có side effect media/token.
 - [ ] STR-501 hoàn tất, API detail có test.
 
 ### STR-503 — Xây API playback access
 
 - **Phụ thuộc:** STR-501, STR-205.
 - **Module/file:** Playback service/controller, access DTO và URL builder.
-- **Cần làm:** Check user đã đăng nhập, PUBLIC/LIVE; ghép public base URL với path DB và ký Read JWT đúng action/path/expiry. Trả no-store, không kèm Publish JWT hoặc api token.
-- **Hoàn tất khi:** Chỉ session xem được mới được cấp access; URL không chứa token, không dùng hostname Docker và không lấy tùy ý từ input client.
+- **Cần làm:** POST `/stream/api/streams/{sessionId}/playback-access` không cần body, tự check account và session PUBLIC/LIVE tại thời điểm cấp quyền; recheck/serialize với End theo quy ước locking hiện có. Không phụ thuộc client đã gọi GET. Ghép public base URL với path DB, ký Read JWT đúng viewer/action/path/TTL 5 phút. Trả no-store, không Publish JWT/api token; không gọi Control API hoặc thay đổi lifecycle.
+- **Hoàn tất khi:** Chỉ session xem được mới được cấp access; URL không chứa token, không hostname Docker hoặc input client tùy ý. Session đổi khỏi LIVE sau GET thì POST từ chối theo contract; POST trực tiếp vẫn áp dụng đầy đủ business rules.
 - [ ] STR-503 hoàn tất, access API có test.
 
 ### STR-504 — Kiểm thử contract/security playback
 
 - **Phụ thuộc:** STR-501, STR-503.
 - **Module/file:** Controller/service/security tests và integration suite.
-- **Cần làm:** Test thiếu account token, state không LIVE, session sai/không tồn tại, action/path của Read JWT. Kiểm tra metadata/polling không chứa credential.
+- **Cần làm:** Test thiếu account token, state không LIVE, session sai/không tồn tại, action/path/TTL của Read JWT và no-store. GET các trạng thái không LIVE vẫn trả metadata; GET lặp không ký JWT/gọi media. Test POST trực tiếp không cần GET, GET LIVE rồi End trước POST thì bị từ chối; metadata/polling không chứa credential.
 - **Hoàn tất khi:** Contract đủ rõ cho frontend và không có đường cấp quyền xem/phát ngoài phạm vi; test các module bị sửa đạt.
 - [ ] STR-504 hoàn tất, playback regression đạt.
 
@@ -419,11 +423,11 @@ Mục tiêu: viewer nhận đúng quyền xem theo session ID và mở được 
 
 - **Phụ thuộc:** STR-504.
 - **Module/file:** Player fixture giai đoạn 0 và backend/media cấu hình thật.
-- **Cần làm:** Lấy access bằng account thật, mở HLS bằng token backend ký; thử thiếu/sai/hết hạn token khi mở phiên mới. Kiểm tra phiên đang chạy, tạo lại phiên và không có callback auth cho từng file.
+- **Cần làm:** Account thật GET metadata, khi LIVE gọi POST access rồi dùng fixture mở HLS bằng token backend ký. Poll GET song song để quan sát lifecycle mà không gọi POST lặp; thử thiếu/sai/hết hạn token khi mở phiên mới. Kiểm tra phiên đang chạy, tạo lại phiên và không có callback auth cho từng file.
 - **Hoàn tất khi:** Fixture player xem được hình/tiếng qua backend/media thật; hành vi expiry/session khớp contract trước khi nối trang watch production.
 - [ ] STR-505 hoàn tất, kết thúc giai đoạn 5.
 
-**Mốc nghiệm thu giai đoạn 5:** Viewer có thể lấy access từ backend và xem HLS thật qua session ID.
+**Mốc nghiệm thu giai đoạn 5:** Viewer có thể đọc metadata, lấy access từ backend cho PUBLIC/LIVE và xem HLS thật bằng fixture qua session ID; hai endpoint có contract độc lập và metadata không cấp token.
 
 ## 8. Giai đoạn 6 — Nối frontend
 
@@ -473,7 +477,7 @@ Mục tiêu: hoàn thành quy trình streamer/viewer trên giao diện hiện c�
 
 - **Phụ thuộc:** STR-601, STR-501, STR-503.
 - **Module/file:** `App.tsx`, `pages/watch/WatchStreamPage.tsx`.
-- **Cần làm:** Thêm `/watch/:sessionId`, tải metadata, auth/login-return flow và màn hình READY/RECONNECTING/ENDED/not-found. Khi LIVE mới lấy playback access theo contract.
+- **Cần làm:** Thêm `/watch/:sessionId`, chờ auth rồi GET metadata, login-return flow và màn hình READY/RECONNECTING/ENDED/not-found. Poll riêng GET khoảng 3 giây khi tab hiển thị ở READY/LIVE/RECONNECTING, kể cả video đang phát bình thường; pause khi tab ẩn, refetch khi trở lại, stop khi ENDED/404/rời trang. Frontend thấy LIVE và cần mở HLS mới gọi POST access; POST 409 thì refetch metadata, không gọi POST theo mỗi lần poll LIVE.
 - **Hoàn tất khi:** Guest không nhận Read JWT; viewer quay lại đúng stream sau login; trạng thái chưa phát/kết thúc không bị coi là lỗi player chung.
 - [ ] STR-606 hoàn tất, watch route/state có kiểm chứng.
 
@@ -489,7 +493,7 @@ Mục tiêu: hoàn thành quy trình streamer/viewer trên giao diện hiện c�
 
 - **Phụ thuộc:** STR-607.
 - **Module/file:** Player/watch lifecycle, refresh access và error handling.
-- **Cần làm:** Phân biệt auth/network/decode lỗi; xin lại access có giới hạn khi cần mở phiên mới, theo metadata để dừng khi ENDED. Destroy instance/request/timer/listener khi đổi route/stream, tránh lỗi StrictMode và retry vô hạn.
+- **Cần làm:** Phân biệt auth/network/decode lỗi; xin lại access có giới hạn khi cần credential mới để mở phiên HLS, theo metadata để dừng khi ENDED. GET lỗi mạng không tự biến thành ENDED; countdown không thay backend quyết định kết thúc. Bỏ response access đến muộn sau ENDED/đổi session/unmount; destroy instance/request/poll timer/listener, tránh lỗi StrictMode và retry vô hạn.
 - **Hoàn tất khi:** Reload/reconnect/đổi stream/unmount không để tài nguyên cũ chạy; phiên đang xem không bị destroy chỉ vì JWT đến exp; token không bị gửi sang stream/origin khác.
 - [ ] STR-608 hoàn tất, recovery/resource lifecycle có kiểm chứng.
 

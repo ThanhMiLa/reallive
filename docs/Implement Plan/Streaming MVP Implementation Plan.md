@@ -23,6 +23,7 @@
 | Xác thực media | `authMethod: jwt`; MediaMTX tự verify cả token phát và token xem bằng public key lấy qua JWKS |
 | Phát từ OBS | Backend ký Publish JWT bằng private key; ô Stream Key chứa `{sessionId}?token={PublishJWT}` |
 | Xem trên web | Backend cấp `playbackUrl` + Read JWT; player gửi JWT qua header `Authorization` |
+| API viewer — chốt 2026-10-28 | Hai endpoint: GET metadata để mở trang/polling; frontend thấy LIVE và cần mở HLS mới gọi POST playback-access; POST tự kiểm tra lại điều kiện xem |
 | Quyền token | Publish JWT chỉ có `publish`; Read JWT chỉ có `read`; giới hạn đúng path của session |
 | Lưu key | Không lưu Publish JWT gốc, không lưu hash của stream key trong DB |
 | Trạng thái | `READY`, `LIVE`, `RECONNECTING`, `ENDED` |
@@ -234,8 +235,8 @@ Controller của Stream Service dùng `/api/...`; Gateway thấy tiền tố `/s
 | `PATCH /stream/api/streams/{id}` | Owner, session chưa ENDED | Cập nhật title/category; không đổi JWT/path vì thay metadata |
 | `POST /stream/api/streams/{id}/publish-credentials` | Owner, streamer đủ điều kiện | Cấp Publish JWT mới cho session đang hoạt động và path sẵn sàng |
 | `POST /stream/api/streams/{id}/end` | Đăng nhập và đúng owner | Kết thúc idempotent, yêu cầu đóng path; READY dùng API này để hủy |
-| `GET /stream/api/streams/{id}` | Đăng nhập | Metadata/trạng thái, không trả Publish JWT |
-| `POST /stream/api/streams/{id}/playback-access` | Đăng nhập, session PUBLIC/LIVE | Trả playbackUrl + Read JWT và thời hạn |
+| `GET /stream/api/streams/{id}` | Đăng nhập | Metadata/trạng thái khi mở trang và polling; không trả URL playback hoặc JWT |
+| `POST /stream/api/streams/{id}/playback-access` | Đăng nhập, session PUBLIC/LIVE | Tự kiểm tra điều kiện xem ở mỗi request, trả playbackUrl + Read JWT và thời hạn khi cần mở HLS |
 
 ### 6.2. Request/response
 
@@ -263,6 +264,8 @@ Controller của Stream Service dùng `/api/...`; Gateway thấy tiền tố `/s
 - `publishReady` cho màn hình owner: path đã mở thành công để OBS kết nối, không có nghĩa nguồn đã LIVE. Không dùng `mediaCleanupPending` hoặc tiến trình job nền.
 - Không chứa token trong response metadata/list/polling.
 
+`StreamMetadataResponse` cho viewer dùng các field metadata/time ở trên, không có `publishReady`, `playbackUrl` hoặc credential. GET trả 200 cho session tồn tại ở cả READY/LIVE/RECONNECTING/ENDED; không ký JWT, không gọi Control API hoặc thay đổi session/history. Dùng `Cache-Control: no-store` để lấy trạng thái mới.
+
 `StreamPublishCredentialsResponse`:
 
 ```text
@@ -282,6 +285,8 @@ playbackUrl        = http://localhost:8898/live/{sessionId}/index.m3u8
 readToken          = Read JWT
 readExpiresAt      = ISO-8601
 ```
+
+POST playback-access không cần body; viewer ID lấy từ principal. Backend không yêu cầu client gọi GET trước đó và không tự gọi POST sau GET. Frontend kiểm tra `status = LIVE` để quyết định gọi POST; POST vẫn tự recheck account/session/PUBLIC/LIVE. GET trả LIVE nhưng session đổi trạng thái trước POST thì POST trả 409, frontend lấy lại metadata.
 
 ### 6.3. HTTP và lỗi
 
@@ -512,15 +517,26 @@ Không có HTTP callback verify stream key về backend. Khi mất mạng, OBS t
 
 ### 10.3. Xin quyền xem và lấy HLS
 
+Workflow hai endpoint đã chốt ngày 2026-10-28; [plan chi tiết giai đoạn 5](Streaming%20MVP%20Phase%205%20Implementation%20Plan.md).
+
 ```text
-Player --> Gateway --> Stream Service: POST playback-access
-Stream Service: Account đã đăng nhập, session PUBLIC/LIVE
-Stream Service --> Player: playbackUrl + Read JWT + readExpiresAt
+Frontend --> Gateway --> Stream Service: GET /streams/{sessionId}
+Stream Service --> Frontend: Metadata/status/time, không credential
+Frontend: Nếu status LIVE và cần mở HLS thì gọi POST; trạng thái khác hiện thông báo
+Frontend --> Gateway --> Stream Service: POST /streams/{sessionId}/playback-access
+Stream Service: Tự xác thực account, recheck session PUBLIC/LIVE ở request hiện tại
+Stream Service --> Frontend: playbackUrl + Read JWT + readExpiresAt
 Player --> MediaMTX: GET index.m3u8 + Authorization Bearer
 MediaMTX: Verify Read JWT, tạo phiên HLS
 MediaMTX --> Player: Playlist
 Player <--> MediaMTX: Cập nhật media playlist và tải segment theo buffer
+
+Song song khi mở trang và tab hiển thị:
+Frontend --> Gateway --> Stream Service: Poll GET metadata khoảng 3 giây
+Stream Service --> Frontend: Metadata/status/time mới; không cấp lại JWT
 ```
+
+GET metadata được gọi định kỳ ở READY/LIVE/RECONNECTING, kể cả khi player đang phát bình thường. Chỉ POST khi cần bắt đầu xem hoặc cần credential mới để mở lại HLS; không POST theo mỗi response LIVE. ENDED/404 dừng polling và player; tab ẩn tạm dừng poll, tab hiển thị lại lấy metadata ngay; rời trang thì cleanup. Backend lifecycle vẫn do callback/scheduler/End giai đoạn 4 quyết định, không phụ thuộc viewer polling. Không dùng WebSocket/SSE cho trạng thái stream trong MVP.
 
 `playbackUrl` được ghép từ base URL cấu hình và `playback_path` lưu trong DB, không mang Publish JWT. Backend không xử lý request tải segment và không tính viewer count trong MVP.
 
@@ -623,9 +639,11 @@ Giữ Axios/account refresh, auth store, TanStack Query và style hiện có. C�
 
 ### 12.3. Trang xem và hls.js
 
-- `/watch/:sessionId` tải metadata, yêu cầu đăng nhập để lấy playback access; guest được dẫn tới auth flow và quay lại stream sau login.
+- `/watch/:sessionId` chờ auth, GET metadata; guest được dẫn tới auth flow và quay lại stream sau login. Frontend điều phối GET rồi POST theo [workflow giai đoạn 5](Streaming%20MVP%20Phase%205%20Implementation%20Plan.md); backend không tự gọi API thứ hai.
+- Poll riêng GET metadata khoảng 3 giây khi tab hiển thị ở READY/LIVE/RECONNECTING, kể cả video đang phát bình thường; không gọi chồng request. Tạm dừng khi tab ẩn, refetch ngay khi hiển thị lại, dừng ở ENDED/404 hoặc rời trang. Lỗi mạng/5xx không tự biến thành ENDED.
 - READY hiện chưa bắt đầu; RECONNECTING hiện đang nối lại; ENDED dừng player và hiện đã kết thúc. Không quay vòng xin token cho session ENDED.
-- Khi LIVE, xin Read JWT rồi tạo một `Hls` instance cho session. Dùng `xhrSetup` của loader hiện có để gắn Authorization cho request playlist/segment đúng media origin/path.
+- Khi LIVE và cần bắt đầu/mở lại HLS, gọi POST playback-access để xin credential rồi tạo player khi cần. Không POST hoặc tạo lại `Hls` instance theo mỗi lần poll LIVE. Dùng `xhrSetup` của loader hiện có để gắn Authorization cho request playlist/segment đúng media origin/path.
+- POST tự recheck điều kiện; nếu session đổi trạng thái sau GET và POST trả 409 thì refetch metadata. Bỏ response access đến muộn sau ENDED/unmount/đổi session.
 - Không dùng Axios account client cho segment; không gửi account cookie, Publish JWT hoặc token Control API tới media player.
 - Token đọc giữ trong memory/ref. Không lưu URL kèm token, không ghi token vào console/analytics hoặc React Query cache được persist.
 - Chỉ gắn token khi URL thuộc media origin/path được cấu hình; không làm lộ Authorization cho URL bên ngoài do redirect/playlist khác origin.
@@ -732,14 +750,18 @@ Code STR-301–307 đã kiểm chứng; STR-308/M3 chờ OBS do người dùng t
 
 **Hoàn tất khi:** trạng thái theo nguồn thật, OBS reconnect trong grace được phục hồi và session ENDED không bị phát lại bằng key cũ.
 
-### Giai đoạn 5 — Playback access và discovery tối thiểu
+### Giai đoạn 5 — Metadata và playback access theo session ID
 
-- [ ] API list LIVE/detail/current, DTO/pagination và batch channel metadata nếu cần.
-- [ ] Playback access chỉ cho account hợp lệ và PUBLIC/LIVE; trả URL/path/token đúng.
-- [ ] GET metadata không chứa token; playback API không gọi xử lý media hoặc đếm viewer.
-- [ ] Test auth/visibility/state/path và pagination/count.
+Triển khai STR-501, STR-503–STR-505 theo [workflow hai endpoint đã chốt](Streaming%20MVP%20Phase%205%20Implementation%20Plan.md). Giai đoạn này xây backend và kiểm chứng fixture; frontend production được nối ở giai đoạn 6.
 
-**Hoàn tất khi:** viewer lấy được thông tin phát và Read JWT hợp lệ, chưa LIVE/ENDED bị từ chối cấp quyền đúng contract.
+- [ ] GET `/streams/{sessionId}` trả metadata đủ để mở trang/polling; account auth, không token và không gọi Control API để kiểm tra nguồn.
+- [ ] POST `/streams/{sessionId}/playback-access` tự kiểm tra account/PUBLIC/LIVE; trả URL/Read JWT/expiry đúng và no-store, không phụ thuộc client đã GET trước đó.
+- [ ] Test auth/visibility/state/path/TTL/cache; GET LIVE rồi End trước POST; POST trực tiếp; metadata không cấp token hoặc thay đổi lifecycle.
+- [ ] Fixture dùng account thật lấy metadata rồi access, xem được HLS thật và kiểm chứng token âm tính/expiry/phiên HLS.
+
+Current session của owner đã thuộc giai đoạn 3. Discovery/list LIVE cần contract/task riêng, không tính vào mốc M5 của workflow theo session ID.
+
+**Hoàn tất khi:** viewer lấy được metadata và Read JWT hợp lệ cho session PUBLIC/LIVE rồi xem HLS thật bằng fixture; READY/RECONNECTING/ENDED vẫn đọc được metadata nhưng không được cấp access mới.
 
 ### Giai đoạn 6 — Nối frontend
 

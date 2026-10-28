@@ -63,19 +63,34 @@ Cơ chế này thay thế stream key ngẫu nhiên đối chiếu hash: không l
 
 ## 4. Workflow Watch Stream
 
-MVP chỉ hỗ trợ stream `PUBLIC`; người xem phải đăng nhập để xin Read JWT.
+MVP chỉ hỗ trợ stream `PUBLIC`; người xem phải đăng nhập để lấy metadata và xin Read JWT. Ngày 2026-10-28, người dùng chốt **hai endpoint riêng**, do frontend điều phối:
 
-Các API xin quyền xem đi qua Gateway; sơ đồ dưới rút gọn thành Stream Service.
+| Endpoint qua Gateway | Mục đích |
+|---|---|
+| `GET /stream/api/streams/{sessionId}` | Metadata/trạng thái khi mở trang và polling; không cấp token |
+| `POST /stream/api/streams/{sessionId}/playback-access` | Kiểm tra điều kiện xem và cấp `playbackUrl` + Read JWT khi PUBLIC/LIVE |
+
+Viewer chỉ click vào livestream một lần. Frontend đọc `status` từ GET, chỉ gọi POST khi LIVE và cần mở phiên HLS. Backend không tự gọi POST sau GET; POST vẫn tự xác thực và kiểm tra lại session PUBLIC/LIVE ở thời điểm xử lý.
+
+Các API business đi qua Gateway; sơ đồ dưới rút gọn thành Stream Service.
 
 ```text
 Mở phiên xem:
-1. Player         --> Stream Service  : Xin quyền xem, backend kiểm tra nghiệp vụ
-2. Stream Service --> Player          : playbackUrl + Read JWT
-3. Player         --> MediaMTX        : GET playlist .m3u8 ban đầu + JWT
-4. MediaMTX                           : Verify JWT bằng public key cache, tạo phiên HLS
-5. MediaMTX       --> Player          : Playlist .m3u8
+1. Frontend       --> Stream Service  : GET metadata theo sessionId
+2. Stream Service --> Frontend        : Metadata/status/time, không credential
+3. Frontend                          : Nếu LIVE và cần mở HLS thì gọi tiếp; trạng thái khác hiện thông báo
+4. Frontend       --> Stream Service  : POST playback-access
+5. Stream Service                    : Tự xác thực account, recheck session PUBLIC/LIVE
+6. Stream Service --> Frontend        : playbackUrl + Read JWT + readExpiresAt
+7. Player         --> MediaMTX        : GET playlist .m3u8 ban đầu + Authorization Bearer
+8. MediaMTX                           : Verify JWT bằng public key cache, tạo phiên HLS
+9. MediaMTX       --> Player          : Playlist .m3u8
 
 Trong lúc xem, chạy song song:
+
+Loop metadata khi tab hiển thị, đề xuất khoảng 3 giây:
+    Frontend       --> Stream Service: GET metadata, kể cả video đang phát bình thường
+    Stream Service --> Frontend:      Status/time mới; không ký JWT hoặc kiểm tra nguồn qua Control API
 
 Loop cập nhật playlist theo thời gian:
     Player   --> MediaMTX: GET playlist .m3u8 cập nhật của phiên hiện tại
@@ -86,11 +101,17 @@ Loop tải segment theo nhu cầu buffer:
     MediaMTX --> Player:   Segment video/audio
 ```
 
+GET trả HTTP 200 chỉ có nghĩa lấy được metadata. READY hiện chưa bắt đầu, RECONNECTING hiện chờ nối lại và tiếp tục polling; LIVE chỉ xin access khi cần bắt đầu/mở lại HLS. ENDED/404 dừng player và polling. Khi tab ẩn tạm dừng polling, tab hiển thị lại lấy metadata ngay; rời trang thì cleanup. POST không nằm trong vòng polling; không tạo lại player hoặc cấp lại JWT chỉ vì nhận thêm một response LIVE. MVP không dùng WebSocket/SSE cho trạng thái stream.
+
+Trạng thái có thể đổi giữa hai request: GET trả LIVE nhưng POST sau đó vẫn có thể trả 409. Frontend đọc lại metadata để xử lý; không suy diễn rằng GET thành công bảo đảm được cấp token. Lỗi mạng của viewer không đồng nghĩa session đã ENDED.
+
 Player không chờ tải/phát hết các segment mới cập nhật playlist. Verify JWT chỉ thực hiện khi tạo phiên HLS mới, không lặp lại cho từng playlist cập nhật hoặc segment trong cùng phiên.
 
 Read JWT chỉ có quyền `read` đúng path của session; tách biệt với Publish JWT có quyền phát. MediaMTX dùng cùng public key cache để xác thực cả hai loại token.
 
 DB lưu `playback_path`; backend ghép với media base URL để trả `playbackUrl` đầy đủ. Player gửi JWT qua header `Authorization: Bearer ...`.
+
+Xem [workflow và contract chi tiết giai đoạn 5](../Implement%20Plan/Streaming%20MVP%20Phase%205%20Implementation%20Plan.md). Giai đoạn 5 xây backend/kiểm chứng fixture; frontend production triển khai workflow này ở giai đoạn 6.
 
 ## 5. Ngắt kết nối và kết thúc
 
