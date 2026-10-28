@@ -11,6 +11,10 @@ import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
+import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
+import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
+import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -39,6 +43,7 @@ class StreamSessionControllerTest {
 
     @Autowired private MockMvc mvc;
     @MockitoBean private StreamSessionService service;
+    @MockitoBean private StreamSessionClosureService closureService;
     @MockitoBean private CustomJwtDecoder decoder;
     @MockitoBean private RedisAuthoritiesReader authorities;
     private final UUID owner = UUID.randomUUID();
@@ -52,7 +57,8 @@ class StreamSessionControllerTest {
         mvc.perform(patch("/api/streams/" + session).contentType("application/json").content("{\"title\":\"new\"}"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/streams/" + session + "/publish-credentials")).andExpect(status().isUnauthorized());
-        verifyNoInteractions(service);
+        mvc.perform(post("/api/streams/" + session + "/end")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(service, closureService);
     }
 
     @Test
@@ -120,6 +126,32 @@ class StreamSessionControllerTest {
                 ErrorCode.STREAM_SESSION_STATE_INVALID, ErrorCode.MEDIA_SERVER_UNAVAILABLE)) {
             doThrow(new AppException(error)).when(service).publishCredentials(session, owner);
             mvc.perform(post("/api/streams/" + session + "/publish-credentials")
+                            .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                    .andExpect(status().is(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.code").value(error.getCode()));
+        }
+    }
+
+    @Test
+    void endSessionCallsClosureServiceAndHandlesErrors() throws Exception {
+        var endResponse = new StreamSessionResponse(session, UUID.randomUUID(), "Title", UUID.randomUUID(),
+                StreamVisibility.PUBLIC, StreamSessionStatus.ENDED, Instant.now(), Instant.now(), null, Instant.now(), false);
+        when(closureService.end(session, owner, null)).thenReturn(endResponse);
+
+        mvc.perform(post("/api/streams/" + session + "/end")
+                        .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.result.id").value(session.toString()))
+                .andExpect(jsonPath("$.result.status").value("ENDED"));
+
+        verify(closureService).end(session, owner, null);
+
+        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_OWNED, ErrorCode.STREAM_SESSION_NOT_FOUND,
+                ErrorCode.MEDIA_SERVER_UNAVAILABLE)) {
+            doThrow(new AppException(error)).when(closureService).end(session, owner, null);
+            mvc.perform(post("/api/streams/" + session + "/end")
                             .with(jwt().jwt(token -> token.subject(owner.toString()))))
                     .andExpect(status().is(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))

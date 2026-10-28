@@ -7,6 +7,7 @@ import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
+import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -34,6 +35,7 @@ import java.util.UUID;
 public class StreamSessionController {
 
     StreamSessionService streamSessionService;
+    StreamSessionClosureService streamSessionClosureService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<CreateStreamSessionResponse>> createStreamSession(
@@ -63,6 +65,14 @@ public class StreamSessionController {
             @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(streamSessionService.publishCredentials(
                 sessionId, AuthenticationUserId.getAuthenticatedUserId(principal)), 200, "Publish credentials issued successfully"));
+    }
+
+    @PostMapping("/{sessionId}/end")
+    public ResponseEntity<ApiResponse<StreamSessionResponse>> endStreamSession(
+            @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal) {
+        var response = streamSessionClosureService.end(sessionId,
+                AuthenticationUserId.getAuthenticatedUserId(principal), null);
+        return ResponseEntity.ok(buildApiResponse(response, 200, "Stream session ended successfully"));
     }
 
     private <T> ApiResponse<T> buildApiResponse(T result, int status, String message) {

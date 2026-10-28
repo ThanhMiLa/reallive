@@ -70,7 +70,7 @@ class MediaMtxAuthenticationIT {
         var callbackRequest = HttpRequest.newBuilder(URI.create(callbackUrl)).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(event)).timeout(Duration.ofSeconds(5)).build();
         assertEquals(404, http.send(callbackRequest, HttpResponse.BodyHandlers.ofString()).statusCode(),
-                "Direct callback must reach stream-service (returns 404 before phase 4 handler exists)");
+                "Direct callback for unknown session must reach stream-service and return 404");
 
         String config = Files.readString(repository.resolve("mediamtx/mediamtx.yml"))
                 .replaceAll("(?m)^\\s*runOn(?:Online|Offline):[^\\n]*\\n", "");

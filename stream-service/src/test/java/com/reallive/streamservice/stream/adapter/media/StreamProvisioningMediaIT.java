@@ -9,6 +9,7 @@ import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.stream.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
+import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
@@ -151,8 +152,9 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
             var fresh = request("POST", "/api/streams/" + id + "/publish-credentials", cookie, null, 200);
             assertEquals("no-store", fresh.headers().firstValue("Cache-Control").orElseThrow());
             assertNotEquals(credentials.path("streamKey").asString(), mapper.readTree(fresh.body()).path("result").path("streamKey").asString());
-            assertEquals(StreamSessionStatus.READY, sessions.findById(id).orElseThrow().getStatus(), "Phase 3 does not fabricate LIVE without a lifecycle handler");
-            assertEquals(StreamSessionStatus.ENDED, closure.end(id, owner, "Phase 3 test cleanup after real closure").status());
+            assertEquals(StreamSessionStatus.LIVE, awaitStatus(id, StreamSessionStatus.LIVE, Duration.ofSeconds(10)).getStatus(),
+                    "Phase 4 transitions session to LIVE upon real publisher arrival");
+            assertEquals(StreamSessionStatus.ENDED, closure.end(id, owner, "Phase 4 test cleanup after real closure").status());
             assertTrue(media.getPath(id).isEmpty());
             assertTrue(media.getSource(id).isEmpty() || !media.getSource(id).orElseThrow().online());
             request("POST", "/api/streams/" + id + "/publish-credentials", cookie, null, 409);
@@ -297,14 +299,14 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
             var source = awaitSource(id, null, Duration.ofMinutes(10));
             request("PATCH", "/api/streams/" + id, accountCookie(owner), Map.of("title", "OBS verified through phase 3 API"), 200);
             assertEquals(source.sourceId(), media.getSource(id).orElseThrow().sourceId());
-            assertEquals(StreamSessionStatus.READY, sessions.findById(id).orElseThrow().getStatus());
+            assertEquals(StreamSessionStatus.LIVE, awaitStatus(id, StreamSessionStatus.LIVE, Duration.ofSeconds(10)).getStatus());
             observed.set(source);
             assertTrue(completed.await(10, TimeUnit.MINUTES), "OBS operator did not confirm acceptance");
             assertEquals(source.sourceId(), media.getSource(id).orElseThrow().sourceId(), "Confirmed source must still be online");
             closure.end(id, owner, "OBS acceptance confirmed; media closure before report");
             Files.writeString(resultFile, mapper.writeValueAsString(
                     Map.of("status", "PASS", "sessionId", id, "sourceId", source.sourceId(), "sourceType", source.sourceType().getValue(),
-                            "dbStatusBeforeCleanup", "READY", "metadataUpdatePreservedSource", true, "cleanup", "ENDED/CLOSED", "observedAt", Instant.now())));
+                            "dbStatusBeforeCleanup", "LIVE", "metadataUpdatePreservedSource", true, "cleanup", "ENDED/CLOSED", "observedAt", Instant.now())));
         } catch (Exception | AssertionError exception) {
             Files.writeString(resultFile, mapper.writeValueAsString(Map.of("status", "FAIL", "sessionId", id, "observedAt", Instant.now())));
             throw exception;
@@ -350,6 +352,16 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
             LockSupport.parkNanos(Duration.ofMillis(200).toNanos());
         }
         throw new AssertionError("No publisher became online before the acceptance deadline");
+    }
+
+    private StreamSessionEntity awaitStatus(UUID id, StreamSessionStatus expectedStatus, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            var session = sessions.findById(id).orElseThrow();
+            if (session.getStatus() == expectedStatus) { return session; }
+            LockSupport.parkNanos(Duration.ofMillis(200).toNanos());
+        }
+        return sessions.findById(id).orElseThrow();
     }
 
     private static int freePort() {
