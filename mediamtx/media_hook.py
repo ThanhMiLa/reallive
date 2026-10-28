@@ -27,29 +27,27 @@ def main():
     source_type = os.environ['MTX_SOURCE_TYPE']
     if source_type not in ['rtmpConn', 'rtmpsConn']:
         raise ValueError('Unexpected source type')
-    event = {'eventId': str(uuid4()), 'eventType': sys.argv[1].upper(), 'path': path,
-             'sourceId': source_id, 'sourceType': source_type,
-             'occurredAt': datetime.now(timezone.utc).isoformat()}
+    event = {
+            'eventId': str(uuid4()),
+            'eventType': sys.argv[1].upper(),
+            'path': path,
+            'sourceId': source_id,
+            'sourceType': source_type,
+            'occurredAt': datetime.now(timezone.utc).isoformat()
+            }
     body = json.dumps(event, separators=(',', ':')).encode()
     stopped = threading.Event()
     signal.signal(signal.SIGINT, lambda *_args: stopped.set())
     signal.signal(signal.SIGTERM, lambda *_args: stopped.set())
-    deadline = time.monotonic() + 30
-    for delay in [0, 1, 2, 4, 8]:
-        if stopped.wait(delay) or time.monotonic() >= deadline:
-            return 1
-        request = Request(url, data=body, headers={'Content-Type': 'application/json'})
-        try:
-            with urlopen(request, timeout=min(3, max(0.1, deadline - time.monotonic()))) as response:
-                if 200 <= response.status < 300:
-                    return 0
-        except HTTPError as error:
-            status = error.code
-            error.close()
-            if status < 500 and status != 429:
-                break
-        except (URLError, TimeoutError, OSError):
-            pass
+    if stopped.is_set():
+        return 1
+    request = Request(url, data=body, headers={'Content-Type': 'application/json'})
+    try:
+        with urlopen(request, timeout=10) as response:
+            if 200 <= response.status < 300:
+                return 0
+    except (HTTPError, URLError, TimeoutError, OSError):
+        pass
     print('Media callback failed; eventId=' + event['eventId'], file=sys.stderr)
     return 1
 

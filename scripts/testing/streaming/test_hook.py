@@ -14,7 +14,7 @@ class HookTest(unittest.TestCase):
     def setUp(self):
         self.bodies = []
         self.received = threading.Event()
-        self.failures = 2
+        self.status_code = 200
         owner = self
 
         class Receiver(BaseHTTPRequestHandler):
@@ -24,8 +24,7 @@ class HookTest(unittest.TestCase):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers['Content-Length']))
                 owner.bodies.append(body)
-                status = 503 if len(owner.bodies) <= owner.failures else 200
-                self.send_response(status)
+                self.send_response(owner.status_code)
                 self.send_header('Content-Length', '0')
                 self.end_headers()
                 owner.received.set()
@@ -47,31 +46,48 @@ class HookTest(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
-    def launch(self):
+    def launch(self, env=None, action='online'):
         import sys
-        self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'mediamtx/media_hook.py'), 'online'],
-                                        env=self.environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        run_env = env if env is not None else self.environment
+        self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'mediamtx/media_hook.py'), action],
+                                        env=run_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    def test_retry_keeps_body_and_event_id(self):
+    def test_single_shot_success(self):
+        self.status_code = 200
         self.launch()
-        stdout, stderr = self.process.communicate(timeout=8)
+        stdout, stderr = self.process.communicate(timeout=5)
         self.assertEqual(0, self.process.returncode)
-        self.assertEqual(3, len(self.bodies))
-        self.assertEqual(1, len(set(self.bodies)))
+        self.assertEqual(1, len(self.bodies))
         event = json.loads(self.bodies[0])
         self.assertEqual('ONLINE', event['eventType'])
         self.assertEqual(self.environment['MTX_SOURCE_ID'], event['sourceId'])
+        self.assertEqual(self.environment['MTX_PATH'], event['path'])
         self.assertNotIn(b'must-never-be-sent', b''.join(self.bodies) + stdout + stderr)
         self.assertNotIn('MTX_QUERY', event)
 
-    def test_sigint_stops_retry(self):
-        self.failures = 100
+    def test_single_shot_failure_does_not_retry(self):
+        self.status_code = 503
         self.launch()
-        self.assertTrue(self.received.wait(timeout=5))
-        self.process.send_signal(signal.SIGINT)
-        self.process.communicate(timeout=4)
+        stdout, stderr = self.process.communicate(timeout=5)
         self.assertEqual(1, self.process.returncode)
         self.assertEqual(1, len(self.bodies))
+        self.assertIn(b'Media callback failed; eventId=', stderr)
+
+    def test_single_shot_client_error(self):
+        self.status_code = 400
+        self.launch()
+        stdout, stderr = self.process.communicate(timeout=5)
+        self.assertEqual(1, self.process.returncode)
+        self.assertEqual(1, len(self.bodies))
+        self.assertIn(b'Media callback failed; eventId=', stderr)
+
+    def test_invalid_path_fails_without_request(self):
+        bad_env = dict(self.environment, MTX_PATH='invalid/' + str(uuid4()))
+        self.launch(env=bad_env)
+        stdout, stderr = self.process.communicate(timeout=5)
+        self.assertEqual(1, self.process.returncode)
+        self.assertEqual(0, len(self.bodies))
+        self.assertIn(b'Invalid media callback configuration', stderr)
 
 
 if __name__ == '__main__':
