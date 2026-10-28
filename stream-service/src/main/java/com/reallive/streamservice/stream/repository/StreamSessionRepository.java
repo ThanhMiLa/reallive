@@ -23,24 +23,55 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
     Optional<StreamSessionEntity> findByOwnerUserIdAndCreationRequestId(UUID ownerUserId, UUID creationRequestId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from StreamSessionEntity s where s.ownerUserId = :ownerUserId and s.creationRequestId = :requestId")
+    @Query("""
+            SELECT s
+            FROM StreamSessionEntity s
+            WHERE s.ownerUserId = :ownerUserId
+              AND s.creationRequestId = :requestId
+            """)
     Optional<StreamSessionEntity> findCreationForUpdate(@Param("ownerUserId") UUID ownerUserId, @Param("requestId") UUID requestId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from StreamSessionEntity s where s.id = :id")
+    @Query("""
+            SELECT s
+            FROM StreamSessionEntity s
+            WHERE s.id = :id
+            """)
     Optional<StreamSessionEntity> findByIdForUpdate(@Param("id") UUID id);
 
-    @Query("select s from StreamSessionEntity s where s.channelId = :channelId and s.status in ('READY', 'LIVE', 'RECONNECTING')")
+    @Query("""
+            SELECT s
+            FROM StreamSessionEntity s
+            WHERE s.channelId = :channelId
+              AND s.status IN ('READY', 'LIVE', 'RECONNECTING')
+            """)
     Optional<StreamSessionEntity> findSlotOccupyingByChannelId(@Param("channelId") UUID channelId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select s from StreamSessionEntity s where s.channelId = :channelId and s.status in ('READY', 'LIVE', 'RECONNECTING')")
+    @Query("""
+            SELECT s
+            FROM StreamSessionEntity s
+            WHERE s.channelId = :channelId
+              AND s.status IN ('READY', 'LIVE', 'RECONNECTING')
+            """)
     Optional<StreamSessionEntity> findSlotOccupyingByChannelIdForUpdate(@Param("channelId") UUID channelId);
 
-    @Query("select s from StreamSessionEntity s where s.ownerUserId = :ownerUserId and s.status in ('READY', 'LIVE', 'RECONNECTING') order by s.createdAt desc")
+    @Query("""
+            SELECT s
+            FROM StreamSessionEntity s
+            WHERE s.ownerUserId = :ownerUserId
+              AND s.status IN ('READY', 'LIVE', 'RECONNECTING')
+            ORDER BY s.createdAt DESC
+            """)
     List<StreamSessionEntity> findCurrentByOwnerUserId(@Param("ownerUserId") UUID ownerUserId);
 
-    @Query("select s.id from StreamSessionEntity s where s.status = 'RECONNECTING' and s.reconnectDeadlineAt <= :now order by s.reconnectDeadlineAt asc, s.id asc")
+    @Query("""
+            SELECT s.id
+            FROM StreamSessionEntity s
+            WHERE s.status = 'RECONNECTING'
+              AND s.reconnectDeadlineAt <= :now
+            ORDER BY s.reconnectDeadlineAt ASC, s.id ASC
+            """)
     List<UUID> findExpiredReconnectingIds(@Param("now") LocalDateTime now, Pageable pageable);
 
     Page<StreamSessionEntity> findByVisibilityAndStatusOrderByStartedAtDescIdAsc(
