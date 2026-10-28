@@ -45,8 +45,8 @@ Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontaine
 
 ## Streaming phase 2: eligibility and media authentication
 
-Phase 1 domain/persistence, phase 2 authentication and phase 3 provisioning APIs are implemented.
-End HTTP, playback-access and the lifecycle callback handler remain in phases 4–5.
+Phase 1 domain/persistence, phase 2 authentication, phase 3 provisioning and phase 4 synchronous lifecycle/End APIs are implemented.
+Playback-access and frontend integration remain in phases 5–6.
 Session writes use pessimistic row locks; no session version or media-sync task is used.
 
 The service requires stable RSA keys at startup. From repository root:
@@ -104,6 +104,7 @@ Owner endpoints (Gateway prefix `/stream`; controller prefix `/api/streams`):
 | PATCH `/stream/api/streams/{id}` | Update supplied title/category only; owner and nonterminal session required |
 | GET `/stream/api/streams/me/current` | Active owner session or result null; media readiness/deadline/serverTime without credentials |
 | POST `/stream/api/streams/{id}/publish-credentials` | Fresh Publish JWT for the same session/path after owner, eligibility, state, grace and media checks |
+| POST `/stream/api/streams/{id}/end` | Synchronously delete media path, kick source connection, and commit session to ENDED/CLOSED (idempotent if already ENDED) |
 
 Create takes `requestId` (UUID), `title` and `categoryId`. Keep the same request ID after timeout/lost response; replay preserves the original metadata. A different request ID while the channel has an active session returns 409. Create and publish-credentials use `Cache-Control: no-store`. Tokens are not persisted or hashed, and issuing another JWT does not revoke previous tokens.
 
@@ -128,3 +129,19 @@ Additional runtime verification (isolated PostgreSQL + Stream HTTP + MediaMTX + 
 ```
 
 The OBS method is deliberately opt-in and is skipped by this command. [Phase 3 Test Plan](../docs/testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md) provides the operator-controlled OBS command and full-stack owner smoke instructions. Neither mode opens or controls OBS. M3 awaits the user's OBS acceptance.
+
+## Streaming phase 4: synchronous lifecycle, reconnect sweep and End
+
+- `POST /stream/api/media/events`: Direct webhook endpoint called by MediaMTX `media_hook.py`.
+  - Under pessimistic session lock, inspects real source via Control API `getSource(sessionId)`.
+  - `ONLINE` event transitions `READY` or `RECONNECTING` to `LIVE`, sets `startedAt` on initial live event, and logs history.
+  - `OFFLINE` event transitions `LIVE` to `RECONNECTING` with 60-second grace (`reconnectDeadline = now + 60s`). Duplicate offline calls do not extend or reset deadline.
+  - Events for terminal sessions (`ENDED`) or from obsolete connections are safely ignored (`IGNORED`).
+- Background reconnect sweep:
+  - Enabled via `stream.lifecycle.reconnect-sweep-enabled: true`.
+  - `ReconnectExpirationScheduler` polls expired reconnecting sessions every 1s (`stream.lifecycle.reconnect-sweep-delay: 1s`).
+  - Calls `StreamSessionClosureService.expireReconnectIfDue`, deletes media path, kicks remaining connection, and commits `ENDED/CLOSED`.
+- Synchronous End API:
+  - `POST /stream/api/streams/{sessionId}/end` requires authenticated channel owner.
+  - Deletes media path and kicks source before committing `ENDED/CLOSED`. Idempotent if already ended. Failures rollback DB and return 503.
+

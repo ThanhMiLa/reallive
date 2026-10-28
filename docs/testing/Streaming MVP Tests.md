@@ -362,3 +362,89 @@ docker compose --project-directory . -f scripts/testing/streaming/compose.fixtur
 - End foundation chỉ là service dùng bởi luồng đồng bộ và test cleanup. Chưa có End HTTP, callback lifecycle hoặc scheduler; callback hợp lệ vẫn 404, chưa chuyển READY → LIVE.
 - DB/media không atomic khi timeout/crash/DB commit failure. Không task, worker, tự retry, restore path hoặc reconciler. Credential issuance không khôi phục path bị mất.
 - Không thay schema/migration hay DB ứng dụng; không chỉnh OBS, player hoặc dashboard. Bản MVP vẫn chờ Giai đoạn 4–7.
+
+# Giai đoạn 4 — Lifecycle, reconnect và End đồng bộ (2026-10-27)
+
+**STR-401–STR-407 đạt kiểm chứng tự động toàn diện; STR-408 chờ người dùng tự nghiệm thu OBS. Chưa đánh dấu M4 đạt khi chưa có nghiệm thu OBS.** [Implementation Plan](../Implement%20Plan/Streaming%20MVP%20Phase%204%20Implementation%20Plan.md).
+
+## Build và kiểm chứng tự động
+
+Thực thi trên Java 21.0.11, Docker Desktop (Engine 29.5.3), PostgreSQL 17 Testcontainers và MediaMTX container `1.21.2`:
+
+```sh
+./stream-service/mvnw -f stream-service/pom.xml clean verify
+./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamProvisioningMediaIT -Dstream.provisioning.it=true test
+python3 -m unittest discover -s scripts/testing/streaming -p 'test_*.py' -v
+docker compose config --quiet
+```
+
+| Kiểm chứng | Kết quả | Phạm vi được chứng minh |
+|---|---|---|
+| Stream Service clean verify | **152 test, 0 failure/error/skipped; BUILD SUCCESS** | Toàn bộ regression domain/database/auth/provisioning cùng suite lifecycle mới (152 test tổng) |
+| MediaEventMapperTest | **5/5 PASS** | Parse path `live/{id}`, timestamp UTC, source type mapping và validation |
+| MediaEventControllerTest | **5/5 PASS** | Endpoint `POST /api/media/events`, format DTO, permitAll (không cần account cookie), audit log metadata không lộ query |
+| ReconnectExpirationSchedulerTest | **4/4 PASS** | Polling `findExpiredReconnectingIds`, xử lý theo batch, gọi closure service, error handling an toàn |
+| StreamMediaLifecyclePostgresTest | **12/12 PASS** | ONLINE chuyển LIVE, OFFLINE chuyển RECONNECTING (60s grace), duplicate/stale source handling, scheduler sweep hết hạn, owner End session qua API, idempotent End, access control |
+| StreamSessionControllerTest | **7/7 PASS** | Thêm endpoint `POST /api/streams/{sessionId}/end`, owner authentication, envelope response, delegation sang closure service |
+| StreamProvisioningMediaIT | **3 PASS, 1 OBS opt-in skipped; BUILD SUCCESS** | Nguồn publisher thật kết nối MediaMTX container, webhook MediaMTX gọi trực tiếp callback Stream Service, chuyển trạng thái LIVE thành công |
+| Python streaming tests | **17/17 PASS** | Bao gồm `test_hook.py` với cơ chế single-shot timeout 10s (không retry loop) |
+| Docker Compose config | **exit 0** | docker-compose.yml hợp lệ, map ports và biến môi trường chính xác |
+
+## STR-401–STR-407 — Bằng chứng hành vi
+
+- `mediamtx/media_hook.py` chuyển sang single-shot timeout 10s, trả mã thoát 0 khi HTTP 2xx và 1 khi lỗi; không log stream key/query params. Rebuilt container `reallive-mediamtx:1.21.2`.
+- `MediaEventController` tiếp nhận callback tại `POST /stream/api/media/events` (permitAll cho MediaMTX). Ghi audit log `eventId`, `streamId`, `type`, `outcome`, `status`.
+- `StreamMediaLifecycleServiceImpl.onOnline` khóa bi quan session, kiểm tra Control API `getSource(streamId)` xác nhận `online=true` và đúng connection ID/source type trước khi chuyển `READY`/`RECONNECTING` sang `LIVE`. Ghi nhận `startedAt` lần đầu và ghi `StreamStatusHistoryEntity`. Duplicate ONLINE cho cùng nguồn trả `IGNORED` an toàn.
+- `StreamMediaLifecycleServiceImpl.onOffline` khóa bi quan session, kiểm tra source ID (bỏ qua event từ connection cũ), chuyển `LIVE` sang `RECONNECTING` với grace 60s (`reconnectDeadline = now + 60s`). Duplicate OFFLINE không reset deadline.
+- `ReconnectExpirationScheduler` chạy định kỳ 1s quét các session quá hạn reconnect, gọi `StreamSessionClosureService.expireReconnectIfDue` xóa path và kick nguồn qua MediaMTX Control API trước khi commit `ENDED/CLOSED` vào PostgreSQL.
+- `StreamSessionController.endStream` mở endpoint `POST /stream/api/streams/{id}/end`, chỉ cho phép owner kết thúc session, xóa path và kick nguồn đồng bộ trước khi commit `ENDED/CLOSED`. Gọi lặp lại khi đã `ENDED` xử lý idempotent không ném lỗi. Lỗi MediaMTX rollback DB và trả 503.
+
+## STR-406 — Runbook vận hành thủ công khi lỗi / restart
+
+Hệ thống MVP streaming xử lý đồng bộ từ đầu đến cuối; không có background task queue, worker retry ngầm hay dynamic reconciler. Vì vậy, các sự cố ngoại lệ cần được phát hiện và xử lý theo các bước chuẩn sau:
+
+### 1. Sự cố MediaMTX Container Restart
+
+- **Hiện tượng**: MediaMTX là in-memory server cho dynamic paths. Khi container MediaMTX khởi động lại, toàn bộ exact paths đã đăng ký bị xóa khỏi bộ nhớ MediaMTX.
+- **Tác động đến DB**: Session trong PostgreSQL vẫn giữ trạng thái (`READY`, `LIVE` hoặc `RECONNECTING`).
+- **Hành vi API**:
+  - `GET /stream/api/streams/me/current` sẽ kiểm tra MediaMTX và trả về `publishReady: false`.
+  - Cố gắng cấp lại credential `POST /stream/api/streams/{id}/publish-credentials` sẽ trả về HTTP 503 (`MEDIA_SERVER_UNAVAILABLE`).
+- **Thao tác xử lý thủ công**:
+  1. Streamer hoặc Operator gọi `POST /stream/api/streams/{id}/end` để đóng phiên cũ. Backend sẽ cố gắng xóa path (MediaMTX 404 coi là idempotent) và commit trạng thái `ENDED` trong DB, giải phóng slot của channel.
+  2. Streamer tạo phiên mới qua `POST /stream/api/streams`.
+
+### 2. Sự cố Stream Service Restart
+
+- **Hiện tượng**: Backend Stream Service bị crash hoặc khởi động lại.
+- **Tác động đến DB**: Toàn bộ dữ liệu phiên stream, khóa, lịch sử trạng thái và `reconnectDeadline` nằm an toàn trong PostgreSQL, không bị mất.
+- **Tác động đến MediaMTX**: MediaMTX tiếp tục phục vụ ingest nếu OBS vẫn đang gửi luồng.
+- **Hành vi phục hồi**:
+  - Khi Stream Service online trở lại, `ReconnectExpirationScheduler` tự động tiếp tục quét các session có `reconnectDeadline <= now()` và đóng các phiên quá hạn.
+  - Các mốc thời gian `reconnectDeadline` không bị reset thêm 60 giây.
+  - MediaMTX tự tải JWKS lại từ Stream Service khi có kết nối mới.
+
+### 3. Sự cố Mất Callback Webhook (Network Partition)
+
+- **Hiện tượng**: MediaMTX hook gửi callback tới Stream Service gặp timeout hoặc lỗi mạng.
+- **Tác động**: Trạng thái DB có thể trễ so với nguồn thực tế (ví dụ: OBS đã kết nối nhưng DB vẫn ở `READY`, hoặc OBS đã tắt nhưng DB vẫn ở `LIVE`).
+- **Thao tác xử lý thủ công**:
+  - Kiểm tra trạng thái nguồn thực tế trên MediaMTX:
+    ```sh
+    curl -s http://localhost:9997/v3/paths/get/live/<streamId>
+    ```
+  - Nếu cần đóng phiên cưỡng bức:
+    1. Gọi Control API xóa path trên MediaMTX:
+       ```sh
+       curl -X DELETE http://localhost:9997/v3/config/paths/delete/live/<streamId>
+       ```
+    2. Gọi API End của Stream Service:
+       ```sh
+       curl -X POST http://localhost:8082/stream/api/streams/<streamId>/end -H "Cookie: access_token=..."
+       ```
+
+## Giới hạn và bước tiếp theo
+
+- STR-408 (nghiệm thu OBS thật) đang chờ người dùng tự thực hiện kiểm chứng thủ công.
+- Chưa có API Playback cho Viewer (`GET /stream/api/streams/{id}` và cấp Read JWT HLS), thuộc phạm vi Giai đoạn 5.
+- Chưa có Web UI/Dashboard kết nối WebSocket/HLS, thuộc phạm vi Giai đoạn 6.

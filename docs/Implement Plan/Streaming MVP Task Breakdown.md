@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật 2026-10-25: MVP xử lý đồng bộ từ đầu đến cuối theo yêu cầu người dùng. Không có bảng task, worker retry, lease/revision hoặc reconciler.
-- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26: eligibility, JWT/JWKS và tiếp nhận callback; JWT Java đã kiểm chứng trực tiếp với MediaMTX. STR-301–307 đã triển khai và kiểm chứng tự động; STR-308/M3 chờ người dùng tự nghiệm thu OBS theo [Phase 3 Test Plan](../testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md). Lifecycle Giai đoạn 4–7 chưa hoàn tất.
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26; STR-301–307 và STR-401–407 đã triển khai và kiểm chứng tự động toàn diện (2026-10-27); STR-308/M3 và STR-408/M4 chờ người dùng tự nghiệm thu OBS. Giai đoạn 5–7 chưa hoàn tất.
 - Thiết kế và contract gốc: [Streaming MVP Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md).
 - Kiến trúc đã chốt: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Mục tiêu: triển khai theo từng phần có thể kiểm chứng, đến khi streamer phát được bằng OBS và người dùng đăng nhập xem được trên web.
@@ -320,7 +320,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** `mediamtx/media_hook.py`, Dockerfile/config và helper tests.
 - **Cần làm:** Đọc đúng path/source, gửi request POST JSON trực tiếp có timeout tới Stream Service, chờ response. Không gửi MTX_QUERY/log key. Callback handler xử lý xong trước response, không enqueue.
 - **Hoàn tất khi:** Payload đúng; lỗi được ghi nhận, helper dừng đúng; có đúng một lần gửi cho mỗi lần hook chạy.
-- [ ] STR-401 hoàn tất, helper đồng bộ có kiểm chứng.
+- [x] STR-401 hoàn tất, helper đồng bộ có kiểm chứng.
+- **Kết quả 2026-10-27:** `media_hook.py` chuyển sang cơ chế single-shot timeout 10s, exit 0 khi 2xx, exit 1 khi lỗi/timeout/URL sai; 4/4 unit test trong `test_hook.py` PASS; Docker image `reallive-mediamtx:1.21.2` đã rebuild chứa hook mới.
 
 ### STR-402 — Xử lý ONLINE và chuyển LIVE
 
@@ -328,7 +329,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** Media event controller, lifecycle service và history repository.
 - **Cần làm:** Kết nối DTO vào handler thật; xác nhận nguồn thực tế qua Control API trước khi chuyển READY/RECONNECTING sang LIVE. Ghi source/start/history atomically, chặn online cũ hoặc session ENDED.
 - **Hoàn tất khi:** Chỉ nguồn hợp lệ chuyển LIVE; first startedAt được giữ; duplicate ONLINE và callback đến muộn không hồi sinh session.
-- [ ] STR-402 hoàn tất, ONLINE có test và thử nguồn thật.
+- [x] STR-402 hoàn tất, ONLINE có test và thử nguồn thật.
+- **Kết quả 2026-10-27:** `MediaEventController` tiếp nhận callback tại `POST /stream/api/media/events`, `StreamMediaLifecycleServiceImpl` khóa session, kiểm tra Control API `getSource(sessionId)` online=true và khớp source; atomic chuyển READY/RECONNECTING sang LIVE, giữ first startedAt; duplicate ONLINE trả IGNORED. Kiểm chứng thực tế qua `StreamProvisioningMediaIT` (MediaMTX container gọi callback sang Stream Service chuyển LIVE).
 
 ### STR-403 — Xử lý OFFLINE và bắt đầu reconnect grace
 
@@ -336,7 +338,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** Lifecycle handler/service và source/deadline persistence.
 - **Cần làm:** Phân biệt nguồn hiện tại với connection cũ; LIVE → RECONNECTING, lưu disconnectedAt/deadline 60 giây. Offline lặp giữ nguyên deadline; bỏ qua event của nguồn cũ nếu nguồn mới đang online.
 - **Hoàn tất khi:** Dừng/mất kết nối OBS tạo RECONNECTING đúng; callback lặp/sai thứ tự không kéo dài grace hoặc làm hỏng nguồn mới.
-- [ ] STR-403 hoàn tất, OFFLINE/source ordering có test.
+- [x] STR-403 hoàn tất, OFFLINE/source ordering có test.
+- **Kết quả 2026-10-27:** `StreamMediaLifecycleServiceImpl.onOffline` khóa session, xác thực source connection, chuyển LIVE sang RECONNECTING với disconnectedAt và deadline = now + 60s; offline lặp giữ nguyên deadline; offline từ connection cũ bị bỏ qua. 12/12 integration test PostgreSQL trong `StreamMediaLifecyclePostgresTest` PASS.
 
 ### STR-404 — Quét deadline reconnect và đóng path trực tiếp
 
@@ -344,7 +347,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** Reconnect scheduler/service, query deadline và transaction transition.
 - **Cần làm:** Quét deadline, khóa/recheck status/source theo policy; hết hạn gọi MediaMTX đóng path và chờ kết quả rồi ghi ENDED/CLOSED/history. Lỗi rollback/ghi log, không tạo task retry riêng. Không reset deadline sau backend restart, không cạnh tranh mù với ONLINE.
 - **Hoàn tất khi:** Test clock chứng minh trước/sau deadline đúng, restart không cho thêm 60 giây và timeout cạnh tranh reconnect có kết quả nhất quán.
-- [ ] STR-404 hoàn tất, scheduler deadline và lời gọi đồng bộ có test.
+- [x] STR-404 hoàn tất, scheduler deadline và lời gọi đồng bộ có test.
+- **Kết quả 2026-10-27:** `ReconnectExpirationScheduler` quét `findExpiredReconnectingIds` theo chu kỳ 1s (cấu hình qua `stream.lifecycle.reconnect-sweep-enabled`), gọi `StreamSessionClosureService.expireReconnectIfDue`; khóa session, đóng path và kick nguồn qua Control API, commit ENDED/CLOSED và history atomically. `ReconnectExpirationSchedulerTest` 4/4 PASS.
 
 ### STR-405 — Xây End Stream API và đóng nguồn thật
 
@@ -352,7 +356,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** End controller/use case, MediaMTX adapter và transaction session/history.
 - **Cần làm:** Cho đúng owner kết thúc READY/LIVE/RECONNECTING; khóa session, gọi MediaMTX đóng path/ngắt nguồn và chờ xác nhận rồi commit ENDED/CLOSED/history. End lặp idempotent; lỗi/timeout trả 503 và rollback DB; không 202 hoặc xử lý sau response.
 - **Hoàn tất khi:** Token cũ còn hạn không phát lại sau khi đóng path được xác nhận; không báo hoàn tất giả khi Control API lỗi; callback sau End giữ ENDED.
-- [ ] STR-405 hoàn tất, API End và cleanup có test/thử thực tế.
+- [x] STR-405 hoàn tất, API End và cleanup có test/thử thực tế.
+- **Kết quả 2026-10-27:** `POST /stream/api/streams/{sessionId}/end` được thêm vào `StreamSessionController`; yêu cầu owner authenticated, khóa session, gọi MediaMTX xóa path và kick connection, commit ENDED/CLOSED; idempotent khi đã ENDED; lỗi trả 503 rollback DB; controller slice test 7/7 PASS và integration test PASS.
 
 ### STR-406 — Chốt giới hạn lỗi/restart và hướng dẫn thao tác thủ công
 
@@ -360,7 +365,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** Runbook MediaMTX/Stream Service và tài liệu kiểm thử.
 - **Cần làm:** Ghi cách kiểm tra DB/path/source khi timeout, crash, mất callback hoặc MediaMTX restart. Nêu rõ không tự restore path, đóng bù, retry queue hoặc reconcile; backend restart vẫn giữ deadline/key.
 - **Hoàn tất khi:** Giới hạn MVP đồng bộ được ghi chính xác; có hướng dẫn thủ công, không yêu cầu implementation recovery tự động.
-- [ ] STR-406 hoàn tất, giới hạn/runbook được rà soát.
+- [x] STR-406 hoàn tất, giới hạn/runbook được rà soát.
+- **Kết quả 2026-10-27:** Runbook chi tiết được lập tại [Streaming MVP Tests](../testing/Streaming%20MVP%20Tests.md#str-406--runbook-van-hanh-thu-cong-khi-loi--restart) và [Phase 4 Implementation Plan](Streaming%20MVP%20Phase%204%20Implementation%20Plan.md#6-str-406--gioi-han-loirestart-va-huong-dan-thao-tac-thu-cong).
 
 ### STR-407 — Kiểm thử concurrency và lỗi lifecycle
 
@@ -368,7 +374,8 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Module/file:** Service/DB/adapter integration tests.
 - **Cần làm:** Test End đấu với create/reconnect, offline cũ sau online mới, callback lặp và lỗi/timeout Control API. Kiểm tra state/history/slot; response chờ kết quả, không task hoặc retry ngầm.
 - **Hoàn tất khi:** Các invariant vẫn giữ khi lời gọi thành công; lỗi không báo thành công giả; ENDED không bị callback hồi sinh. Không nghiệm thu tự recovery sau crash/timeout.
-- [ ] STR-407 hoàn tất, regression lifecycle đạt.
+- [x] STR-407 hoàn tất, regression lifecycle đạt.
+- **Kết quả 2026-10-27:** `StreamMediaLifecyclePostgresTest` với 12 test case concurrency/lifecycle trên PostgreSQL 17 Testcontainers; toàn bộ 152 test của Stream Service verify thành công (0 failure/0 error).
 
 ### STR-408 — Nghiệm thu nguồn phát và lifecycle bằng OBS thật
 
@@ -378,7 +385,7 @@ Mục tiêu: trạng thái DB/UI theo nguồn thật và phiên ENDED không b�
 - **Hoàn tất khi:** DB/API phản ánh nguồn thực tế và các khác biệt giữa web/OBS/network đúng kiến trúc; có bằng chứng phiên ENDED không phát lại được.
 - [ ] STR-408 hoàn tất, kết thúc giai đoạn 4.
 
-**Mốc nghiệm thu giai đoạn 4:** Streamer phát, reconnect và kết thúc được qua API; vòng đời và media cleanup hoạt động thật, không chỉ dựa trên status trong DB.
+**Mốc nghiệm thu giai đoạn 4:** STR-401–STR-407 hoàn tất và kiểm chứng tự động toàn diện. STR-408 chờ người dùng tự nghiệm thu OBS. Xem [Phase 4 Implementation Plan](Streaming%20MVP%20Phase%204%20Implementation%20Plan.md).
 
 ## 7. Giai đoạn 5 — Playback API và xem stream trực tiếp
 
