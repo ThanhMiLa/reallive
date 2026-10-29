@@ -5,8 +5,11 @@ import com.reallive.streamservice.common.util.AuthenticationUserId;
 import com.reallive.streamservice.stream.dto.request.CreateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
+import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
+import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
+import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import jakarta.validation.Valid;
@@ -36,6 +39,7 @@ public class StreamSessionController {
 
     StreamSessionService streamSessionService;
     StreamSessionClosureService streamSessionClosureService;
+    StreamPlaybackService streamPlaybackService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<CreateStreamSessionResponse>> createStreamSession(
@@ -50,6 +54,20 @@ public class StreamSessionController {
     public ResponseEntity<ApiResponse<StreamSessionResponse>> getCurrentStreamSession(@AuthenticationPrincipal Jwt principal) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
                 streamSessionService.current(AuthenticationUserId.getAuthenticatedUserId(principal)), 200, "Current stream session retrieved"));
+    }
+
+    @GetMapping("/{sessionId}")
+    public ResponseEntity<ApiResponse<StreamMetadataResponse>> getStreamMetadata(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
+                streamSessionService.metadata(sessionId), 200, "Stream metadata retrieved"));
+    }
+
+    @PostMapping("/{sessionId}/playback-access")
+    public ResponseEntity<ApiResponse<StreamPlaybackAccessResponse>> issuePlaybackAccess(
+            @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
+                streamPlaybackService.access(sessionId, AuthenticationUserId.getAuthenticatedUserId(principal)),
+                200, "Playback access issued successfully"));
     }
 
     @PatchMapping("/{sessionId}")

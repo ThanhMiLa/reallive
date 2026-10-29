@@ -10,10 +10,13 @@ import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
+import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
+import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import org.junit.jupiter.api.Test;
@@ -44,6 +47,7 @@ class StreamSessionControllerTest {
     @Autowired private MockMvc mvc;
     @MockitoBean private StreamSessionService service;
     @MockitoBean private StreamSessionClosureService closureService;
+    @MockitoBean private StreamPlaybackService playbackService;
     @MockitoBean private CustomJwtDecoder decoder;
     @MockitoBean private RedisAuthoritiesReader authorities;
     private final UUID owner = UUID.randomUUID();
@@ -58,7 +62,9 @@ class StreamSessionControllerTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/streams/" + session + "/publish-credentials")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/streams/" + session + "/end")).andExpect(status().isUnauthorized());
-        verifyNoInteractions(service, closureService);
+        mvc.perform(get("/api/streams/" + session)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/streams/" + session + "/playback-access")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(service, closureService, playbackService);
     }
 
     @Test
@@ -157,6 +163,75 @@ class StreamSessionControllerTest {
                     .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.code").value(error.getCode()));
         }
+    }
+
+    @Test
+    void viewerMetadataIsNoStoreAndContainsNoCredentialsForEveryLifecycleState() throws Exception {
+        var startedAt = Instant.parse("2026-10-29T01:00:00Z");
+        for (var status : StreamSessionStatus.values()) {
+            var metadata = new StreamMetadataResponse(session, UUID.randomUUID(), "Title", UUID.randomUUID(),
+                    StreamVisibility.PUBLIC, status, startedAt, null, null, Instant.parse("2026-10-29T02:00:00Z"));
+            when(service.metadata(session)).thenReturn(metadata);
+
+            mvc.perform(get("/api/streams/" + session).with(jwt()))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.result.id").value(session.toString()))
+                    .andExpect(jsonPath("$.result.status").value(status.name()))
+                    .andExpect(jsonPath("$.result.visibility").value("PUBLIC"))
+                    .andExpect(jsonPath("$.result.playbackUrl").doesNotExist())
+                    .andExpect(jsonPath("$.result.readToken").doesNotExist())
+                    .andExpect(jsonPath("$.result.streamKey").doesNotExist());
+        }
+        verify(service, times(StreamSessionStatus.values().length)).metadata(session);
+        verifyNoInteractions(playbackService);
+    }
+
+    @Test
+    void playbackAccessReturnsUrlAndReadTokenWithoutCacheOrPublishCredentials() throws Exception {
+        var expiresAt = Instant.parse("2026-10-29T02:05:00Z");
+        var access = new StreamPlaybackAccessResponse(session,
+                "http://localhost:8898/live/" + session + "/index.m3u8", "read.jwt.value", expiresAt);
+        when(playbackService.access(session, owner)).thenReturn(access);
+
+        mvc.perform(post("/api/streams/" + session + "/playback-access")
+                        .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.result.sessionId").value(session.toString()))
+                .andExpect(jsonPath("$.result.playbackUrl")
+                        .value("http://localhost:8898/live/" + session + "/index.m3u8"))
+                .andExpect(jsonPath("$.result.readToken").value("read.jwt.value"))
+                .andExpect(jsonPath("$.result.readExpiresAt").value("2026-10-29T02:05:00Z"))
+                .andExpect(jsonPath("$.result.streamKey").doesNotExist())
+                .andExpect(jsonPath("$.result.publishExpiresAt").doesNotExist());
+
+        verify(playbackService).access(session, owner);
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void playbackAccessKeepsTheStandardHttpErrorsForUnavailableSessions() throws Exception {
+        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_FOUND, ErrorCode.ACCESS_DENIED,
+                ErrorCode.STREAM_SESSION_STATE_INVALID)) {
+            doThrow(new AppException(error)).when(playbackService).access(session, owner);
+            mvc.perform(post("/api/streams/" + session + "/playback-access")
+                            .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                    .andExpect(status().is(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.code").value(error.getCode()));
+        }
+    }
+
+    @Test
+    void invalidSessionIdentifiersAreRejectedBeforeCallingViewerServices() throws Exception {
+        mvc.perform(get("/api/streams/not-a-uuid").with(jwt()))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
+        mvc.perform(post("/api/streams/not-a-uuid/playback-access").with(jwt()))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
+        verifyNoInteractions(service, playbackService);
     }
 
     private String createBody() {

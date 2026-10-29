@@ -4,6 +4,7 @@ import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
 import com.reallive.streamservice.stream.dto.request.CreateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
+import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
 
@@ -46,6 +47,16 @@ public interface StreamSessionService {
      * @throws AppException if the session is absent, unowned, ended, beyond grace, ineligible or its path is unavailable
      */
     StreamPublishCredentialsResponse publishCredentials(UUID sessionId, UUID ownerUserId);
+
+    /**
+     * Returns viewer-facing metadata for a PUBLIC session in any lifecycle state.
+     * The read-only lookup issues no credential, performs no media I/O and does not mutate the session.
+     *
+     * @param sessionId session to read
+     * @return persisted metadata and the current server time, without playback URL or credentials
+     * @throws AppException if the session does not exist or its visibility is outside the MVP viewing scope
+     */
+    StreamMetadataResponse metadata(UUID sessionId);
 
     /**
      * Returns the owner's active session, including a readiness observation and the persisted reconnect deadline.
