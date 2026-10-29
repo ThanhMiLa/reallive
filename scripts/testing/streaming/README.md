@@ -107,6 +107,8 @@ URL xem đúng là `http://localhost:8898/live/<SESSION_UUID>/index.m3u8`; URL R
 
 ## Backend account thật cho giai đoạn 5
 
+Quy trình từng bước từ Create session, OBS, browser, JWT, reconnect đến End và hết grace: [Phase 5 Test Plan](../../../docs/testing/Streaming%20MVP%20Phase%205%20Test%20Plan.md).
+
 Chế độ này dùng account đã đăng nhập qua Gateway để gọi đúng hai API viewer. Account cookie chỉ nằm trong file private phía server fixture; Read JWT do backend cấp chỉ giữ trong memory của trang và không ghi vào localStorage/report.
 
 Yêu cầu: Stream Service, Gateway và MediaMTX đang chạy; HLS allow-origin có `http://localhost:5173` (cấu hình local mặc định và `compose.fixture.yml` đã có). Với Docker Compose dev, kiểm tra `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` trước khi thử browser.
@@ -149,11 +151,33 @@ Helper gọi `GET /stream/api/streams/{id}` rồi `POST /stream/api/streams/{id}
 
 ### Kiểm chứng trên browser
 
+Regression fixture/player (chạy từ root):
+
+```sh
+python3 -m unittest discover -s scripts/testing/streaming -p 'test_*.py' -v
+node --test scripts/testing/streaming/test_player.mjs
+```
+
+Player gắn session và nguồn access đã mở vào kết quả browser. Browser evidence backend chỉ được nhận cho session đã được fixture cấp access. OBS evidence dùng session/backend mode đang chọn, đối chiếu metadata và source của session đó, kể cả khi chưa mở player. Backend mode từ chối cả browser/OBS observation thiếu context. Backend client từ chối redirect để giữ account cookie tại Gateway đã cấu hình.
+
 1. Mở `http://localhost:5173` bằng Chrome/Edge desktop.
+   Dùng đúng hostname `localhost`; `http://127.0.0.1:5173` là origin khác, không nằm trong HLS allow-origin local mặc định và có thể gây `networkError/manifestLoadError` dù metadata vẫn đọc được.
 2. Ở mục 2, chọn **Backend account thật**, nhập Session UUID.
 3. Bấm **Đọc metadata backend**: chỉ gọi GET, không cấp token. Lặp lại để xác nhận polling không sinh credential.
 4. Bấm **Mở phiên xem mới**: fixture gọi POST playback-access, player dùng Read JWT backend cấp để mở HLS. Xác nhận hình/tiếng, tích nghe tiếng và lưu kết quả browser.
 5. DevTools → Network: request playlist/segment phải tới MediaMTX `localhost:8898`, có `Authorization: Bearer`, **không** mang account cookie; response metadata/POST có `Cache-Control: no-store`; token không xuất hiện trong URL.
+
+Khung trạng thái và acceptance dùng session/backend mode đang chọn, hiển thị rõ session ID. Backend acceptance đọc riêng các evidence `browser`, `obs-publish`, `obs-reconnect`, `obs-end` của đúng session, không lấy kết quả protocol/hooks/confirmation M0 để thay thế. Đây là kiểm tra evidence thủ công, chưa tự chốt STR-505/M5.
+
+Chạy kiểm tra evidence backend qua CLI:
+
+```sh
+python3 scripts/testing/streaming/acceptance.py --access-source backend --session-id '<SESSION_UUID>'
+```
+
+Không truyền lựa chọn nào thì CLI giữ chế độ nghiệm thu M0. Truyền session ID mà thiếu `--access-source backend` sẽ bị từ chối thay vì âm thầm kiểm tra session M0. Các OBS record cũ bị gắn nhầm session A không thể suy ra lại B: cần ghi nhận lại cho session đúng, không tự đổi lịch sử.
+
+Trong backend mode, các nút tạo/xóa path và copy key M0 bị tắt. Kết thúc buổi phát backend bằng End API với account owner rồi ghi nhận OBS/key cũ bị từ chối; không dùng nút xóa path M0 để kết thúc session backend.
 
 ### Case âm tính và expiry
 
@@ -165,6 +189,8 @@ Helper gọi `GET /stream/api/streams/{id}` rồi `POST /stream/api/streams/{id}
 Không đánh dấu STR-505/M5 hoàn tất nếu chưa có xác nhận account thật, nguồn LIVE và hình/tiếng trên browser.
 
 ## Dừng fixture
+
+Với backend mode: nếu muốn kết thúc buổi phát, dùng End API của session backend, rồi dừng fixture bằng Ctrl+C. Quy trình `stack.py down` dưới đây chỉ dành cho stack thử nghiệm M0.
 
 Stop Streaming trong OBS, đóng path trên trang, sau đó:
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Streaming MVP · Kiểm chứng giai đoạn 0</title>
+  <title>Streaming MVP · Kiểm chứng media</title>
   <style>
     body { font: 16px/1.5 system-ui, sans-serif; max-width: 960px; margin: 32px auto; padding: 0 20px; color: #20252b; }
     section { border: 1px solid #cbd2d9; border-radius: 8px; padding: 18px; margin: 20px 0; }
@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <h1>Streaming MVP · Kiểm chứng giai đoạn 0</h1>
+  <h1>Streaming MVP · Kiểm chứng media</h1>
   <p class="note">Fixture local dùng tài khoản và JWT test. Bạn tự thao tác OBS và trình duyệt. Trang này không điều khiển ứng dụng, không lưu token vào localStorage.</p>
   <p id="message" role="status"></p>
   <section>
@@ -35,6 +35,14 @@
   </section>
   <section>
     <h2>2. Kiểm chứng HLS trên browser</h2>
+    <label>Nguồn access
+      <select id="access-source"><option value="fixture">Fixture token test (giai đoạn 0)</option><option value="backend">Backend account thật (giai đoạn 5)</option></select>
+    </label>
+    <label>Session ID backend
+      <input id="backend-session-id" placeholder="UUID của session LIVE" size="38">
+    </label>
+    <button id="backend-metadata">Đọc metadata backend</button>
+    <pre id="backend-metadata-result">Chưa đọc metadata backend.</pre>
     <label>Trường hợp token xem
       <select id="read-case"><option value="valid">Hợp lệ</option><option value="missing">Thiếu token</option><option value="wrong-action">Sai quyền (Publish JWT)</option><option value="wrong-path">Sai path</option><option value="wrong-signature">Sai chữ ký</option><option value="expired">Hết hạn</option></select>
     </label>
@@ -43,7 +51,7 @@
     <p id="play-status">Chưa mở player.</p>
     <label><input id="audio-confirmed" type="checkbox"> Tôi đã nghe được tiếng từ video test</label><br>
     <button id="record-browser">Lưu kết quả browser đang hiển thị</button>
-    <p class="note">DevTools → Network: playlist/segment phải tới localhost:8898, có Authorization Bearer và không mang account cookie. Mỗi lần thử token sai dùng nút mở phiên mới.</p>
+    <p class="note">Backend account: fixture đọc cookie từ file private phía server, gọi Gateway GET metadata rồi POST playback-access. Trang chỉ giữ Read JWT trong memory; không lưu localStorage. Các case token sai dùng fixture token test. DevTools → Network: playlist/segment phải tới MediaMTX, có Authorization Bearer và không mang account cookie.</p>
   </section>
   <section>
     <h2>3. Ngắt, nối lại và kết thúc</h2>

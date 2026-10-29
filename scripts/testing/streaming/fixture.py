@@ -15,7 +15,10 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID, uuid4
+
+from backend_access import BackendClient, BackendError, load_cookie
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_STATE = REPO / '.local/streaming'
@@ -175,17 +178,64 @@ def validate_event(event):
         raise ValueError('Callback time requires timezone')
 
 
-def make_server(state, host='127.0.0.1', port=18082):
+def make_server(state, host='127.0.0.1', port=18082, backend=None):
     events_file = state / 'events.jsonl'
     seen = set()
     if events_file.exists():
         seen.update(json.loads(line)['eventId'] for line in events_file.read_text().splitlines() if line)
     event_lock = threading.Lock()
+    backend_sessions = set()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
             # Base logging can expose request queries. Fixtures log only safe event IDs.
             pass
+
+        def fixture_host_allowed(self):
+            host = self.headers.get('Host', '')
+            allowed = ['localhost:' + str(self.server.server_port), '127.0.0.1:' + str(self.server.server_port)]
+            if host not in allowed:
+                return False
+            origin = self.headers.get('Origin')
+            return origin is None or origin == 'http://' + host
+
+        def backend_metadata(self):
+            if backend is None:
+                self.respond(503, {'error': 'backend_mode_disabled'})
+                return
+            if not self.fixture_host_allowed():
+                self.respond(403, {'error': 'fixture_requires_same_local_origin'})
+                return
+            session_id = parse_qs(urlsplit(self.path).query).get('sessionId', [None])[0]
+            if not session_id:
+                self.respond(400, {'error': 'session_id_required'})
+                return
+            try:
+                metadata = backend.metadata(session_id)
+                self.respond(200, metadata)
+            except (BackendError, ValueError) as error:
+                self.backend_error(error, 'backend_metadata_failed')
+
+        def backend_error(self, error, fallback):
+            status = getattr(error, 'status', None) or 502
+            code = getattr(error, 'code', None)
+            detail = {'error': fallback}
+            if code is not None:
+                detail['code'] = code
+            self.respond(status, detail)
+
+        def acceptance_context(self):
+            query = parse_qs(urlsplit(self.path).query)
+            source = query.get('accessSource', ['fixture'])[0]
+            if source == 'fixture':
+                if 'sessionId' in query:
+                    raise ValueError('Session selection requires backend mode')
+                return source, None
+            if source != 'backend':
+                raise ValueError('Invalid access source')
+            if backend is None:
+                raise BackendError('Backend mode disabled', status=503)
+            return source, str(UUID(query.get('sessionId', [''])[0]))
 
         def respond(self, status, value):
             data = json.dumps(value).encode()
@@ -220,27 +270,57 @@ def make_server(state, host='127.0.0.1', port=18082):
                 self.send_header('X-Frame-Options', 'DENY')
                 self.end_headers()
                 self.wfile.write(data)
-            elif self.path == '/fixture/status':
+            elif urlsplit(self.path).path == '/fixture/status':
                 from media import request, safe_source
-                values = json.loads((state / 'fixtures.json').read_text())
+                if not self.fixture_host_allowed():
+                    self.respond(403, {'error': 'fixture_requires_same_local_origin'})
+                    return
+                try:
+                    access_source, session_id = self.acceptance_context()
+                    if access_source == 'backend':
+                        metadata = backend.metadata(session_id)
+                        values = {'sessionId': session_id, 'path': 'live/' + session_id,
+                                  'status': metadata.get('status')}
+                    else:
+                        values = json.loads((state / 'fixtures.json').read_text())
+                except ValueError:
+                    self.respond(400, {'error': 'invalid_session_context'})
+                    return
+                except BackendError as error:
+                    self.backend_error(error, 'backend_metadata_failed')
+                    return
                 status, source = request(state, 'GET', '/v3/paths/get/' + values['path'])
                 configured, _ = request(state, 'GET', '/v3/config/paths/get/' + values['path'])
                 with event_lock:
                     events = ([json.loads(line) for line in events_file.read_text().splitlines()]
                               if events_file.exists() else [])
                 self.respond(200, {'sessionId': values['sessionId'], 'path': values['path'],
-                                  'serverUrl': values['serverUrl'], 'playbackUrl': values['playbackUrl'],
+                                  'accessSource': access_source, 'status': values.get('status'),
+                                  'serverUrl': values.get('serverUrl'), 'playbackUrl': values.get('playbackUrl'),
+                                  'backendEnabled': backend is not None,
                                   'configured': configured == 200,
                                   'source': safe_source(source) if status == 200 else None,
                                   'events': [event for event in events if event['path'] == values['path']][-20:]})
-            elif self.path == '/fixture/acceptance':
+            elif self.path.startswith('/fixture/backend-metadata'):
+                self.backend_metadata()
+            elif urlsplit(self.path).path == '/fixture/acceptance':
                 from acceptance import evaluate
-                self.respond(200, evaluate(state))
+                if not self.fixture_host_allowed():
+                    self.respond(403, {'error': 'fixture_requires_same_local_origin'})
+                    return
+                try:
+                    access_source, session_id = self.acceptance_context()
+                    self.respond(200, evaluate(state, session_id, access_source))
+                except ValueError:
+                    self.respond(400, {'error': 'invalid_session_context'})
+                except BackendError as error:
+                    self.backend_error(error, 'backend_acceptance_failed')
             else:
                 self.respond(404, {'error': 'not_found'})
 
         def do_POST(self):
-            if self.path not in [EVENTS_PATH, '/fixture/credentials', '/fixture/path', '/fixture/observation']:
+            if self.path not in [EVENTS_PATH, '/fixture/credentials', '/fixture/path', '/fixture/observation',
+                                 '/fixture/backend-access']:
                 self.respond(404, {'error': 'not_found'})
                 return
             try:
@@ -264,9 +344,24 @@ def make_server(state, host='127.0.0.1', port=18082):
                     return
                 try:
                     value = json.loads(body)
+                    if self.path == '/fixture/backend-access':
+                        if backend is None:
+                            self.respond(503, {'error': 'backend_mode_disabled'})
+                            return
+                        if set(value) != {'sessionId'}:
+                            raise ValueError('Invalid backend access request')
+                        access = backend.acquire(value['sessionId'])
+                        with event_lock:
+                            backend_sessions.add(access.session_id)
+                        self.respond(200, {'sessionId': access.session_id, 'playbackUrl': access.playback_url,
+                                          'readToken': access.read_token, 'readExpiresAt': access.read_expires_at,
+                                          'path': access.path, 'status': access.metadata.get('status')})
+                        return
                     self.fixture_post(value)
                 except (ValueError, TypeError, KeyError, AttributeError):
                     self.respond(400, {'error': 'invalid_fixture_request'})
+                except BackendError as error:
+                    self.backend_error(error, 'backend_access_failed')
                 return
             try:
                 event = json.loads(body)
@@ -286,7 +381,22 @@ def make_server(state, host='127.0.0.1', port=18082):
 
         def fixture_post(self, value):
             from media import request
-            values = json.loads((state / 'fixtures.json').read_text())
+            backend_observation = (self.path == '/fixture/observation'
+                                   and value.get('kind') in ['browser', 'obs']
+                                   and value.get('accessSource') == 'backend')
+            if backend_observation:
+                session_id = str(UUID(value['sessionId']))
+                with event_lock:
+                    granted = session_id in backend_sessions
+                if value['kind'] == 'browser' and not granted:
+                    raise ValueError('Backend observation requires an access granted by this fixture')
+                if backend is None:
+                    raise ValueError('Backend mode disabled')
+                metadata = backend.metadata(session_id)
+                values = {'sessionId': session_id, 'path': 'live/' + session_id,
+                          'backendStatus': metadata.get('status')}
+            else:
+                values = json.loads((state / 'fixtures.json').read_text())
             path = values['path']
             if self.path == '/fixture/path':
                 if value == {'action': 'create'}:
@@ -326,6 +436,14 @@ def make_server(state, host='127.0.0.1', port=18082):
             else:
                 if value.get('kind') == 'browser':
                     expected = {'kind', 'case', 'frames', 'seconds', 'audioConfirmed', 'playlistLoads', 'segmentLoads', 'httpError'}
+                    if 'accessSource' in value or 'sessionId' in value:
+                        expected |= {'accessSource', 'sessionId'}
+                        if value.get('accessSource') not in ['fixture', 'backend']:
+                            raise ValueError('Invalid browser access source')
+                        if str(UUID(value['sessionId'])) != values['sessionId']:
+                            raise ValueError('Observation does not match the viewed session')
+                    elif backend is not None:
+                        raise ValueError('Browser observation requires its session and access source')
                     if set(value) != expected or value['case'] not in ['valid', 'missing', 'wrong-action', 'wrong-path', 'wrong-signature', 'expired']:
                         raise ValueError('Invalid browser result')
                     for field in ['frames', 'seconds', 'playlistLoads', 'segmentLoads', 'httpError']:
@@ -334,7 +452,15 @@ def make_server(state, host='127.0.0.1', port=18082):
                     if type(value['audioConfirmed']) is not bool:
                         raise ValueError('Invalid audio confirmation')
                 elif value.get('kind') == 'obs':
-                    if set(value) != {'kind', 'step'} or value['step'] not in ['publish', 'reconnect', 'old-key-rejected']:
+                    expected = {'kind', 'step'}
+                    if 'accessSource' in value or 'sessionId' in value:
+                        expected |= {'accessSource', 'sessionId'}
+                        if (value.get('accessSource') not in ['fixture', 'backend']
+                                or str(UUID(value['sessionId'])) != values['sessionId']):
+                            raise ValueError('Invalid OBS session context')
+                    elif backend is not None:
+                        raise ValueError('OBS observation requires its session and access source')
+                    if set(value) != expected or value['step'] not in ['publish', 'reconnect', 'old-key-rejected']:
                         raise ValueError('Invalid OBS result')
                 else:
                     raise ValueError('Invalid observation')
@@ -355,6 +481,8 @@ def make_server(state, host='127.0.0.1', port=18082):
                               media=safe_source(observed) if status == 200 else None,
                               pathConfigured=configured == 200,
                               recordedAt=datetime.now(timezone.utc).isoformat())
+                if backend_observation:
+                    record['backendStatus'] = values['backendStatus']
                 with event_lock:
                     descriptor = os.open(state / 'manual-results.jsonl', os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
                     with os.fdopen(descriptor, 'a') as output:
@@ -370,8 +498,16 @@ def main():
     parser.add_argument('--state-dir', type=Path, default=DEFAULT_STATE)
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=18082)
+    parser.add_argument('--gateway-base-url', default='http://localhost:8888')
+    parser.add_argument('--account-cookie-file', type=Path)
     args = parser.parse_args()
     state = args.state_dir.resolve()
+    backend = None
+    if args.account_cookie_file:
+        try:
+            backend = BackendClient(args.gateway_base_url, load_cookie(args.account_cookie_file))
+        except ValueError as error:
+            parser.error(str(error))
     if args.command == 'prepare':
         prepare(state)
     elif args.command == 'verify':
@@ -382,8 +518,10 @@ def main():
             raise ValueError('Unexpected JWKS parameters')
         print('PASS: publish/read/api signatures, claims and exact permissions; JWKS is public-only.')
     else:
-        with make_server(state, args.host, args.port) as server:
-            print('Fixture ready at http://' + args.host + ':' + str(args.port), flush=True)
+        with make_server(state, args.host, args.port, backend=backend) as server:
+            mode = 'backend account' if backend else 'local fixture tokens'
+            browser_host = 'localhost' if args.host == '127.0.0.1' else args.host
+            print('Fixture ready at http://' + browser_host + ':' + str(args.port) + ' (' + mode + ')', flush=True)
             try:
                 server.serve_forever()
             except KeyboardInterrupt:
