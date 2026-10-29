@@ -445,7 +445,9 @@ Hệ thống MVP streaming xử lý đồng bộ từ đầu đến cuối; khô
 
 ## Giai đoạn 5 — Metadata và Playback Access (2026-10-29)
 
-Trạng thái: **STR-501, STR-503 và STR-504 PASS bằng kiểm thử tự động**. **STR-505 PENDING**: fixture/helper backend mode đã sẵn sàng nhưng chưa có account thật, nguồn OBS/MediaMTX LIVE và xác nhận browser trong môi trường hiện tại.
+**Cập nhật nghiệm thu 2026-10-30:** STR-501/503/504/505 và M5 hoàn tất. Review độc lập đã kiểm chứng account thật qua Gateway, HLS/codec/expiry; hai lỗi fixture/helper được sửa với 40/40 Python test và 5/5 player unit test PASS. Browser được kiểm tra bổ sung và người dùng xác nhận toàn bộ giai đoạn 5 đã OK. Xem [Phase 5 Acceptance Review](Streaming%20MVP%20Phase%205%20Acceptance%20Review.md) cho kết quả mới; các mục dưới đây giữ báo cáo của đợt triển khai ban đầu.
+
+Trạng thái tại lần triển khai ban đầu: **STR-501, STR-503 và STR-504 PASS bằng kiểm thử tự động**; STR-505 khi đó còn chờ runtime. Kết quả nghiệm thu bổ sung và trạng thái cuối nằm trong Acceptance Review, mục 8.
 
 ### Lệnh đã chạy
 
@@ -480,7 +482,7 @@ Không có test Maven bị skip. Không thêm migration/schema; không thay đ�
 - `POST /stream/api/streams/{sessionId}/playback-access` không cần body; mở transaction riêng, khóa bi quan session bằng `findByIdForUpdate`, kiểm tra PUBLIC/LIVE dưới khóa, ghép URL từ `stream.media.hls-public-base-url` + `playback_path`, và gọi `MediaJwtIssuer.issueRead`. Token trả riêng, không nằm trong URL; không có Publish/API token.
 - Lỗi dùng `AppException(ErrorCode)`: không tồn tại `1006/404`, không PUBLIC `1002/403`, không LIVE `1009/409`; response lỗi giữ `ApiResponse` chuẩn.
 
-### STR-505 — chưa nghiệm thu
+### STR-505 — phần còn chờ tại lần triển khai ban đầu
 
 Đã bổ sung nhưng **chưa chạy với hạ tầng thật**:
 
@@ -493,5 +495,5 @@ Chưa có bằng chứng cho: account/cookie hợp lệ qua Gateway, nguồn OBS
 ## Giới hạn và bước tiếp theo
 
 - STR-408 (nghiệm thu OBS thật) đang chờ người dùng tự thực hiện kiểm chứng thủ công.
-- STR-505 đang chờ account thật + MediaMTX/OBS LIVE + xác nhận browser; hai API và fixture backend mode đã sẵn sàng.
+- STR-505/M5 hoàn tất ngày 2026-10-30 theo kiểm chứng backend/media/browser và xác nhận nghiệm thu thủ công của người dùng. Hướng dẫn chạy lại: [Phase 5 Test Plan](Streaming%20MVP%20Phase%205%20Test%20Plan.md); nguồn bằng chứng: [Phase 5 Acceptance Review](Streaming%20MVP%20Phase%205%20Acceptance%20Review.md).
 - Chưa có Web UI/Dashboard kết nối HLS, thuộc phạm vi Giai đoạn 6.

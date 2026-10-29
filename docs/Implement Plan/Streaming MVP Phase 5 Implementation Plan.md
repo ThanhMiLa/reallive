@@ -1,11 +1,13 @@
 # Kế hoạch Giai đoạn 5 — Metadata và Playback Access
 
-- Cập nhật: 2026-10-29.
-- Trạng thái: STR-501, STR-503 và STR-504 đã triển khai, kiểm thử tự động đạt ngày 2026-10-29; STR-505 mới hoàn thiện fixture backend mode, chưa nghiệm thu media/browser thật.
+- Cập nhật: 2026-10-30.
+- Trạng thái: STR-501, STR-503, STR-504 và STR-505 hoàn tất; M5 đạt. Backend/helper đã được kiểm chứng tự động và với account/media thật; người dùng xác nhận hoàn tất nghiệm thu thủ công ngày 2026-10-30.
 - Nguồn: [Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md), [Task Breakdown](Streaming%20MVP%20Task%20Breakdown.md#7-giai-đoạn-5--playback-api-và-xem-stream-trực-tiếp), [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Phạm vi: STR-501, STR-503, STR-504 và STR-505 theo Task Breakdown.
 - Tiền đề: tái sử dụng nền tảng database, authentication, JWT, provisioning và lifecycle của giai đoạn 0–4.
 - Quyết định đã chốt: hai endpoint riêng; frontend điều phối GET metadata và POST playback-access.
+
+**Nghiệm thu:** Review ngày 2026-10-29 kiểm chứng backend, account/media thật và sửa hai lỗi fixture/helper. Ngày 2026-10-30, người dùng xác nhận toàn bộ giai đoạn 5 đã OK sau khi thực hiện hướng dẫn OBS/browser và các case còn lại; STR-505/M5 được chốt theo xác nhận này. Xem [Phase 5 Acceptance Review](../testing/Streaming%20MVP%20Phase%205%20Acceptance%20Review.md) và [Test Plan](../testing/Streaming%20MVP%20Phase%205%20Test%20Plan.md).
 
 ## 1. Mục tiêu và phạm vi triển khai
 
@@ -274,7 +276,7 @@ Bàn giao cho giai đoạn 6:
 
 ## 8. Kết quả triển khai (2026-10-29)
 
-Trạng thái thực tế: **STR-501, STR-503 và STR-504 đã triển khai và đạt kiểm thử tự động**. **STR-505 mới hoàn thiện fixture/helper backend mode; chưa nghiệm thu MediaMTX/browser/OBS thật, nên M5 chưa hoàn tất.**
+Trạng thái tại lần triển khai ban đầu ngày 2026-10-29: **STR-501, STR-503 và STR-504 đã triển khai và đạt kiểm thử tự động**. STR-505 khi đó mới có fixture/helper; kết quả nghiệm thu bổ sung và trạng thái M5 cuối cùng được ghi tại mục 9.
 
 ### 8.1. Thay đổi backend
 
@@ -308,7 +310,7 @@ node --check scripts/testing/streaming/player.js
 - **23/23 Python fixture tests PASS**, gồm backend client, cookie file private, same-origin, direct metadata → playback-access, từ chối khi chưa LIVE và không rò cookie/token trong lỗi.
 - JS syntax PASS.
 
-### 8.3. STR-505 — phần đã làm và phần còn chờ
+### 8.3. STR-505 — báo cáo của lần triển khai ban đầu
 
 Đã bổ sung:
 
@@ -317,7 +319,7 @@ node --check scripts/testing/streaming/player.js
 - `player.html`/`player.js`: chọn nguồn `Backend account thật`, nhập session ID, polling metadata 3 giây, chỉ gọi POST khi mở phiên HLS.
 - `inspect_playback.py --access-mode backend --account-cookie-file ...`: dùng đúng Read JWT backend cấp để kiểm tra master/rendition/init/segment và decode audio/video.
 
-Chưa nghiệm thu:
+Các phần chưa nghiệm thu tại thời điểm triển khai ban đầu:
 
 - Chưa có account thật/cookie hợp lệ trong môi trường hiện tại; chưa chạy MediaMTX với nguồn OBS thật.
 - Chưa xác nhận hình/tiếng trên Chrome/Edge bằng Read JWT backend cấp.
@@ -325,3 +327,11 @@ Chưa nghiệm thu:
 - Vì vậy **không đánh dấu STR-505, M5 hoặc STR-408 hoàn tất**.
 
 Lệnh nghiệm thu còn lại được ghi trong [Streaming MVP Tests](../testing/Streaming%20MVP%20Tests.md) và [fixture README](../../scripts/testing/streaming/README.md).
+
+## 9. Chốt nghiệm thu (2026-10-30)
+
+- STR-501/503/504 đạt kiểm thử backend; review độc lập đã kiểm chứng account thật qua Gateway, HLS H.264/AAC, JWT âm tính và expiry.
+- Hai lỗi helper đã sửa: browser/OBS/status/acceptance dùng đúng session backend và account cookie không bị chuyển tiếp qua redirect. Regression đạt 40 Python test và 5 player unit test.
+- Player được kiểm tra thêm bằng Chrome cô lập trên `http://localhost:5173`: tải playlist/init/segment thành công và giải mã video. Mở bằng `127.0.0.1:5173` tái hiện lỗi CORS do khác origin; fixture đã sửa link hướng dẫn về hostname localhost.
+- Người dùng gửi ảnh player đang phát với 111.483 frame, khoảng 2.118 giây và xác nhận “Mọi thứ của giai đoạn 5 này đã ok” sau hướng dẫn kiểm tra lỗi API/media và hết thời gian reconnect. Phần nghiệm thu thủ công được ghi nhận theo xác nhận người dùng; báo cáo tự động và artifact được giữ riêng trong Acceptance Review.
+- **STR-505 và M5 hoàn tất.** Bàn giao contract và [Test Plan](../testing/Streaming%20MVP%20Phase%205%20Test%20Plan.md) cho giai đoạn 6; trang watch/player React production tiếp tục thuộc giai đoạn 6.
