@@ -443,8 +443,57 @@ Hệ thống MVP streaming xử lý đồng bộ từ đầu đến cuối; khô
        curl -X POST http://localhost:8082/stream/api/streams/<streamId>/end -H "Cookie: access_token=..."
        ```
 
+## Giai đoạn 5 — Metadata và Playback Access (2026-10-29)
+
+**Cập nhật nghiệm thu 2026-10-30:** STR-501/503/504/505 và M5 hoàn tất. Review độc lập đã kiểm chứng account thật qua Gateway, HLS/codec/expiry; hai lỗi fixture/helper được sửa với 40/40 Python test và 5/5 player unit test PASS. Browser được kiểm tra bổ sung và người dùng xác nhận toàn bộ giai đoạn 5 đã OK. Xem [Phase 5 Acceptance Review](Streaming%20MVP%20Phase%205%20Acceptance%20Review.md) cho kết quả mới; các mục dưới đây giữ báo cáo của đợt triển khai ban đầu.
+
+Trạng thái tại lần triển khai ban đầu: **STR-501, STR-503 và STR-504 PASS bằng kiểm thử tự động**; STR-505 khi đó còn chờ runtime. Kết quả nghiệm thu bổ sung và trạng thái cuối nằm trong Acceptance Review, mục 8.
+
+### Lệnh đã chạy
+
+```sh
+cd stream-service
+./mvnw clean verify
+
+cd ..
+python3 -m unittest discover -s scripts/testing/streaming -p 'test_*.py' -v
+node --check scripts/testing/streaming/player.js
+```
+
+Môi trường: Java 21.0.11, Spring Boot 4.1.1, Docker Desktop với PostgreSQL 17 Testcontainers (`postgres:17-alpine`), Python 3.15.
+
+### Kết quả tự động
+
+| Hạng mục | Kết quả | Phạm vi được chứng minh |
+|---|---|---|
+| `stream-service` clean verify | **164 test, 0 failure, 0 error, 0 skipped; BUILD SUCCESS** | Toàn bộ regression owner/lifecycle/auth cũ cùng hai API viewer mới |
+| `StreamSessionControllerTest` | **11/11 PASS** | Hai route yêu cầu đăng nhập; UUID sai trả `1004/400`; metadata bốn trạng thái qua HTTP; `Cache-Control: no-store`; không có `playbackUrl`/`readToken`/`streamKey` trong metadata; POST trả `sessionId`, `playbackUrl`, `readToken`, `readExpiresAt`; lỗi 404/403/409 đúng envelope chuẩn |
+| `StreamPlaybackPostgresTest` | **5/5 PASS** | PostgreSQL thật: metadata READY/LIVE/RECONNECTING/ENDED không đổi history và không ký JWT; session PRIVATE bị từ chối; Read JWT đúng RS256/kid/issuer/audience/subject viewer/action `read`/path `live/{sessionId}`/TTL 5 phút; URL không chứa token; POST trực tiếp không cần GET; GET trả LIVE nhưng End đã commit thì POST trả `1009/409`; không gọi MediaMTX |
+| `StreamPlaybackConcurrencyPostgresTest` | **2/2 PASS** | End giữ row lock làm playback chờ rồi nhận `1009/409`; playback giữ row lock làm End chờ đến khi transaction cấp access commit. Đồng bộ bằng `CountDownLatch` và xác nhận chờ khóa qua `pg_stat_activity`; không dùng sleep để giả lập thứ tự |
+| `MediaJwtIssuerTest` | **3/3 PASS** | Regression ký/verify, claim và TTL của Read JWT; `toString` của response che credential |
+| Python fixture/helper | **23/23 PASS** | Backend client đọc cookie file private, gọi metadata rồi POST trực tiếp, từ chối session chưa LIVE trước khi POST, không rò cookie/token trong lỗi; fixture endpoint kiểm same-origin, từ chối field lạ; các test fixture giai đoạn 0 vẫn PASS |
+| `node --check player.js` | **PASS** | Cú pháp player backend mode hợp lệ |
+
+Không có test Maven bị skip. Không thêm migration/schema; không thay đổi MediaMTX config, dữ liệu ứng dụng thật hoặc API owner.
+
+### Phần triển khai đã kiểm chứng
+
+- `GET /stream/api/streams/{sessionId}` trả metadata PUBLIC ở bốn trạng thái, dùng `StreamMetadataResponse`, mapper và `Clock` hiện có; transaction read-only, không cấp token, không gọi Control API, không ghi history.
+- `POST /stream/api/streams/{sessionId}/playback-access` không cần body; mở transaction riêng, khóa bi quan session bằng `findByIdForUpdate`, kiểm tra PUBLIC/LIVE dưới khóa, ghép URL từ `stream.media.hls-public-base-url` + `playback_path`, và gọi `MediaJwtIssuer.issueRead`. Token trả riêng, không nằm trong URL; không có Publish/API token.
+- Lỗi dùng `AppException(ErrorCode)`: không tồn tại `1006/404`, không PUBLIC `1002/403`, không LIVE `1009/409`; response lỗi giữ `ApiResponse` chuẩn.
+
+### STR-505 — phần còn chờ tại lần triển khai ban đầu
+
+Đã bổ sung nhưng **chưa chạy với hạ tầng thật**:
+
+- `backend_access.py` và `fixture.py serve --account-cookie-file ...` để lấy metadata/access qua Gateway bằng account cookie.
+- Player fixture có chế độ `Backend account thật`, polling metadata 3 giây; chỉ gọi POST khi mở phiên HLS.
+- `inspect_playback.py --access-mode backend --account-cookie-file ...` để kiểm tra HLS bằng Read JWT do backend cấp.
+
+Chưa có bằng chứng cho: account/cookie hợp lệ qua Gateway, nguồn OBS/MediaMTX LIVE thật, hình/tiếng trên Chrome/Edge, và hành vi thiếu/sai/hết hạn token trên phiên HLS mới. Vì vậy STR-505 và M5 vẫn mở; hướng dẫn nghiệm thu nằm trong [fixture README](../../scripts/testing/streaming/README.md#backend-account-thật-cho-giai-đoạn-5).
+
 ## Giới hạn và bước tiếp theo
 
 - STR-408 (nghiệm thu OBS thật) đang chờ người dùng tự thực hiện kiểm chứng thủ công.
-- Chưa có API Playback cho Viewer (`GET /stream/api/streams/{id}` và cấp Read JWT HLS), thuộc phạm vi Giai đoạn 5.
-- Chưa có Web UI/Dashboard kết nối WebSocket/HLS, thuộc phạm vi Giai đoạn 6.
+- STR-505/M5 hoàn tất ngày 2026-10-30 theo kiểm chứng backend/media/browser và xác nhận nghiệm thu thủ công của người dùng. Hướng dẫn chạy lại: [Phase 5 Test Plan](Streaming%20MVP%20Phase%205%20Test%20Plan.md); nguồn bằng chứng: [Phase 5 Acceptance Review](Streaming%20MVP%20Phase%205%20Acceptance%20Review.md).
+- Chưa có Web UI/Dashboard kết nối HLS, thuộc phạm vi Giai đoạn 6.

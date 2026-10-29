@@ -1,12 +1,57 @@
 #!/usr/bin/env python3
 """Review protocol results together with human OBS/browser observations."""
 
+import argparse
 import json
 from pathlib import Path
+from uuid import UUID
 import fixture
 
 
-def evaluate(state):
+def evaluate_backend(state, session_id):
+    session_id = str(UUID(str(session_id)))
+    observation_file = state / 'manual-results.jsonl'
+    records = [json.loads(line) for line in observation_file.read_text().splitlines()] if observation_file.exists() else []
+    records = [record for record in records if record.get('sessionId') == session_id
+               and record.get('accessSource') == 'backend']
+
+    def source_id(record):
+        return (record.get('source') or {}).get('id')
+
+    published = [record for record in records if record.get('kind') == 'obs'
+                 and record.get('step') == 'publish' and record.get('backendStatus') == 'LIVE'
+                 and (record.get('source') or {}).get('type') in ['rtmpConn', 'rtmpsConn']
+                 and record.get('pathConfigured') is True]
+    browser = any(record.get('kind') == 'browser' and record.get('case') == 'valid'
+                  and record.get('frames', 0) > 0 and record.get('seconds', 0) >= 2
+                  and record.get('playlistLoads', 0) >= 2 and record.get('segmentLoads', 0) >= 1
+                  and record.get('audioConfirmed') is True and record.get('httpError') == 0
+                  and source_id(record) is not None for record in records)
+    reconnect = any(record.get('kind') == 'obs' and record.get('step') == 'reconnect'
+                    and record.get('backendStatus') == 'LIVE' and source_id(record) is not None
+                    and any(source_id(first) != source_id(record)
+                            and first['recordedAt'] < record['recordedAt'] for first in published)
+                    for record in records)
+    ended = any(record.get('kind') == 'obs' and record.get('step') == 'old-key-rejected'
+                and record.get('backendStatus') == 'ENDED' and record.get('source') is None
+                and record.get('pathConfigured') is False for record in records)
+    checks = [('browser', browser, 'Browser picture/audio measurements'),
+              ('obs-publish', bool(published), 'OBS publish with LIVE metadata and media source'),
+              ('obs-reconnect', reconnect, 'OBS reconnect with a different source in the same backend session'),
+              ('obs-end', ended, 'OBS old-key rejection confirmation with ENDED metadata and closed path')]
+    return {name: {'passed': passed, 'sessionId': session_id, 'accessSource': 'backend',
+                   'missing': [] if passed else [detail]} for name, passed, detail in checks}
+
+
+def evaluate(state, session_id=None, access_source='fixture'):
+    if access_source == 'backend':
+        if session_id is None:
+            raise ValueError('Backend acceptance requires a session ID')
+        return evaluate_backend(state, session_id)
+    if access_source != 'fixture':
+        raise ValueError('Unknown acceptance source')
+    if session_id is not None:
+        raise ValueError('Explicit session selection requires backend access source')
     protocol_file = state / 'smoke-results.json'
     protocol = json.loads(protocol_file.read_text()) if protocol_file.exists() else {}
     expected = {
@@ -27,7 +72,8 @@ def evaluate(state):
     observation_file = state / 'manual-results.jsonl'
     records = [json.loads(line) for line in observation_file.read_text().splitlines()] if observation_file.exists() else []
     session_id = json.loads((state / 'session.json').read_text())['sessionId']
-    records = [record for record in records if record.get('sessionId') == session_id]
+    records = [record for record in records if record.get('sessionId') == session_id
+               and record.get('accessSource', 'fixture') == 'fixture']
     confirmation_file = state / 'user-confirmation.json'
     confirmation = json.loads(confirmation_file.read_text()) if confirmation_file.exists() else {}
     # A user's explicit report is human evidence, kept apart from recorded HTTP measurements.
@@ -81,7 +127,19 @@ def evaluate(state):
 
 
 def main():
-    results = evaluate(fixture.DEFAULT_STATE)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--state-dir', type=Path, default=fixture.DEFAULT_STATE)
+    parser.add_argument('--access-source', choices=['fixture', 'backend'], default='fixture')
+    parser.add_argument('--session-id', type=UUID)
+    args = parser.parse_args()
+    if args.access_source == 'backend' and args.session_id is None:
+        parser.error('--session-id is required for backend acceptance')
+    if args.access_source == 'fixture' and args.session_id is not None:
+        parser.error('--session-id requires --access-source backend')
+    results = evaluate(args.state_dir, args.session_id, args.access_source)
+    if args.access_source == 'backend':
+        print('Backend session: ' + str(args.session_id))
+        print('These are manual evidence checks, not automatic STR-505/M5 acceptance.')
     for name, result in results.items():
         print(name + ': ' + ('PASS' if result['passed'] else 'PENDING'))
         for missing in result.get('missing', []):

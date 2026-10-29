@@ -2,6 +2,13 @@ const byId = (id) => document.getElementById(id);
 const video = byId('video');
 let hls;
 let measurement;
+let backendPollRunning = false;
+
+function selectedContext() {
+  return byId('access-source').value === 'backend'
+    ? { accessSource: 'backend', sessionId: backendSessionId() }
+    : { accessSource: 'fixture' };
+}
 
 function message(text) { byId('message').textContent = text; }
 
@@ -24,14 +31,25 @@ function action(id, callback) {
 }
 
 async function refresh() {
-  const response = await fetch('/fixture/status', { cache: 'no-store', credentials: 'omit' });
+  const context = selectedContext();
+  if (context.accessSource === 'backend' && !context.sessionId) {
+    byId('status').textContent = 'Nhập Session ID backend để đọc trạng thái.';
+    byId('acceptance').textContent = 'Chưa chọn session backend để nghiệm thu.';
+    return;
+  }
+  const query = new URLSearchParams(context).toString();
+  const response = await fetch(`/fixture/status?${query}`, { cache: 'no-store', credentials: 'omit' });
   if (!response.ok) throw new Error(`Status HTTP ${response.status}`);
   const status = await response.json();
+  if (JSON.stringify(context) !== JSON.stringify(selectedContext())) return;
   byId('status').textContent = JSON.stringify(status, null, 2);
-  const acceptance = await fetch('/fixture/acceptance', { cache: 'no-store', credentials: 'omit' });
+  const acceptance = await fetch(`/fixture/acceptance?${query}`, { cache: 'no-store', credentials: 'omit' });
   if (acceptance.ok) {
     const results = await acceptance.json();
-    byId('acceptance').textContent = Object.entries(results).map(([name, result]) =>
+    if (JSON.stringify(context) !== JSON.stringify(selectedContext())) return;
+    const label = context.accessSource === 'backend'
+      ? `Backend session ${context.sessionId} · bằng chứng thủ công, chưa tự chốt M5\n` : 'Fixture M0\n';
+    byId('acceptance').textContent = label + Object.entries(results).map(([name, result]) =>
       `${name}: ${result.passed ? 'PASS' : 'PENDING'}${result.missing?.length ? '\n  ' + result.missing.join('\n  ') : ''}`
     ).join('\n');
   }
@@ -45,6 +63,42 @@ function destroy() {
   video.removeAttribute('src');
   video.load();
 }
+
+function backendSessionId() {
+  return byId('backend-session-id').value.trim();
+}
+
+async function refreshBackendMetadata() {
+  const sessionId = backendSessionId();
+  if (byId('access-source').value !== 'backend' || !sessionId || backendPollRunning) return;
+  backendPollRunning = true;
+  try {
+    const response = await fetch(`/fixture/backend-metadata?sessionId=${encodeURIComponent(sessionId)}`,
+      { cache: 'no-store', credentials: 'omit' });
+    const value = await response.json();
+    if (sessionId !== backendSessionId() || byId('access-source').value !== 'backend') return;
+    byId('backend-metadata-result').textContent = response.ok
+      ? JSON.stringify(value, null, 2)
+      : `Metadata HTTP ${response.status}: ${value.error || 'backend error'}`;
+  } finally {
+    backendPollRunning = false;
+  }
+}
+
+action('backend-metadata', async () => {
+  await refreshBackendMetadata();
+  message('Đã đọc metadata backend; không cấp token khi chỉ polling.');
+});
+byId('access-source').addEventListener('change', () => {
+  for (const id of ['create', 'delete', 'copy-server', 'copy-key']) {
+    byId(id).disabled = byId('access-source').value === 'backend';
+  }
+  message(byId('access-source').value === 'backend'
+    ? 'Backend mode: nhập Session ID và cấu hình cookie file. Kết thúc bằng End API; nút path/key M0 bị tắt.'
+    : 'Fixture mode: dùng token test local như giai đoạn 0.');
+  refreshBackendMetadata().catch(() => {});
+  refresh().catch(() => {});
+});
 
 action('create', async () => {
   await post('/fixture/path', { action: 'create' });
@@ -78,11 +132,21 @@ action('play', async () => {
   destroy();
   byId('audio-confirmed').checked = false;
   if (!window.Hls || !Hls.isSupported()) throw new Error('MVP cần Chrome/Edge desktop hỗ trợ hls.js.');
-  const selectedCase = byId('read-case').value;
-  const access = await post('/fixture/credentials', { kind: 'read', case: selectedCase });
+  const source = byId('access-source').value;
+  let access;
+  if (source === 'backend') {
+    if (!backendSessionId()) throw new Error('Nhập Session ID backend trước khi mở player.');
+    access = await post('/fixture/backend-access', { sessionId: backendSessionId() });
+    await refreshBackendMetadata().catch(() => {});
+  } else {
+    access = await post('/fixture/credentials', { kind: 'read', case: byId('read-case').value });
+  }
+  const selectedCase = source === 'backend' ? 'valid' : byId('read-case').value;
   const allowed = new URL(access.playbackUrl);
   const token = access.readToken;
-  measurement = { kind: 'browser', case: selectedCase, frames: 0, seconds: 0,
+  measurement = { kind: 'browser', accessSource: source,
+    sessionId: access.sessionId || access.path.slice('live/'.length),
+    case: selectedCase, frames: 0, seconds: 0,
     audioConfirmed: false, playlistLoads: 0, segmentLoads: 0, httpError: 0 };
   hls = new Hls({
     manifestLoadingMaxRetry: 0, levelLoadingMaxRetry: 0, fragLoadingMaxRetry: 0,
@@ -125,7 +189,13 @@ action('record-browser', async () => {
 });
 for (const [id, step] of [['obs-publish', 'publish'], ['obs-reconnect', 'reconnect'], ['obs-old-key', 'old-key-rejected']]) {
   action(id, async () => {
-    await post('/fixture/observation', { kind: 'obs', step });
+    const context = selectedContext();
+    if (context.accessSource === 'backend') {
+      if (!context.sessionId) throw new Error('Nhập Session ID backend trước khi ghi nhận OBS.');
+    } else {
+      context.sessionId = (await refresh()).sessionId;
+    }
+    await post('/fixture/observation', { kind: 'obs', step, ...context });
     message('Đã ghi nhận quan sát OBS của bạn kèm source hiện tại.');
     await refresh();
   });
@@ -140,5 +210,16 @@ const timer = setInterval(() => {
   }
   if (!document.hidden) refresh().catch(() => message('Chưa kết nối được fixture/MediaMTX.'));
 }, 2000);
-window.addEventListener('pagehide', () => { clearInterval(timer); destroy(); }, { once: true });
+const backendTimer = setInterval(() => {
+  if (!document.hidden && byId('access-source').value === 'backend' && backendSessionId()) {
+    refreshBackendMetadata().catch(() => {
+      byId('backend-metadata-result').textContent = 'Chưa kết nối được backend fixture.';
+    });
+  }
+}, 3000);
+window.addEventListener('pagehide', () => {
+  clearInterval(timer);
+  clearInterval(backendTimer);
+  destroy();
+}, { once: true });
 refresh().catch(() => message('Chưa kết nối được fixture/MediaMTX.'));

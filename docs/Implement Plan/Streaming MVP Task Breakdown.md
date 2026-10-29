@@ -2,7 +2,7 @@
 
 - Ngày lập: 2026-10-24.
 - Cập nhật 2026-10-25: MVP xử lý đồng bộ từ đầu đến cuối theo yêu cầu người dùng. Không có bảng task, worker retry, lease/revision hoặc reconciler.
-- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26; STR-301–307 và STR-401–407 đã triển khai và kiểm chứng tự động toàn diện (2026-10-27); STR-308/M3 và STR-408/M4 chờ người dùng tự nghiệm thu OBS. Giai đoạn 5–7 chưa hoàn tất.
+- Trạng thái: M0, M1 và M2 đã đạt. STR-201–208 nghiệm thu ngày 2026-10-26; STR-301–307 và STR-401–407 đã triển khai và kiểm chứng tự động toàn diện (2026-10-27); STR-308/M3 và STR-408/M4 giữ trạng thái nghiệm thu riêng bên dưới. Giai đoạn 5/M5 đã hoàn tất theo kiểm thử và xác nhận người dùng ngày 2026-10-30; giai đoạn 6–7 chưa hoàn tất.
 - Thiết kế và contract gốc: [Streaming MVP Implementation Plan](Streaming%20MVP%20Implementation%20Plan.md).
 - Kiến trúc đã chốt: [Streaming MVP Architecture and Flow](../architecture/Streaming%20MVP%20Architecture%20and%20Flow.md).
 - Mục tiêu: triển khai theo từng phần có thể kiểm chứng, đến khi streamer phát được bằng OBS và người dùng đăng nhập xem được trên web.
@@ -401,7 +401,7 @@ Giai đoạn 5 xây backend và kiểm chứng bằng fixture; trang watch, poll
 - **Module/file:** Stream detail query/controller và viewer DTO.
 - **Cần làm:** GET `/stream/api/streams/{sessionId}` trả metadata/status/time theo session ID; account auth và no-store, không URL playback/token/chi tiết nội bộ. Trả 200 cho READY/LIVE/RECONNECTING/ENDED để frontend mở trang/polling; không tồn tại trả 404. Không ký JWT, gọi Control API hoặc thay đổi lifecycle khi đọc metadata.
 - **Hoàn tất khi:** Viewer đăng nhập không cần là owner có thể đọc đủ trạng thái, metadata không chứa credential; auth/not-found đúng HTTP/error contract và các lần GET lặp không có side effect media/token.
-- [ ] STR-501 hoàn tất, API detail có test.
+- [x] STR-501 hoàn tất, API detail có test. (2026-10-29: 11 controller tests và 5 PostgreSQL playback tests PASS; xem [Phase 5 results](Streaming%20MVP%20Phase%205%20Implementation%20Plan.md#8-kết-quả-triển-khai-2026-10-29).)
 
 ### STR-503 — Xây API playback access
 
@@ -409,7 +409,7 @@ Giai đoạn 5 xây backend và kiểm chứng bằng fixture; trang watch, poll
 - **Module/file:** Playback service/controller, access DTO và URL builder.
 - **Cần làm:** POST `/stream/api/streams/{sessionId}/playback-access` không cần body, tự check account và session PUBLIC/LIVE tại thời điểm cấp quyền; recheck/serialize với End theo quy ước locking hiện có. Không phụ thuộc client đã gọi GET. Ghép public base URL với path DB, ký Read JWT đúng viewer/action/path/TTL 5 phút. Trả no-store, không Publish JWT/api token; không gọi Control API hoặc thay đổi lifecycle.
 - **Hoàn tất khi:** Chỉ session xem được mới được cấp access; URL không chứa token, không hostname Docker hoặc input client tùy ý. Session đổi khỏi LIVE sau GET thì POST từ chối theo contract; POST trực tiếp vẫn áp dụng đầy đủ business rules.
-- [ ] STR-503 hoàn tất, access API có test.
+- [x] STR-503 hoàn tất, access API có test. (2026-10-29: direct POST, JWT claim/TTL và URL builder được kiểm chứng trên PostgreSQL; xem [Phase 5 results](Streaming%20MVP%20Phase%205%20Implementation%20Plan.md#8-kết-quả-triển-khai-2026-10-29).)
 
 ### STR-504 — Kiểm thử contract/security playback
 
@@ -417,7 +417,7 @@ Giai đoạn 5 xây backend và kiểm chứng bằng fixture; trang watch, poll
 - **Module/file:** Controller/service/security tests và integration suite.
 - **Cần làm:** Test thiếu account token, state không LIVE, session sai/không tồn tại, action/path/TTL của Read JWT và no-store. GET các trạng thái không LIVE vẫn trả metadata; GET lặp không ký JWT/gọi media. Test POST trực tiếp không cần GET, GET LIVE rồi End trước POST thì bị từ chối; metadata/polling không chứa credential.
 - **Hoàn tất khi:** Contract đủ rõ cho frontend và không có đường cấp quyền xem/phát ngoài phạm vi; test các module bị sửa đạt.
-- [ ] STR-504 hoàn tất, playback regression đạt.
+- [x] STR-504 hoàn tất, playback regression đạt. (2026-10-29: 164/164 stream-service tests PASS, gồm 2 PostgreSQL concurrency tests dùng latch/`pg_stat_activity`; không có test skip.)
 
 ### STR-505 — Kiểm chứng Read JWT thật với MediaMTX
 
@@ -425,7 +425,8 @@ Giai đoạn 5 xây backend và kiểm chứng bằng fixture; trang watch, poll
 - **Module/file:** Player fixture giai đoạn 0 và backend/media cấu hình thật.
 - **Cần làm:** Account thật GET metadata, khi LIVE gọi POST access rồi dùng fixture mở HLS bằng token backend ký. Poll GET song song để quan sát lifecycle mà không gọi POST lặp; thử thiếu/sai/hết hạn token khi mở phiên mới. Kiểm tra phiên đang chạy, tạo lại phiên và không có callback auth cho từng file.
 - **Hoàn tất khi:** Fixture player xem được hình/tiếng qua backend/media thật; hành vi expiry/session khớp contract trước khi nối trang watch production.
-- [ ] STR-505 hoàn tất, kết thúc giai đoạn 5.
+- [x] STR-505 hoàn tất, kết thúc giai đoạn 5. (2026-10-30: chốt theo kiểm chứng backend/media thật, browser và xác nhận hoàn tất nghiệm thu thủ công của người dùng.)
+- **Nghiệm thu:** Review độc lập kiểm chứng account thật qua Gateway, HLS/codec/expiry và sửa hai lỗi fixture/helper (40/40 Python, 5/5 player unit test PASS). Ngày 2026-10-30, người dùng xác nhận toàn bộ giai đoạn 5 đã OK. Xem [Phase 5 Acceptance Review](../testing/Streaming%20MVP%20Phase%205%20Acceptance%20Review.md) và [Test Plan](../testing/Streaming%20MVP%20Phase%205%20Test%20Plan.md).
 
 **Mốc nghiệm thu giai đoạn 5:** Viewer có thể đọc metadata, lấy access từ backend cho PUBLIC/LIVE và xem HLS thật bằng fixture qua session ID; hai endpoint có contract độc lập và metadata không cấp token.
 
@@ -570,7 +571,7 @@ Mục tiêu: chứng minh các phần đã tích hợp hoạt động cùng nhau
 | M2 — Auth backend thật | STR-208 | JWT/JWKS/eligibility/account boundary |
 | M3 — Tạo stream bằng API — chờ OBS | STR-308 | Backend mở path trực tiếp và cấp thông tin OBS sau commit |
 | M4 — Vòng đời và kết thúc đồng bộ | STR-408 | LIVE/reconnect/End với OBS thật, lỗi trực tiếp và giới hạn thủ công |
-| M5 — Xem bằng API thật | STR-505 | Read JWT backend cấp phát được trên player fixture |
+| M5 — Xem bằng API thật — ĐẠT 2026-10-30 | STR-505 | Read JWT backend cấp phát được trên player fixture; người dùng đã xác nhận nghiệm thu |
 | M6 — Dùng trọn luồng trên web | STR-610 | Dashboard + browse/watch không còn dữ liệu giả |
 | M7 — MVP được nghiệm thu | STR-706 | Check tự động, E2E, runbook và giới hạn rõ ràng |
 

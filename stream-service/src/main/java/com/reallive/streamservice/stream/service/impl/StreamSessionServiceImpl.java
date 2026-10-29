@@ -12,11 +12,13 @@ import com.reallive.streamservice.stream.dto.StreamPublishContext;
 import com.reallive.streamservice.stream.dto.request.CreateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
+import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.MediaPathState;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
+import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
 import com.reallive.streamservice.stream.mapper.StreamSessionMapper;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.StreamEligibilityService;
@@ -130,6 +132,15 @@ public class StreamSessionServiceImpl implements StreamSessionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public StreamMetadataResponse metadata(UUID sessionId) {
+        var session = sessions.findById(sessionId)
+                .orElseThrow(() -> new AppException(ErrorCode.STREAM_SESSION_NOT_FOUND));
+        requireViewableVisibility(session);
+        return mapper.toMetadataResponse(session, streamClock.instant());
+    }
+
+    @Override
     public StreamSessionResponse current(UUID ownerUserId) {
         var current = sessions.findCurrentByOwnerUserId(ownerUserId);
         if (current.isEmpty()) {
@@ -176,6 +187,12 @@ public class StreamSessionServiceImpl implements StreamSessionService {
     private void requireActive(StreamSessionEntity session) {
         if (session.getStatus() == StreamSessionStatus.ENDED) {
             throw new AppException(ErrorCode.STREAM_SESSION_STATE_INVALID);
+        }
+    }
+
+    private void requireViewableVisibility(StreamSessionEntity session) {
+        if (session.getVisibility() != StreamVisibility.PUBLIC) {
+            throw new AppException(ErrorCode.ACCESS_DENIED);
         }
     }
 
