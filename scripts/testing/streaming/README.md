@@ -1,6 +1,6 @@
-# Streaming MVP — Fixture giai đoạn 0
+# Streaming MVP — Fixture kiểm chứng media
 
-Fixture kỹ thuật cho STR-002–006, không phải Stream Service hoặc cơ chế auth production. Chỉ dùng key/token test sinh riêng trong `.local/streaming/`, đã được Git ignore.
+Fixture kỹ thuật cho STR-002–006 và chế độ backend account của Giai đoạn 5, không phải Stream Service hoặc cơ chế auth production. Chỉ dùng key/token test sinh riêng trong `.local/streaming/`, đã được Git ignore.
 
 ## Chuẩn bị và kiểm tra fixture (STR-002)
 
@@ -104,6 +104,65 @@ Helper chỉ GET source/HLS: xác nhận nguồn online, lấy master/rendition 
 Report không JWT, clip ngắn `sample.mp4` và frame `sample-frame.jpg` nằm trong `.local/streaming/playback-check/<SESSION_UUID>/`. Tự mở clip/frame để đối chiếu hình/tiếng với nguồn OBS; HLS có độ trễ. Helper không mở/điều khiển OBS, tạo/xóa path hoặc kick publisher. Không chạy smoke tổng hợp để thay bằng chứng của session hiện tại.
 
 URL xem đúng là `http://localhost:8898/live/<SESSION_UUID>/index.m3u8`; URL RTMP port 1935 dùng cho nguồn phát. HLS yêu cầu Read JWT qua `Authorization: Bearer ...`; Publish JWT trong stream key không có quyền read. Tải master playlist rồi giữ nguyên URL/query mà playlist trả về khi tải playlist con, init và segment; không ghi các URL phiên HLS vào report/log.
+
+## Backend account thật cho giai đoạn 5
+
+Chế độ này dùng account đã đăng nhập qua Gateway để gọi đúng hai API viewer. Account cookie chỉ nằm trong file private phía server fixture; Read JWT do backend cấp chỉ giữ trong memory của trang và không ghi vào localStorage/report.
+
+Yêu cầu: Stream Service, Gateway và MediaMTX đang chạy; HLS allow-origin có `http://localhost:5173` (cấu hình local mặc định và `compose.fixture.yml` đã có). Với Docker Compose dev, kiểm tra `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` trước khi thử browser.
+
+### Chuẩn bị
+
+1. Đăng nhập web app qua Gateway (`http://localhost:8888`) bằng account test.
+2. Tạo session PUBLIC, cho OBS phát để MediaMTX báo nguồn online và backend chuyển session sang `LIVE`.
+3. Lấy đúng header `Cookie` của account từ DevTools → Network, chỉ dán một dòng vào file ngoài Git:
+
+   ```sh
+   mkdir -p .local/streaming
+   # Dán một dòng Cookie header vào file, không thêm tiền tố "Cookie:"
+   chmod 600 .local/streaming/account-cookie.txt
+   ```
+
+   Không đưa cookie vào command line, shell history, issue, chat hoặc commit. Fixture từ chối file có quyền group/other và file có nhiều dòng.
+
+4. Chạy fixture ở port player (5173 đã có trong HLS allow-origin local):
+
+   ```sh
+   python3 scripts/testing/streaming/fixture.py serve \
+     --port 5173 \
+     --account-cookie-file .local/streaming/account-cookie.txt \
+     --gateway-base-url http://localhost:8888
+   ```
+
+### Kiểm chứng bằng helper (không cần browser)
+
+Khi session đang `LIVE`:
+
+```sh
+python3 scripts/testing/streaming/inspect_playback.py \
+  --session-id '<SESSION_UUID>' \
+  --access-mode backend \
+  --account-cookie-file .local/streaming/account-cookie.txt
+```
+
+Helper gọi `GET /stream/api/streams/{id}` rồi `POST /stream/api/streams/{id}/playback-access` qua Gateway, dùng Read JWT backend cấp để tải master/rendition/init/segment, decode audio/video và kiểm tra playlist tiến triển. Report và sample nằm trong `.local/streaming/playback-check/<SESSION_UUID>/`.
+
+### Kiểm chứng trên browser
+
+1. Mở `http://localhost:5173` bằng Chrome/Edge desktop.
+2. Ở mục 2, chọn **Backend account thật**, nhập Session UUID.
+3. Bấm **Đọc metadata backend**: chỉ gọi GET, không cấp token. Lặp lại để xác nhận polling không sinh credential.
+4. Bấm **Mở phiên xem mới**: fixture gọi POST playback-access, player dùng Read JWT backend cấp để mở HLS. Xác nhận hình/tiếng, tích nghe tiếng và lưu kết quả browser.
+5. DevTools → Network: request playlist/segment phải tới MediaMTX `localhost:8898`, có `Authorization: Bearer`, **không** mang account cookie; response metadata/POST có `Cache-Control: no-store`; token không xuất hiện trong URL.
+
+### Case âm tính và expiry
+
+- Không có cookie hoặc cookie hết hạn: GET metadata phải trả 401; fixture báo lỗi an toàn, không in cookie.
+- Session `READY`/`RECONNECTING`/`ENDED`: POST trả 409; session PRIVATE trả 403.
+- Token thiếu/sai path/sai chữ ký/hết hạn trên **phiên HLS mới** phải bị MediaMTX từ chối (401/403). Có thể dùng các case token fixture cho phần HLS; happy case bắt buộc dùng Read JWT backend cấp.
+- Read JWT mặc định hết hạn sau 5 phút. Kiểm tra bằng cách mở phiên HLS mới sau khi hết hạn; không coi phiên HLS đang mở là bị thu hồi ngay, vì đây là hành vi của MediaMTX cần ghi nhận riêng.
+
+Không đánh dấu STR-505/M5 hoàn tất nếu chưa có xác nhận account thật, nguồn LIVE và hình/tiếng trên browser.
 
 ## Dừng fixture
 
