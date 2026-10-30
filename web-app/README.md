@@ -73,3 +73,9 @@ export default defineConfig([
 ])
 
 ```
+
+## Stream Manager local
+
+Run the backend services and MediaMTX first. With Node 26, install dependencies using `npm ci`, then run `npm run dev -- --host localhost --port 5173 --strictPort`. Configure `VITE_API_BASE_URL` and `VITE_STREAM_HLS_BASE_URL` using `.env.example`; MediaMTX and Gateway must allow the frontend origin.
+
+Open `/dashboard` after signing in as a streamer. The OBS credentials are held in memory and must be requested again after a reload. For the OBS workflow, browser checks, and current test limitations, see [the Phase 6A test plan](../docs/testing/Streaming%20MVP%20Phase%206A%20Test%20Plan.md). Run `npm run test:streaming` for the streaming component tests.

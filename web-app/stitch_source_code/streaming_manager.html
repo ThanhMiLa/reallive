@@ -1,0 +1,952 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>RealLive - Stream Manager</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect">
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            accent: '#FF2B42',
+                            hover: '#E02338',
+                            muted: 'rgba(255, 43, 66, 0.12)',
+                        },
+                        surface: {
+                            bg: '#000000',
+                            sidebar: '#08080A',
+                            card: '#0C0C10',
+                            panel: '#121216',
+                            border: '#1F1F26',
+                            input: '#15151B',
+                        }
+                    },
+                    fontFamily: {
+                        outfit: ['Outfit', 'sans-serif'],
+                        inter: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #000000;
+            color: #EDEDED;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        h1, h2, h3, .font-heading {
+            font-family: 'Outfit', sans-serif;
+        }
+        /* Custom subtle scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #08080A;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #25252E;
+            border-radius: 3px;
+        }
+        .custom-pulse {
+            animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.92); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-black text-gray-200">
+<!-- Interactive State Toolbar for reviewing requirements -->
+<aside aria-label="Prototype state switcher" class="w-full bg-[#111116] border-b border-[#24242E] px-4 py-2 flex flex-wrap items-center justify-between text-xs gap-2 z-40 select-none">
+    <div class="flex items-center gap-2">
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FF2B42]/20 text-[#FF2B42] border border-[#FF2B42]/40 tracking-wider">STATE CONTROLS</span>
+        <span class="text-gray-400 hidden sm:inline">Preview session state:</span>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5">
+        <button class="px-2.5 py-1 rounded font-medium transition bg-[#FF2B42] text-white shadow-sm" id="btn-state-live" onclick="setSessionState('live')">
+            🔴 Live (Primary)
+        </button>
+        <button class="px-2.5 py-1 rounded font-medium transition bg-[#1A1A22] text-gray-300 hover:text-white hover:bg-[#252530]" id="btn-state-no_session" onclick="setSessionState('no_session')">
+            ⚪ No Active Session
+        </button>
+        <button class="px-2.5 py-1 rounded font-medium transition bg-[#1A1A22] text-gray-300 hover:text-white hover:bg-[#252530]" id="btn-state-ready" onclick="setSessionState('ready')">
+            🟡 Ready
+        </button>
+        <button class="px-2.5 py-1 rounded font-medium transition bg-[#1A1A22] text-gray-300 hover:text-white hover:bg-[#252530]" id="btn-state-reconnecting" onclick="setSessionState('reconnecting')">
+            🟠 Reconnecting
+        </button>
+        <button class="px-2.5 py-1 rounded font-medium transition bg-[#1A1A22] text-gray-300 hover:text-white hover:bg-[#252530]" id="btn-state-ended" onclick="setSessionState('ended')">
+            ⚫ Ended
+        </button>
+        <div class="h-4 w-[1px] bg-[#2E2E38] mx-1"></div>
+        <button class="px-2.5 py-1 rounded font-medium transition bg-red-950/40 text-red-300 hover:bg-red-900/60 border border-red-800/40" onclick="openEndModal()">
+            ⚠️ Test Modal
+        </button>
+        <button class="px-2.5 py-1 rounded font-medium transition bg-[#1A1A22] text-gray-300 hover:text-white hover:bg-[#252530]" id="btn-preview-toggle" onclick="togglePreviewError()">
+            Toggle Playback Error
+        </button>
+    </div>
+</aside>
+<div class="flex-1 flex overflow-hidden">
+    <!-- LEFT SIDEBAR (Preserved exactly from RealLive screenshot) -->
+    <aside class="w-64 bg-[#08080A] border-r border-[#1F1F26] flex flex-col justify-between shrink-0 select-none">
+        <div>
+            <!-- Brand Logo -->
+            <div class="h-20 flex items-center px-6">
+                <a class="flex items-center tracking-tight" href="#">
+                    <span class="font-outfit text-[26px] font-extrabold text-white tracking-normal">Real<span class="text-[#FF2B42]">Live</span></span>
+                </a>
+            </div>
+            <!-- Navigation Links -->
+            <nav class="px-3 space-y-1.5">
+                <!-- Stream Manager (Active) -->
+                <a class="flex items-center gap-3.5 px-4 py-3 rounded-xl bg-[#17141A] text-[#FF2B42] font-semibold text-sm border-l-4 border-[#FF2B42] shadow-[0_0_15px_rgba(255,43,66,0.12)] transition" href="#">
+                    <svg class="w-5 h-5 text-[#FF2B42]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                    </svg>
+                    <span class="">Stream Manager</span>
+                </a>
+                <!-- My Channel (Inactive) -->
+                <a class="flex items-center gap-3.5 px-4 py-3 rounded-xl text-gray-400 hover:text-white hover:bg-[#121216] font-medium text-sm transition" href="#">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                    </svg>
+                    <span class="">My Channel</span>
+                </a>
+            </nav>
+        </div>
+        <!-- Account & Back to Home Footer Area -->
+        <div class="p-4 border-t border-[#1F1F26] bg-[#08080A]">
+            <!-- User Profile -->
+            <div class="flex items-center gap-3 mb-4 px-2">
+                <div class="relative">
+                    <img alt="ThanhMiLa" class="w-9 h-9 rounded-full object-cover border border-[#2B2B38]" src="https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg">
+                    <span class="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#08080A]"></span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm font-semibold text-white truncate">ThanhMiLa</div>
+                    <div class="text-xs text-gray-400 truncate">thanhmila2005@gmail.com</div>
+                </div>
+            </div>
+            <!-- Back to home -->
+            <a class="flex items-center gap-2.5 text-xs text-gray-400 hover:text-white px-2 py-2 rounded-lg hover:bg-[#14141A] transition group" href="#">
+                <svg class="w-4 h-4 text-gray-400 group-hover:text-white transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M10 19l-7-7m0 0l7-7m-7 7h18" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                </svg>
+                <span class="">Back to home</span>
+            </a>
+        </div>
+    </aside>
+    <!-- MAIN WORKSPACE -->
+    <main class="flex-1 bg-black overflow-y-auto px-6 lg:px-10 py-7 max-w-[1600px] w-full mx-auto">
+        <!-- 1. COMPACT PAGE HEADER -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 mb-6 border-b border-[#1F1F26]">
+            <div class="flex items-center gap-4 flex-wrap">
+                <h1 class="text-2xl lg:text-[28px] font-bold text-white font-outfit tracking-tight">Stream Manager</h1>
+                <!-- STREAM STATUS BADGE (Dynamic) -->
+                <div id="status-badge-container">
+                    <div class="flex items-center gap-2.5 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30">
+                        <span class="w-2.5 h-2.5 rounded-full bg-[#FF2B42] custom-pulse"></span>
+                        <span class="text-xs font-bold text-[#FF2B42] uppercase tracking-wider">Live</span>
+                        <span class="text-gray-500 font-mono text-xs">|</span>
+                        <span id="live-duration-text" class="text-xs text-gray-200 font-mono font-semibold">01:26:57</span>
+                    </div>
+                </div>
+                <!-- RECONNECT WARNING (When in Reconnecting State) -->
+                <div class="hidden items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-medium" id="reconnecting-header-alert">
+                    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" d="M4 12a8 8 0 018-8v8H4z" fill="currentColor"></path>
+                    </svg>
+                    <span class="">Auto-reconnecting: <span class="font-mono font-bold" id="reconnect-timer">00:42</span> remaining</span>
+                </div>
+            </div>
+            <!-- ACTIONS GROUP -->
+            <div class="flex items-center gap-2.5 flex-wrap">
+                <!-- Session watch actions (Live/Ready) -->
+                <div class="flex items-center gap-2" id="session-active-actions">
+                    <button class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0C0C10] hover:bg-[#16161E] border border-[#1F1F26] hover:border-[#2D2D38] text-xs font-medium text-gray-200 hover:text-white transition shadow-sm" onclick="copyToClipboard('https://reallive.tv/thanhmila', 'Watch link copied to clipboard')">
+                        <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                        </svg>
+                        <span class="">Copy watch link</span>
+                    </button>
+                    <a class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0C0C10] hover:bg-[#16161E] border border-[#1F1F26] hover:border-[#2D2D38] text-xs font-medium text-gray-200 hover:text-white transition shadow-sm" href="#" target="_blank">
+                        <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                        </svg>
+                        <span class="">Open watch page</span>
+                    </a>
+                </div>
+                <!-- Secondary/Destructive State Specific Actions -->
+                <div id="dynamic-primary-header-action">
+                    <button onclick="openEndModal()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-red-950/40 hover:bg-[#FF2B42] border border-red-800/50 hover:border-[#FF2B42] text-xs font-bold text-red-200 hover:text-white transition shadow-sm">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        <span class="">End stream</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- SERVICE NOTIFICATION BANNER (For reconnecting or notice) -->
+        <div class="mb-6 hidden" id="state-banner-container">
+            <!-- Rendered by JS -->
+        </div>
+        <!-- 2-COLUMN WORKSPACE -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-7 items-start">
+            <!-- ================= MAIN COLUMN (Preview + Stream Info) ================= -->
+            <div class="xl:col-span-8 flex flex-col gap-6 min-w-0">
+                <!-- 2. STREAM PREVIEW CARD -->
+                <div class="bg-[#0C0C10] border border-[#1F1F26] rounded-2xl overflow-hidden shadow-2xl flex flex-col">
+                    <!-- Card Header -->
+                    <div class="px-5 py-3.5 border-b border-[#1A1A22] flex items-center justify-between bg-[#0E0E14]">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2 h-2 rounded-full bg-red-500" id="preview-header-dot"></span>
+                            <span class="text-xs font-bold text-gray-300 tracking-wider uppercase">Stream preview</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+
+                            <button class="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 transition" onclick="retryPreview()">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                </svg>
+                                <span class="">Refresh preview</span>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Video Player Aspect Container (16:9) -->
+                    <div class="relative w-full aspect-video bg-[#050507] overflow-hidden group select-none">
+                        <!-- Video / Canvas Mockup -->
+                        <div class="w-full h-full relative" id="video-content-container">
+                            <!-- LIVE gameplay image preview -->
+                            <img alt="Livestream broadcast preview" class="w-full h-full object-cover" id="live-video-stream-img" src="https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg">
+                            <!-- Live UI Overlay on video: streamer HUD -->
+                            <div class="absolute top-4 left-4 flex items-center gap-2 z-10 pointer-events-none" id="video-live-hud">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#FF2B42] text-white text-[11px] font-black tracking-wider uppercase shadow-lg">
+<span class="w-1.5 h-1.5 rounded-full bg-white custom-pulse"></span>
+                    LIVE
+                  </span>
+                                <span class="px-2.5 py-1 rounded bg-black/75 backdrop-blur-md border border-white/10 text-white text-xs font-mono font-medium" id="hud-timer">01:26:57</span>
+                            </div>
+                        </div>
+                        <!-- PLAYBACK ERROR OVERLAY (Simulated state) -->
+                        <div class="hidden absolute inset-0 bg-black/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6 text-center" id="playback-error-overlay">
+                            <div class="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3 text-amber-400">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                </svg>
+                            </div>
+                            <h4 class="text-white font-semibold text-base mb-1">Preview playback interrupted</h4>
+                            <p class="text-gray-400 text-xs max-w-sm mb-4">Your broadcast is still running on OBS, but the web preview player failed to fetch video segments.</p>
+                            <div class="flex items-center gap-3">
+                                <button class="px-4 py-2 rounded-lg bg-[#FF2B42] hover:bg-[#E02338] text-white text-xs font-semibold transition" onclick="retryPreview()">
+                                    Retry preview
+                                </button>
+                                <button class="px-3 py-2 rounded-lg bg-[#191922] text-gray-300 hover:text-white text-xs transition" onclick="togglePreviewError()">
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                        <!-- NO SESSION OVERLAY -->
+                        <div class="hidden absolute inset-0 bg-[#07070A] z-20 flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-[#1E1E28] m-4 rounded-xl" id="no-session-overlay">
+                            <div class="w-14 h-14 rounded-2xl bg-[#12121A] border border-[#22222E] flex items-center justify-center mb-3 text-gray-500">
+                                <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-white font-bold text-lg mb-1 font-outfit">No active session</h3>
+                            <p class="text-gray-400 text-xs max-w-md mb-5 leading-relaxed">Create a session to get your OBS connection details. Once created, paste your credentials into OBS to stream.</p>
+                            <button class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF2B42] hover:bg-[#E02338] text-white text-sm font-semibold transition shadow-lg shadow-red-950/40" onclick="createStreamSession()">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                </svg>
+                                <span class="">Create stream</span>
+                            </button>
+                        </div>
+                        <!-- READY / WAITING FOR OBS OVERLAY -->
+                        <div class="hidden absolute inset-0 bg-[#09090D] z-20 flex flex-col items-center justify-center p-6 text-center" id="ready-waiting-overlay">
+                            <div class="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3">
+                                <div class="w-3 h-3 rounded-full bg-amber-400 animate-ping"></div>
+                            </div>
+                            <h3 class="text-white font-bold text-base mb-1 font-outfit">Waiting for OBS broadcast...</h3>
+                            <p class="text-gray-400 text-xs max-w-sm mb-4 leading-relaxed">Start streaming in OBS with your Server URL and Stream Key to see the incoming preview.</p>
+                            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#14141C] border border-[#242430] text-gray-300 text-xs font-mono">
+<span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                  Listening on RTMP port 1935
+                </span>
+                        </div>
+                        <!-- RECONNECTING OVERLAY -->
+                        <div class="hidden absolute inset-0 bg-black/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6 text-center" id="reconnecting-overlay">
+                            <div class="w-14 h-14 rounded-full bg-amber-500/15 border border-amber-500/40 flex items-center justify-center mb-3 text-amber-400">
+                                <svg class="w-7 h-7 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" d="M4 12a8 8 0 018-8v8H4z" fill="currentColor"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-white font-bold text-base mb-1 font-outfit">OBS disconnected</h3>
+                            <p class="text-amber-300/90 text-xs max-w-md mb-2">Waiting for the stream to reconnect...</p>
+                            <p class="text-gray-400 text-xs max-w-md mb-4">You can resume your broadcast from OBS without starting a new session. Remaining reconnect window: <span class="font-mono text-white font-bold" id="overlay-reconnect-timer">00:42</span></p>
+                            <div class="flex items-center gap-3">
+                                <button class="px-3.5 py-2 rounded-lg bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-200 text-xs font-medium transition" onclick="openEndModal()">
+                                    End stream now
+                                </button>
+                            </div>
+                        </div>
+                        <!-- ENDED OVERLAY -->
+                        <div class="hidden absolute inset-0 bg-[#07070A] z-20 flex flex-col items-center justify-center p-6 text-center" id="ended-overlay">
+                            <div class="w-14 h-14 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center mb-3 text-gray-500">
+                                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-white font-bold text-lg mb-1 font-outfit">This stream has ended</h3>
+                            <p class="text-gray-400 text-xs mb-1">Session broadcast completed.</p>
+                            <p class="text-gray-500 font-mono text-xs mb-5">Started: Today at 18:30 • Ended: 19:54 (Duration: 01h 24m)</p>
+                            <button class="px-5 py-2.5 rounded-xl bg-[#FF2B42] hover:bg-[#E02338] text-white text-sm font-semibold transition shadow-lg" onclick="createStreamSession()">
+                                Create new stream
+                            </button>
+                        </div>
+                        <!-- Bottom Video Controls Bar (Only in live state) -->
+                        <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4 flex items-center justify-between text-white z-10 opacity-90 group-hover:opacity-100 transition" id="video-controls-bar">
+                            <div class="flex items-center gap-3">
+                                <!-- Play / Pause -->
+                                <button class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition" id="btn-play-pause" onclick="togglePlayState()" title="Pause preview">
+                                    <svg class="w-4 h-4 text-white" fill="currentColor" id="icon-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                                    <svg class="w-4 h-4 text-white hidden" fill="currentColor" id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                                </button>
+                                <!-- Audio Mute Control (Default Muted for OBS desktop audio prevention) -->
+                                <div class="flex items-center gap-2 bg-black/50 rounded-lg px-2.5 py-1 border border-white/10" title="Muted by default to prevent audio feedback loop with OBS">
+                                    <button class="text-gray-300 hover:text-white transition" id="btn-mute" onclick="toggleMute()">
+                                        <!-- Mute icon (default) -->
+                                        <svg class="w-4 h-4 text-red-400" fill="none" id="icon-muted" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                            <path d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                        </svg>
+                                        <!-- Unmuted icon -->
+                                        <svg class="w-4 h-4 text-white hidden" fill="none" id="icon-unmuted" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                        </svg>
+                                    </button>
+                                    <span class="text-[11px] text-gray-400 font-medium" id="mute-label">Muted (feedback protection)</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs text-gray-400 font-mono hidden sm:inline">Delay: ~2.4s</span>
+                                <button class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition" onclick="toggleFullscreen()" title="Toggle Fullscreen">
+                                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0 0l-5-5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Preview Footer Note -->
+                    <div class="px-5 py-2.5 bg-[#09090D] border-t border-[#16161E] flex items-center justify-between text-[11px] text-gray-400">
+                        <div class="flex items-center gap-1.5">
+
+
+                        </div>
+                        <span class="text-gray-400"><br></span>
+                    </div>
+                </div>
+                <!-- 3. STREAM INFORMATION FORM CARD -->
+                <div class="bg-[#0C0C10] border border-[#1F1F26] rounded-2xl p-6 shadow-xl">
+                    <div class="flex items-center justify-between mb-5">
+                        <div>
+                            <h2 class="text-lg font-bold text-white font-outfit">Stream Information</h2>
+
+                        </div>
+                        <span class="text-xs px-2.5 py-1 rounded-md bg-[#161620] border border-[#222230] text-gray-300 flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+                Visibility: <strong class="text-white">Public</strong>
+</span>
+                    </div>
+                    <form class="space-y-5" id="stream-info-form" onsubmit="handleSaveStreamInfo(event)">
+                        <!-- Stream Title Input -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label class="text-xs font-semibold text-gray-300" for="stream-title-input">Stream Title</label>
+                                <span class="text-[11px] text-gray-400 font-mono" id="char-counter">22 / 255</span>
+                            </div>
+                            <div class="relative">
+                                <input class="w-full bg-[#15151B] border border-[#252530] focus:border-[#FF2B42] focus:ring-1 focus:ring-[#FF2B42] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 transition outline-none" id="stream-title-input" maxlength="255" oninput="updateCharCount(this)" placeholder="What are you streaming today?" type="text" value="Evening ranked matches">
+                            </div>
+                            <!-- Inline Field Validation Message Container -->
+                            <p class="text-[11px] text-red-400 mt-1.5 hidden flex items-center gap-1" id="title-error-msg">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path clip-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" fill-rule="evenodd"></path></svg>
+                                <span class="">Title must be between 3 and 255 characters.</span>
+                            </p>
+                        </div>
+                        <!-- Stream Category & Visibility row -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Category Selector -->
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-300 mb-1.5" for="stream-category-select">Category</label>
+                                <div class="relative">
+                                    <select class="w-full bg-[#15151B] border border-[#252530] focus:border-[#FF2B42] focus:ring-1 focus:ring-[#FF2B42] rounded-xl px-4 py-3 text-sm text-white appearance-none cursor-pointer outline-none transition" id="stream-category-select">
+                                        <option selected="" value="Gaming">🎮 Gaming</option>
+                                        <option value="Counter-Strike 2">🔫 Counter-Strike 2</option>
+                                        <option value="VALORANT">🎯 VALORANT</option>
+                                        <option value="Just Chatting">💬 Just Chatting</option>
+                                        <option value="Fortnite">🏝️ Fortnite</option>
+                                        <option value="Music">🎵 Music &amp; Performing</option>
+                                        <option value="Creative">🎨 Creative &amp; Art</option>
+                                    </select>
+                                    <div class="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-400">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Visibility (Displayed as Public per spec, read-only MVP) -->
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-300 mb-1.5">Broadcast Visibility</label>
+                                <div class="w-full bg-[#121217] border border-[#202028] rounded-xl px-4 py-3 text-sm text-gray-300 flex items-center justify-between cursor-not-allowed">
+<span class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+<span class="">Public</span>
+</span>
+                                    <span class="text-[11px] text-gray-400">Visible in Browse</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Save Actions & Status -->
+                        <div class="pt-2 flex items-center justify-between">
+                            <div class="text-xs text-emerald-400 flex items-center gap-1.5 opacity-0 transition-opacity" id="save-status-msg">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                <span class="">Changes saved successfully</span>
+                            </div>
+                            <button class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#FF2B42] hover:bg-[#E02338] text-white text-xs font-bold tracking-wide uppercase transition shadow-md shadow-red-950/30" id="btn-save-info" type="submit">
+                                <span class="hidden w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" id="save-spinner"></span>
+                                <span id="save-btn-text" class="">Save changes</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <!-- ================= SECONDARY COLUMN (OBS Connection Details ~360px) ================= -->
+            <div class="xl:col-span-4 flex flex-col gap-6">
+                <!-- 4. OBS CONNECTION PANEL -->
+                <div class="bg-[#0C0C10] border border-[#1F1F26] rounded-2xl p-5 shadow-xl relative">
+                    <!-- Panel Header -->
+                    <div class="flex items-center justify-between pb-4 mb-4 border-b border-[#1A1A24]">
+                        <div class="flex items-center gap-2.5">
+                            <!-- OBS emblem -->
+
+                            <div>
+                                <h3 class="text-base font-bold text-white font-outfit">OBS Connection</h3>
+
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" id="obs-status-indicator">Connected</span>
+                    </div>
+                    <!-- Server URL Field -->
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="text-xs font-semibold text-gray-300">Server URL</label>
+                            <span class="text-[10px] text-gray-400 uppercase tracking-wider font-mono">RTMP</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 bg-[#14141A] border border-[#23232E] rounded-xl p-1.5 pl-3 focus-within:border-[#383848]">
+                            <input class="bg-transparent text-xs text-gray-200 font-mono flex-1 outline-none truncate select-all" id="obs-server-url" readonly="" type="text" value="rtmp://localhost:1935/live">
+                            <button class="px-2.5 py-1.5 rounded-lg bg-[#1F1F2A] hover:bg-[#2A2A38] text-gray-300 hover:text-white text-xs font-medium transition flex items-center gap-1.5 shrink-0" onclick="copyToClipboard('rtmp://localhost:1935/live', 'Server URL copied')" title="Copy Server URL" type="button">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                <span class="">Copy</span>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Stream Key Field -->
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="text-xs font-semibold text-gray-300">Stream Key</label>
+                            <span class="text-[11px] text-amber-400/90 font-medium">Keep secret</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 bg-[#14141A] border border-[#23232E] rounded-xl p-1.5 pl-3 focus-within:border-[#383848]">
+                            <input class="bg-transparent text-xs text-gray-200 font-mono flex-1 outline-none truncate select-all" id="obs-stream-key" readonly="" type="password" value="live_sk_8f7b2a9914c6e310d7a">
+                            <!-- Show / Hide Button -->
+                            <button class="p-1.5 rounded-lg hover:bg-[#22222E] text-gray-400 hover:text-white transition" id="btn-toggle-key" onclick="toggleStreamKeyVisibility()" title="Show/Hide Stream Key" type="button">
+                                <svg class="w-3.5 h-3.5" fill="none" id="eye-icon-show" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                <svg class="w-3.5 h-3.5 hidden" fill="none" id="eye-icon-hide" stroke="currentColor" viewBox="0 0 24 24"><path d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                            </button>
+                            <!-- Copy button -->
+                            <button class="px-2.5 py-1.5 rounded-lg bg-[#1F1F2A] hover:bg-[#2A2A38] text-gray-300 hover:text-white text-xs font-medium transition flex items-center gap-1.5 shrink-0" onclick="copyStreamKey()" title="Copy Stream Key" type="button">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                <span class="">Copy</span>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Credentials Expiration & Reset Action -->
+                    <div class="flex items-center justify-between text-xs py-2 border-t border-[#181822] mb-4">
+<span class="text-gray-400 flex items-center gap-1">
+<svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span id="cred-expiry-text" class="">Expires in 23h 45m</span>
+</span>
+                        <button class="text-xs text-gray-300 hover:text-white hover:underline transition" id="btn-new-creds" onclick="getNewCredentials()" type="button">
+                            Get new credentials
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-gray-400 leading-relaxed bg-[#121217] p-2.5 rounded-lg border border-[#1C1C24] mb-5">
+                        ⚠️ <strong>Note:</strong> Generating new credentials does not immediately disconnect OBS, but you must paste the new key into OBS before your next stream session.
+                    </p>
+                    <!-- Short Setup Guide -->
+                    <div class="border-t border-[#181822] pt-4">
+                        <h4 class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5 text-[#FF2B42]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                            </svg>
+                            <span class="">Short Setup Guide</span>
+                        </h4>
+                        <ol class="space-y-2 text-xs text-gray-300">
+                            <li class="flex items-start gap-2.5">
+                                <span class="flex-shrink-0 w-4 h-4 rounded-full bg-[#181824] text-[10px] font-bold flex items-center justify-center text-gray-300 border border-[#282836]">1</span>
+                                <span class="">Open <strong>OBS</strong> → <strong>Settings</strong> → <strong>Stream</strong>.</span>
+                            </li>
+                            <li class="flex items-start gap-2.5">
+                                <span class="flex-shrink-0 w-4 h-4 rounded-full bg-[#181824] text-[10px] font-bold flex items-center justify-center text-gray-300 border border-[#282836]">2</span>
+                                <span class="">Service: Choose <strong>Custom...</strong> and paste the <strong>Server URL</strong> and <strong>Stream Key</strong>.</span>
+                            </li>
+                            <li class="flex items-start gap-2.5">
+                                <span class="flex-shrink-0 w-4 h-4 rounded-full bg-[#181824] text-[10px] font-bold flex items-center justify-center text-gray-300 border border-[#282836]">3</span>
+                                <span class="">Click <strong>Start Streaming</strong> in OBS.</span>
+                            </li>
+                        </ol>
+                    </div>
+                    <!-- Disabled Credentials Shield (Used during No Session or Ended) -->
+                    <div class="hidden absolute inset-0 bg-[#0C0C10]/95 backdrop-blur-[2px] rounded-2xl flex flex-col items-center justify-center p-6 text-center z-10" id="obs-disabled-shield">
+                        <svg class="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                        <h4 class="text-white font-semibold text-sm mb-1">OBS Credentials Unavailable</h4>
+                        <p class="text-gray-400 text-xs max-w-xs mb-3">Create or start an active stream session to access your OBS connection details.</p>
+                        <button class="px-4 py-2 rounded-lg bg-[#FF2B42] text-white text-xs font-semibold hover:bg-[#E02338] transition" onclick="createStreamSession()">
+                            Create stream session
+                        </button>
+                    </div>
+                </div>
+                <!-- Quick Tip Card -->
+
+            </div>
+        </div>
+    </main>
+</div>
+<!-- ================= DIALOG: END STREAM CONFIRMATION MODAL ================= -->
+<div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden" id="end-stream-modal">
+    <div class="bg-[#0E0E14] border border-[#262634] rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-in">
+        <!-- Icon & Title -->
+        <div class="flex items-start gap-4 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-red-950/50 border border-red-800/60 flex items-center justify-center text-[#FF2B42] shrink-0">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white font-outfit">End this stream?</h3>
+                <p class="text-xs text-gray-400 mt-1 leading-relaxed">
+                    Viewers will stop receiving the broadcast. You’ll need a new session to stream again.
+                </p>
+            </div>
+        </div>
+        <!-- Action Buttons -->
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-[#1C1C26]">
+            <button class="px-4 py-2 rounded-xl bg-[#191924] hover:bg-[#252534] text-gray-300 hover:text-white text-xs font-semibold transition" onclick="closeEndModal()">
+                Keep streaming
+            </button>
+            <button class="px-4 py-2 rounded-xl bg-[#FF2B42] hover:bg-[#E02338] text-white text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-red-950/40" id="btn-modal-confirm-end" onclick="confirmEndStream()">
+                <span class="hidden w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" id="end-spinner"></span>
+                <span id="end-btn-text" class="">End stream</span>
+            </button>
+        </div>
+    </div>
+</div>
+<!-- TOAST NOTIFICATION CONTAINER -->
+<div class="fixed bottom-6 right-6 z-50 bg-[#161622] border border-[#2D2D40] text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs transition-all duration-300 transform translate-y-12 opacity-0 pointer-events-none" id="toast">
+    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+    <span id="toast-message" class="">Message text</span>
+</div>
+<!-- JAVASCRIPT: State Engine & Interactive Logic -->
+<script>
+    let currentState = 'live'; // 'no_session' | 'ready' | 'live' | 'reconnecting' | 'ended'
+    let isStreamKeyMasked = true;
+    let isMuted = true;
+    let isPlaying = true;
+    let isPreviewError = false;
+    let durationSeconds = 5058; // 01:24:18
+
+    // Duration timer ticker
+    setInterval(() => {
+        if (currentState === 'live') {
+            durationSeconds++;
+            const hours = String(Math.floor(durationSeconds / 3600)).padStart(2, '0');
+            const minutes = String(Math.floor((durationSeconds % 3600) / 60)).padStart(2, '0');
+            const seconds = String(durationSeconds % 60).padStart(2, '0');
+            const formatted = `${hours}:${minutes}:${seconds}`;
+
+            const badgeTimer = document.getElementById('live-duration-text');
+            if (badgeTimer) badgeTimer.innerText = formatted;
+
+            const hudTimer = document.getElementById('hud-timer');
+            if (hudTimer) hudTimer.innerText = formatted;
+        }
+    }, 1000);
+
+    // Initial setup
+    document.addEventListener('DOMContentLoaded', () => {
+        renderState(currentState);
+    });
+
+    function setSessionState(state) {
+        currentState = state;
+        // Update Toolbar buttons
+        ['live', 'no_session', 'ready', 'reconnecting', 'ended'].forEach(s => {
+            const btn = document.getElementById(`btn-state-${s}`);
+            if (!btn) return;
+            if (s === state) {
+                btn.className = "px-2.5 py-1 rounded font-medium transition bg-[#FF2B42] text-white shadow-sm";
+            } else {
+                btn.className = "px-2.5 py-1 rounded font-medium transition bg-[#1A1A22] text-gray-300 hover:text-white hover:bg-[#252530]";
+            }
+        });
+        renderState(state);
+    }
+
+    function renderState(state) {
+        const badgeContainer = document.getElementById('status-badge-container');
+        const actionContainer = document.getElementById('dynamic-primary-header-action');
+        const watchActions = document.getElementById('session-active-actions');
+        const bannerContainer = document.getElementById('state-banner-container');
+        const obsShield = document.getElementById('obs-disabled-shield');
+        const obsStatus = document.getElementById('obs-status-indicator');
+        const previewDot = document.getElementById('preview-header-dot');
+
+        // Hide all overlays first
+        document.getElementById('no-session-overlay').classList.add('hidden');
+        document.getElementById('ready-waiting-overlay').classList.add('hidden');
+        document.getElementById('reconnecting-overlay').classList.add('hidden');
+        document.getElementById('ended-overlay').classList.add('hidden');
+        document.getElementById('playback-error-overlay').classList.add('hidden');
+        document.getElementById('reconnecting-header-alert').classList.add('hidden');
+        document.getElementById('video-controls-bar').classList.add('hidden');
+        document.getElementById('video-live-hud').classList.add('hidden');
+
+        if (state === 'live') {
+            // BADGE
+            badgeContainer.innerHTML = `
+          <div class="flex items-center gap-2.5 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/30">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#FF2B42] custom-pulse"></span>
+            <span class="text-xs font-bold text-[#FF2B42] uppercase tracking-wider">Live</span>
+            <span class="text-gray-500 font-mono text-xs">|</span>
+            <span id="live-duration-text" class="text-xs text-gray-200 font-mono font-semibold">01:24:18</span>
+          </div>
+        `;
+            // ACTIONS
+            watchActions.classList.remove('hidden');
+            actionContainer.innerHTML = `
+          <button onclick="openEndModal()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-red-950/40 hover:bg-[#FF2B42] border border-red-800/50 hover:border-[#FF2B42] text-xs font-bold text-red-200 hover:text-white transition shadow-sm">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            <span>End stream</span>
+          </button>
+        `;
+            bannerContainer.classList.add('hidden');
+            obsShield.classList.add('hidden');
+            obsStatus.className = "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+            obsStatus.innerText = "Connected";
+            previewDot.className = "w-2 h-2 rounded-full bg-red-500";
+            document.getElementById('video-controls-bar').classList.remove('hidden');
+            document.getElementById('video-live-hud').classList.remove('hidden');
+
+        } else if (state === 'no_session') {
+            // BADGE
+            badgeContainer.innerHTML = `
+          <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-[#181822] border border-[#262634] text-gray-400">
+            <span class="w-2 h-2 rounded-full bg-gray-500"></span>
+            <span class="text-xs font-semibold">No Active Session</span>
+          </div>
+        `;
+            watchActions.classList.add('hidden');
+            actionContainer.innerHTML = `
+          <button onclick="createStreamSession()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FF2B42] hover:bg-[#E02338] text-xs font-bold text-white transition shadow-lg">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            <span>Create stream</span>
+          </button>
+        `;
+            bannerContainer.classList.add('hidden');
+            document.getElementById('no-session-overlay').classList.remove('hidden');
+            obsShield.classList.remove('hidden');
+            previewDot.className = "w-2 h-2 rounded-full bg-gray-600";
+
+        } else if (state === 'ready') {
+            // BADGE
+            badgeContainer.innerHTML = `
+          <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span class="text-xs font-bold tracking-wider uppercase">Ready</span>
+          </div>
+        `;
+            watchActions.classList.remove('hidden');
+            actionContainer.innerHTML = `
+          <button onclick="cancelSession()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#181822] hover:bg-[#222230] border border-[#2B2B38] text-xs font-medium text-gray-300 hover:text-white transition">
+            <span>Cancel session</span>
+          </button>
+        `;
+            bannerContainer.classList.remove('hidden');
+            bannerContainer.innerHTML = `
+          <div class="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3 flex items-center justify-between text-xs text-amber-300">
+            <div class="flex items-center gap-2.5">
+              <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span>Session is created and waiting for incoming OBS signal. Click <strong>Start Streaming</strong> in OBS when ready.</span>
+            </div>
+          </div>
+        `;
+            document.getElementById('ready-waiting-overlay').classList.remove('hidden');
+            obsShield.classList.add('hidden');
+            obsStatus.className = "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30";
+            obsStatus.innerText = "Awaiting RTMP";
+            previewDot.className = "w-2 h-2 rounded-full bg-amber-400";
+
+        } else if (state === 'reconnecting') {
+            // BADGE
+            badgeContainer.innerHTML = `
+          <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span class="text-xs font-bold tracking-wider uppercase">Reconnecting</span>
+          </div>
+        `;
+            document.getElementById('reconnecting-header-alert').classList.remove('hidden');
+            watchActions.classList.remove('hidden');
+            actionContainer.innerHTML = `
+          <button onclick="openEndModal()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-red-950/50 hover:bg-[#FF2B42] border border-red-800 text-xs font-bold text-red-200 hover:text-white transition">
+            <span>End stream</span>
+          </button>
+        `;
+            bannerContainer.classList.remove('hidden');
+            bannerContainer.innerHTML = `
+          <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-200">
+            <div class="flex items-center gap-3">
+              <svg class="w-5 h-5 text-amber-400 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <div>
+                <strong>OBS disconnected. Waiting for the stream to reconnect.</strong>
+                <p class="text-amber-300/80 text-[11px] mt-0.5">Please check your internet connection or restart the broadcast in OBS within 00:42.</p>
+              </div>
+            </div>
+            <button onclick="retryPreview()" class="px-3 py-1.5 rounded-lg bg-[#221C14] hover:bg-[#332A1C] border border-amber-700/50 text-amber-200 text-xs font-medium transition shrink-0">
+              Refresh state
+            </button>
+          </div>
+        `;
+            document.getElementById('reconnecting-overlay').classList.remove('hidden');
+            obsShield.classList.add('hidden');
+            obsStatus.className = "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30";
+            obsStatus.innerText = "Reconnecting";
+            previewDot.className = "w-2 h-2 rounded-full bg-amber-400";
+
+        } else if (state === 'ended') {
+            // BADGE
+            badgeContainer.innerHTML = `
+          <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161620] border border-[#242432] text-gray-400">
+            <span class="w-2 h-2 rounded-full bg-gray-500"></span>
+            <span class="text-xs font-semibold uppercase tracking-wider">Ended</span>
+          </div>
+        `;
+            watchActions.classList.add('hidden');
+            actionContainer.innerHTML = `
+          <button onclick="createStreamSession()" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FF2B42] hover:bg-[#E02338] text-xs font-bold text-white transition shadow-lg">
+            <span>Create new stream</span>
+          </button>
+        `;
+            bannerContainer.classList.add('hidden');
+            document.getElementById('ended-overlay').classList.remove('hidden');
+            obsShield.classList.remove('hidden');
+            obsStatus.className = "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-gray-800 text-gray-400 border border-gray-700";
+            obsStatus.innerText = "Disconnected";
+            previewDot.className = "w-2 h-2 rounded-full bg-gray-600";
+        }
+
+        if (isPreviewError && state === 'live') {
+            document.getElementById('playback-error-overlay').classList.remove('hidden');
+        }
+    }
+
+    // Modal controls
+    function openEndModal() {
+        document.getElementById('end-stream-modal').classList.remove('hidden');
+    }
+    function closeEndModal() {
+        document.getElementById('end-stream-modal').classList.add('hidden');
+    }
+
+    function confirmEndStream() {
+        const spinner = document.getElementById('end-spinner');
+        const text = document.getElementById('end-btn-text');
+        spinner.classList.remove('hidden');
+        text.innerText = "Ending…";
+
+        setTimeout(() => {
+            spinner.classList.add('hidden');
+            text.innerText = "End stream";
+            closeEndModal();
+            setSessionState('ended');
+            showToast("Stream ended successfully");
+        }, 700);
+    }
+
+    function cancelSession() {
+        setSessionState('no_session');
+        showToast("Stream session cancelled");
+    }
+
+    function createStreamSession() {
+        showToast("Creating new stream session…");
+        setTimeout(() => {
+            setSessionState('ready');
+            showToast("Session ready! Paste credentials into OBS.");
+        }, 500);
+    }
+
+    // Stream info form handling
+    function updateCharCount(input) {
+        document.getElementById('char-counter').innerText = `${input.value.length} / 255`;
+        const errorMsg = document.getElementById('title-error-msg');
+        if (input.value.trim().length < 3) {
+            errorMsg.classList.remove('hidden');
+        } else {
+            errorMsg.classList.add('hidden');
+        }
+    }
+
+    function handleSaveStreamInfo(e) {
+        e.preventDefault();
+        const input = document.getElementById('stream-title-input');
+        const errorMsg = document.getElementById('title-error-msg');
+
+        if (input.value.trim().length < 3) {
+            errorMsg.classList.remove('hidden');
+            return;
+        }
+        errorMsg.classList.add('hidden');
+
+        const btnText = document.getElementById('save-btn-text');
+        const spinner = document.getElementById('save-spinner');
+        const statusMsg = document.getElementById('save-status-msg');
+
+        btnText.innerText = "Saving…";
+        spinner.classList.remove('hidden');
+
+        setTimeout(() => {
+            spinner.classList.add('hidden');
+            btnText.innerText = "Save changes";
+            statusMsg.style.opacity = '1';
+            showToast("Stream information updated");
+            setTimeout(() => {
+                statusMsg.style.opacity = '0';
+            }, 3000);
+        }, 600);
+    }
+
+    // OBS Key Visibility
+    function toggleStreamKeyVisibility() {
+        const input = document.getElementById('obs-stream-key');
+        const eyeShow = document.getElementById('eye-icon-show');
+        const eyeHide = document.getElementById('eye-icon-hide');
+
+        isStreamKeyMasked = !isStreamKeyMasked;
+        if (isStreamKeyMasked) {
+            input.type = 'password';
+            eyeShow.classList.remove('hidden');
+            eyeHide.classList.add('hidden');
+        } else {
+            input.type = 'text';
+            eyeShow.classList.add('hidden');
+            eyeHide.classList.remove('hidden');
+        }
+    }
+
+    function copyStreamKey() {
+        copyToClipboard("live_sk_8f7b2a9914c6e310d7a", "Stream key copied to clipboard");
+    }
+
+    function getNewCredentials() {
+        const btn = document.getElementById('btn-new-creds');
+        btn.innerText = "Generating…";
+        setTimeout(() => {
+            btn.innerText = "Get new credentials";
+            document.getElementById('cred-expiry-text').innerText = "Expires in 24h 00m";
+            showToast("New stream key generated. Remember to update OBS!");
+        }, 600);
+    }
+
+    // Video Controls
+    function togglePlayState() {
+        isPlaying = !isPlaying;
+        document.getElementById('icon-pause').classList.toggle('hidden', !isPlaying);
+        document.getElementById('icon-play').classList.toggle('hidden', isPlaying);
+        showToast(isPlaying ? "Preview resumed" : "Preview paused");
+    }
+
+    function toggleMute() {
+        isMuted = !isMuted;
+        document.getElementById('icon-muted').classList.toggle('hidden', !isMuted);
+        document.getElementById('icon-unmuted').classList.toggle('hidden', isMuted);
+        document.getElementById('mute-label').innerText = isMuted ? "Muted (feedback protection)" : "Audio unmuted";
+        showToast(isMuted ? "Audio muted" : "Audio unmuted (check OBS speaker loop)");
+    }
+
+    function toggleFullscreen() {
+        const container = document.getElementById('video-content-container').parentElement;
+        if (!document.fullscreenElement) {
+            container.requestFullscreen().catch(err => {
+                showToast("Fullscreen requested");
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    function togglePreviewError() {
+        isPreviewError = !isPreviewError;
+        renderState(currentState);
+        showToast(isPreviewError ? "Simulating preview playback error" : "Preview recovered");
+    }
+
+    function retryPreview() {
+        isPreviewError = false;
+        renderState(currentState);
+        showToast("Reconnected to video preview");
+    }
+
+    // Clipboard helper
+    function copyToClipboard(text, successMsg) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(successMsg);
+            }).catch(() => {
+                showToast(successMsg);
+            });
+        } else {
+            showToast(successMsg);
+        }
+    }
+
+    // Toast system
+    function showToast(msg) {
+        const toast = document.getElementById('toast');
+        const text = document.getElementById('toast-message');
+        text.innerText = msg;
+        toast.classList.remove('opacity-0', 'translate-y-12', 'pointer-events-none');
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-12', 'pointer-events-none');
+        }, 2600);
+    }
+</script>
+
+
+
+</body></html>

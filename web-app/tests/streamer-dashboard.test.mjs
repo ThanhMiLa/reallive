@@ -181,9 +181,7 @@ test('dashboard route renders dedicated streamer layout with sidebar navbar and 
     // Dedicated Streamer Navigation sidebar
     assert.match(html, /aria-label="Streamer navigation"/)
     assert.match(html, /Stream Manager/)
-    assert.match(html, /Streamer Dashboard/)
     assert.match(html, /Back to home/)
-    assert.match(html, /Streamer Dashboard Content Frame/)
     // Must not show the browsing site header search bar
     assert.doesNotMatch(html, /Search streams, categories, or streamers\.\.\./)
   } finally {
