@@ -82,3 +82,9 @@ Kiểm chứng timeout reconnect và từ chối key cũ bằng FFmpeg đã có 
 - Thực hiện checklist OBS thật, nghe tiếng, autoplay/quyền browser theo test plan. Chưa xem Chrome headless với autoplay override là bằng chứng đầy đủ cho các mục đó.
 - Ghi rõ 4 test category-preferences là baseline riêng; không tuyên bố toàn bộ regression đã xanh.
 - Không đóng M6 trước khi phần viewer của giai đoạn 6 được triển khai và nghiệm thu theo phạm vi tiếp theo.
+
+## 5. Ảnh giao diện cho review
+
+Ảnh dưới đây chụp UI hiện tại ở trạng thái No active session bằng dữ liệu minh họa trong browser; không phải bằng chứng playback hoặc xác thực backend. Stream Chat chỉ là placeholder. Ảnh không chứa cookie, JWT hoặc stream key.
+
+![Stream Manager — UI preview với dữ liệu minh họa](images/streaming-phase6a-manager.png)
