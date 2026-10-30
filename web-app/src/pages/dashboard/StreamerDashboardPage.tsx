@@ -279,7 +279,7 @@ function Dashboard({ userId }: { userId: string }) {
             </div>
           </aside>
         </div>
-        {dialog && (
+        {dialog && session && !ended && (
           <EndDialog
             ready={status === 'READY'}
             pending={pending === 'end'}

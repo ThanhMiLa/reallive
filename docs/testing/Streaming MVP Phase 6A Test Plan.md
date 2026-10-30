@@ -57,4 +57,10 @@ npm run test:streaming
 
 ## Đánh giá nghiệm thu bổ sung
 
-Lần review 2026-10-30 chưa chốt 6A: có hai lỗi đã tái hiện bằng test bổ sung (đồng bộ form khi PATCH thành công/GET lỗi và dialog chưa đóng khi polling nhận ENDED). Xem [Acceptance Review 6A](Streaming%20MVP%20Phase%206A%20Acceptance%20Review.md) để biết mức độ, bằng chứng và điều kiện chốt. Kết quả 13 test hiện có đạt không bao phủ hai lỗi này.
+Lần review ban đầu tái hiện hai lỗi: form quay về dữ liệu cũ khi PATCH thành công/GET lỗi và dialog chưa đóng khi polling nhận ENDED. Hai lỗi đã được sửa; bộ streaming hiện có 24 test đạt (13 test ban đầu và 11 case hồi quy). Chrome với API giả lập lỗi xác nhận giữ title đã lưu và đóng dialog khi kết thúc mà không gửi thêm End. Xem [Acceptance Review 6A](Streaming%20MVP%20Phase%206A%20Acceptance%20Review.md), mục 6. Nghiệm thu OBS/audio thủ công vẫn để mở.
+
+## Regression cho hai lỗi đồng bộ UI
+
+- PATCH thành công, chặn GET metadata tiếp theo bằng lỗi mạng hoặc 503: form phải giữ title/category đã lưu, có cảnh báo trạng thái; khi GET phục hồi vẫn đồng bộ đúng. PATCH lỗi phải giữ draft.
+- Mở dialog End ở tab A rồi kết thúc phiên từ tab B hoặc chờ deadline: khi tab A nhận ENDED, dialog đóng, preview dừng và credential được xóa; tab A không tự gửi thêm End.
+- GET lỗi trong lúc dialog đang mở chưa đủ để coi session là ENDED; dialog vẫn cho phép người dùng thử lại.

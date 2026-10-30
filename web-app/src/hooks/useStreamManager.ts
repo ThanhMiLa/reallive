@@ -116,15 +116,16 @@ export function useStreamManager(userId: string) {
 
   useEffect(() => {
     if (session?.status === 'ENDED') {
-      // Clear secrets once the server has confirmed the terminal state.
+      // Clear secrets and obsolete actions once the server confirms the terminal state.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCredentials(null)
+      setDialog(false)
     }
   }, [session?.id, session?.status])
 
   const run = async (
     kind: NonNullable<typeof pending>,
-    fn: (signal: AbortSignal) => Promise<void>,
+    fn: (signal: AbortSignal) => Promise<void | boolean>,
   ) => {
     if (operation.current) return false
     operation.current = true
@@ -132,8 +133,8 @@ export function useStreamManager(userId: string) {
     operationAbort.current = controller
     setPending(kind)
     try {
-      await fn(controller.signal)
-      return true
+      const applied = await fn(controller.signal)
+      return applied !== false && active.current && !controller.signal.aborted
     } catch (error) {
       if (active.current) toast.error(streamErrorMessage(error))
       return false
@@ -182,19 +183,54 @@ export function useStreamManager(userId: string) {
     })
   const update = (details: StreamDetails) =>
     run('update', async (signal) => {
-      if (!session) return
+      if (!session || session.status === 'ENDED') return false
       const patch: Partial<StreamDetails> = {}
       if (details.title !== session.title) patch.title = details.title
       if (details.categoryId !== session.categoryId) patch.categoryId = details.categoryId
       if (!Object.keys(patch).length) return
-      await streamApi.update(session.id, patch, signal)
-      if (
-        !active.current ||
-        sessionRef.current?.id !== session.id ||
-        sessionRef.current.status === 'ENDED'
-      )
-        return
+      const saved = await streamApi.update(session.id, patch, signal)
+      const key = metadataKey(userId, session.id)
+      const isCurrentSession = () =>
+        active.current &&
+        !signal.aborted &&
+        sessionRef.current?.id === session.id &&
+        sessionRef.current.status !== 'ENDED' &&
+        queryClient.getQueryData<StreamMetadata | null>(currentKey(userId))?.id === session.id &&
+        queryClient.getQueryData<StreamMetadata>(key)?.status !== 'ENDED'
+
+      if (!isCurrentSession()) return false
+      await queryClient.cancelQueries({ queryKey: key, exact: true })
+      if (!isCurrentSession()) return false
+
+      const syncSavedDetails = (queryKey: readonly string[]) => {
+        const snapshot = queryClient.getQueryState<StreamMetadata | null>(queryKey)
+        if (!snapshot?.data) return
+        queryClient.setQueryData<StreamMetadata | null>(
+          queryKey,
+          (cached) => {
+            if (
+              !cached ||
+              cached.id !== saved.id ||
+              cached.status === 'ENDED' ||
+              Date.parse(cached.serverTime) > Date.parse(saved.serverTime)
+            )
+              return cached
+
+            return {
+              ...cached,
+              ...(patch.title !== undefined ? { title: saved.title } : {}),
+              ...(patch.categoryId !== undefined ? { categoryId: saved.categoryId } : {}),
+            }
+          },
+          { updatedAt: snapshot.dataUpdatedAt },
+        )
+      }
+
+      // PATCH confirms the saved fields. Preserve lifecycle data and its clock anchor.
+      syncSavedDetails(key)
+      syncSavedDetails(currentKey(userId))
       await refreshMetadata()
+      if (!isCurrentSession()) return false
       toast.success('Stream information updated')
     })
   const getCredentials = () =>

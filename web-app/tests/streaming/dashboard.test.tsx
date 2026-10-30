@@ -75,6 +75,16 @@ const credentials = {
   streamKey: 'secret-key',
   publishExpiresAt: '2026-10-30T08:00:00Z',
 }
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
 let client: QueryClient
 function mount(node: ReactNode = <StreamerDashboardPage />) {
   client = new QueryClient({
@@ -283,6 +293,233 @@ describe('Stream Manager', () => {
     )
     expect(input.value).toBe('Draft title')
   })
+
+  it('keeps saved details when PATCH succeeds but the metadata refresh fails', async () => {
+    const nextCategoryId = '00000000-0000-4000-8000-000000000002'
+    mocks.categories.mockResolvedValue([
+      { id: categoryId, name: 'Gaming' },
+      { id: nextCategoryId, name: 'Music' },
+    ])
+    mocks.current.mockResolvedValue(ready)
+    mocks.metadata.mockResolvedValueOnce(ready).mockRejectedValue(new Error('GET offline'))
+    mocks.update.mockResolvedValue({ ...ready, title: 'Saved title', categoryId: nextCategoryId })
+    mount()
+    await waitFor(() => expect(mocks.metadata).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: 'Saved title' } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: nextCategoryId } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Stream information updated'))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Stream title')).toHaveProperty('value', 'Saved title')
+      expect(screen.getByLabelText('Category')).toHaveProperty('value', nextCategoryId)
+    })
+    expect(screen.getByRole('alert').textContent).toContain('Unable to refresh stream status')
+    expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty('disabled', true)
+  })
+
+  it('keeps the draft editable when PATCH fails', async () => {
+    mocks.current.mockResolvedValue(ready)
+    mocks.metadata.mockResolvedValue(ready)
+    mocks.update.mockRejectedValue(new Error('PATCH offline'))
+    mount()
+    const input = await screen.findByLabelText('Stream title')
+    fireEvent.change(input, { target: { value: 'Draft title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() =>
+      expect(mocks.toast).toHaveBeenCalledWith('Unable to connect. Please try again.'),
+    )
+    expect(input).toHaveProperty('value', 'Draft title')
+    expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty('disabled', false)
+    expect(mocks.toast).not.toHaveBeenCalledWith('Stream information updated')
+  })
+
+  it('cancels an older poll before applying saved fields and preserves the lifecycle clock', async () => {
+    const reconnecting = {
+      ...ready,
+      status: 'RECONNECTING',
+      startedAt: '2026-10-29T23:00:00Z',
+      reconnectDeadlineAt: '2026-10-30T00:01:00Z',
+      publishReady: false,
+    }
+    const saved = { ...ready, title: 'Saved title', serverTime: '2026-10-30T00:00:05Z' }
+    mocks.current.mockResolvedValue(reconnecting)
+    mocks.metadata.mockResolvedValueOnce(reconnecting).mockRejectedValue(new Error('GET offline'))
+    mocks.update.mockResolvedValue(saved)
+    mount()
+    await waitFor(() => expect(mocks.metadata).toHaveBeenCalledTimes(1))
+    const key = ['stream', 'metadata', 'owner', sessionId]
+    const previousTime = client.getQueryState(key)?.dataUpdatedAt
+    const ownerTime = client.getQueryState(['stream', 'current', 'owner'])?.dataUpdatedAt
+    const poll = deferred<typeof ready>()
+    let pollSignal: AbortSignal | undefined
+    let polling!: Promise<unknown>
+    act(() => {
+      polling = client
+        .fetchQuery({
+          queryKey: key,
+          queryFn: ({ signal }) => {
+            pollSignal = signal
+            return poll.promise
+          },
+        })
+        .catch(() => undefined)
+    })
+    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: 'Saved title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Stream information updated'))
+    expect(pollSignal?.aborted).toBe(true)
+    await act(async () => {
+      poll.resolve(ready)
+      await polling
+    })
+    for (const queryKey of [key, ['stream', 'current', 'owner']]) {
+      expect(client.getQueryData(queryKey)).toMatchObject({ ...reconnecting, title: 'Saved title' })
+    }
+    expect(client.getQueryState(key)?.dataUpdatedAt).toBe(previousTime)
+    expect(client.getQueryState(['stream', 'current', 'owner'])?.dataUpdatedAt).toBe(ownerTime)
+    expect(screen.getByLabelText('Stream title')).toHaveProperty('value', 'Saved title')
+  })
+
+  it('keeps a newer metadata snapshot instead of overwriting it with an older PATCH result', async () => {
+    const patch = deferred<typeof ready>()
+    mocks.current.mockResolvedValue(ready)
+    mocks.metadata.mockResolvedValueOnce(ready).mockRejectedValue(new Error('GET offline'))
+    mocks.update.mockReturnValue(patch.promise)
+    mount()
+    await waitFor(() => expect(mocks.metadata).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByLabelText('Stream title'), {
+      target: { value: 'Submitted title' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled())
+    const newer = { ...ready, title: 'Changed in another tab', serverTime: '2026-10-30T00:00:10Z' }
+    act(() => client.setQueryData(['stream', 'metadata', 'owner', sessionId], newer))
+    await act(async () => {
+      patch.resolve({ ...ready, title: 'Submitted title', serverTime: '2026-10-30T00:00:05Z' })
+      await patch.promise
+    })
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Stream information updated'))
+    expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(newer)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Stream title')).toHaveProperty('value', newer.title),
+    )
+  })
+
+  it.each(['ENDED', 'different session', 'unmount'])(
+    'discards a delayed PATCH after %s',
+    async (change) => {
+      const patch = deferred<typeof ready>()
+      mocks.current.mockResolvedValue(ready)
+      mocks.metadata.mockResolvedValue(ready)
+      mocks.update.mockReturnValue(patch.promise)
+      const view = mount()
+      fireEvent.change(await screen.findByLabelText('Stream title'), {
+        target: { value: 'Submitted title' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(mocks.update).toHaveBeenCalled())
+      if (change === 'ENDED') {
+        act(() =>
+          client.setQueryData(['stream', 'metadata', 'owner', sessionId], {
+            ...ready,
+            status: 'ENDED',
+          }),
+        )
+        await screen.findByText('This stream has ended')
+      } else if (change === 'different session') {
+        const other = {
+          ...ready,
+          id: '00000000-0000-4000-8000-000000000003',
+          title: 'Other session',
+        }
+        mocks.metadata.mockResolvedValue(other)
+        act(() => client.setQueryData(['stream', 'current', 'owner'], other))
+        await waitFor(() =>
+          expect(screen.getByLabelText('Stream title')).toHaveProperty('value', other.title),
+        )
+      } else {
+        view.unmount()
+        expect(mocks.update.mock.calls[0][2].aborted).toBe(true)
+      }
+      const snapshot = client.getQueryData(['stream', 'metadata', 'owner', sessionId])
+      const calls = mocks.metadata.mock.calls.length
+      await act(async () => {
+        patch.resolve({ ...ready, title: 'Submitted title' })
+        await patch.promise
+      })
+      expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(snapshot)
+      expect(mocks.metadata).toHaveBeenCalledTimes(calls)
+      expect(mocks.toast).not.toHaveBeenCalledWith('Stream information updated')
+    },
+  )
+
+  it('closes the dialog when polling confirms ENDED without sending End', async () => {
+    mocks.current.mockResolvedValue(ready)
+    mocks.metadata.mockResolvedValue(ready)
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel session' }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    act(() =>
+      client.setQueryData(['stream', 'metadata', 'owner', sessionId], {
+        ...ready,
+        status: 'ENDED',
+        endedAt: '2026-10-30T01:00:00Z',
+      }),
+    )
+    await screen.findByText('This stream has ended')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(mocks.end).not.toHaveBeenCalled()
+    mocks.current.mockResolvedValue(null)
+    fireEvent.click(screen.getByRole('button', { name: 'Create new stream' }))
+    await screen.findByRole('button', { name: 'Create stream' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps an open End dialog through a temporary metadata failure', async () => {
+    const reconnecting = {
+      ...ready,
+      status: 'RECONNECTING',
+      reconnectDeadlineAt: '2026-10-30T00:01:00Z',
+    }
+    mocks.current.mockResolvedValue(reconnecting)
+    mocks.metadata.mockResolvedValueOnce(reconnecting).mockRejectedValue(new Error('GET offline'))
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'End stream' }))
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId] })
+    })
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(mocks.end).not.toHaveBeenCalled()
+  })
+
+  it.each(['succeeds', 'fails'])(
+    'does not reopen the dialog if an in-flight End %s after polling confirms ENDED',
+    async (outcome) => {
+      const end = deferred<typeof ready>()
+      mocks.current.mockResolvedValue(ready)
+      mocks.metadata.mockResolvedValue(ready)
+      mocks.end.mockReturnValue(end.promise)
+      mount()
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel session' }))
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel session' }),
+      )
+      await waitFor(() => expect(mocks.end).toHaveBeenCalledTimes(1))
+      const ended = { ...ready, status: 'ENDED', endedAt: '2026-10-30T01:00:00Z' }
+      act(() => client.setQueryData(['stream', 'metadata', 'owner', sessionId], ended))
+      await screen.findByText('This stream has ended')
+      expect(screen.queryByRole('dialog')).toBeNull()
+      mocks.metadata.mockResolvedValue(ended)
+      await act(async () => {
+        if (outcome === 'succeeds') end.resolve(ended)
+        else end.reject(new Error('Response lost'))
+        await end.promise.catch(() => undefined)
+      })
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(ended)
+    },
+  )
 
   it('clears credentials after confirmed End', async () => {
     mocks.current.mockResolvedValue(ready)

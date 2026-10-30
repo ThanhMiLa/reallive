@@ -2,10 +2,10 @@
 
 - Ngày đánh giá: 2026-10-30.
 - Phạm vi: Stream Manager và preview cho owner theo phạm vi đã chốt. Phần Stream Chat trên UI hiện chỉ là placeholder, chưa tích hợp chat service. Watch cho viewer, discovery/browse, chat, viewer count và donate chưa nằm trong đợt này.
-- Kết luận: **Chưa chốt nghiệm thu đầy đủ 6A.** Luồng chính hoạt động, nhưng còn một lỗi P2 về đồng bộ form sau PATCH và một lỗi UI P3 về dialog khi session kết thúc từ polling. Cần nghiệm thu OBS/audio thủ công. M6 tiếp tục để mở.
-- Lần đánh giá này chỉ bổ sung bằng chứng và báo cáo, chưa sửa hai lỗi dưới đây.
+- Kết luận hiện tại: **Đã sửa F6A-01 và F6A-02**, có regression test và kiểm chứng Chrome với API giả lập lỗi. Chưa chốt nghiệm thu đầy đủ 6A vì OBS/audio thủ công vẫn cần xác nhận. M6 tiếp tục để mở.
+- Các mục 1–3 lưu bằng chứng review ban đầu; mục 6 ghi bản sửa và kết quả kiểm tra lại.
 
-## 1. Lỗi đã tái hiện
+## 1. Lỗi đã tái hiện tại thời điểm review ban đầu
 
 ### F6A-01 — P2: Form quay về title cũ sau khi PATCH thành công nhưng GET metadata lỗi
 
@@ -42,7 +42,7 @@
 
 **Hướng sửa:** Đồng bộ dialog với trạng thái terminal; đóng dialog khi metadata xác nhận ENDED và kiểm thử cả trường hợp kết thúc từ tab khác/deadline.
 
-## 2. Kết quả kiểm tra
+## 2. Kết quả kiểm tra trước khi sửa
 
 | Kiểm tra | Kết quả |
 |---|---|
@@ -55,7 +55,7 @@
 | Browser viewport 390 × 844 | Không tràn ngang: document width 390; vùng nội dung cuộn được |
 | OBS thật / nghe audio thủ công | Chưa thực hiện trong lần nghiệm thu này |
 
-Hai test bổ sung và log được lưu cục bộ trong `.local/streaming/phase6-acceptance`, không đưa vào bộ test sản phẩm khi chưa xử lý lỗi. Để chạy lại: copy `acceptance-audit.test.tsx` vào `web-app/tests/streaming/`, chạy `npm run test:streaming -- tests/streaming/acceptance-audit.test.tsx` trong `web-app`, rồi bỏ bản copy tạm.
+Hai case review ban đầu có log trong `.local/streaming/phase6-acceptance`. Sau bản sửa, các tình huống này đã được đưa vào bộ test chính thức `web-app/tests/streaming/dashboard.test.tsx`; chạy `npm run test:streaming` để kiểm tra lại.
 
 ## 3. Luồng đã chạy lại trên backend/media thật
 
@@ -77,8 +77,8 @@ Kiểm chứng timeout reconnect và từ chối key cũ bằng FFmpeg đã có 
 
 ## 4. Điều kiện để chốt
 
-- Sửa và chạy regression cho F6A-01; xử lý F6A-02 để giao diện đồng bộ terminal state.
-- Giữ các kiểm tra build/lint và 13 test hiện tại đạt; bổ sung test mới vào bộ sản phẩm sau khi sửa.
+- [x] Sửa F6A-01/F6A-02 và đưa regression test vào bộ sản phẩm.
+- [x] Giữ 13 test cũ đạt và bổ sung 11 case hồi quy; tổng cộng 24 test streaming đạt.
 - Thực hiện checklist OBS thật, nghe tiếng, autoplay/quyền browser theo test plan. Chưa xem Chrome headless với autoplay override là bằng chứng đầy đủ cho các mục đó.
 - Ghi rõ 4 test category-preferences là baseline riêng; không tuyên bố toàn bộ regression đã xanh.
 - Không đóng M6 trước khi phần viewer của giai đoạn 6 được triển khai và nghiệm thu theo phạm vi tiếp theo.
@@ -88,3 +88,27 @@ Kiểm chứng timeout reconnect và từ chối key cũ bằng FFmpeg đã có 
 Ảnh dưới đây chụp UI hiện tại ở trạng thái No active session bằng dữ liệu minh họa trong browser; không phải bằng chứng playback hoặc xác thực backend. Stream Chat chỉ là placeholder. Ảnh không chứa cookie, JWT hoặc stream key.
 
 ![Stream Manager — UI preview với dữ liệu minh họa](images/streaming-phase6a-manager.png)
+
+## 6. Bản sửa F6A-01/F6A-02
+
+### F6A-01 — Đã sửa
+
+- Sau PATCH thành công, lấy title/category đã được backend xác nhận và cập nhật đúng các field đã gửi trong cả cache metadata và current session.
+- Hủy GET metadata đang chạy của đúng session trước khi áp dụng kết quả, tránh response cũ ghi đè dữ liệu đã lưu.
+- Giữ nguyên lifecycle, serverTime và dataUpdatedAt khi chỉ cập nhật thông tin; không reset duration/countdown. Snapshot mới hơn response PATCH được giữ lại.
+- GET sau PATCH thất bại vẫn giữ thông tin đã lưu và hiển thị cảnh báo cập nhật trạng thái. PATCH thất bại giữ draft và không báo thành công.
+- Response đến muộn sau ENDED, đổi session hoặc unmount bị bỏ qua; helper operation trả false để form không reset sai.
+
+### F6A-02 — Đã sửa
+
+- ENDED xóa credential và reset state dialog. Dialog chỉ render khi session còn hoạt động.
+- Polling xác nhận kết thúc không gửi thêm End request. Tạo phiên tiếp theo không làm dialog cũ hiện lại.
+- Lỗi mạng/503 khi chưa xác nhận kết thúc không tự đóng dialog. Kết quả End đến sau khi polling đã nhận ENDED không mở dialog lại.
+
+### Kiểm chứng bản sửa
+
+- Hai case chính đã chạy thất bại trên code trước sửa: form nhận `Morning` thay vì `Saved title`; dialog vẫn tồn tại sau ENDED.
+- Sau sửa: `npm run test:streaming` đạt **24/24** (13 test cũ và 11 case mới), bao phủ PATCH/GET thất bại, poll cũ, snapshot mới hơn, clock lifecycle, response đến muộn và dialog terminal state.
+- Chrome headless trên UI React thật với Axios adapter giả lập: PATCH thành công rồi metadata 503 giữ title mới, có cảnh báo GET; mở Cancel dialog rồi metadata ENDED đóng dialog, số End request phát sinh là 0. Đây là kiểm chứng UI với lỗi giả lập, không phải một lượt OBS/backend/media thật mới.
+- Build/lint đạt. `npm test` vẫn 34/38, đúng 4 lỗi category-preferences đã có trước bản sửa.
+- Chưa thay đổi kết luận về OBS/audio thủ công hoặc phạm vi viewer/M6.
