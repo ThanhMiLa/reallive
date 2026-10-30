@@ -434,6 +434,10 @@ Giai đoạn 5 xây backend và kiểm chứng bằng fixture; trang watch, poll
 
 Mục tiêu: hoàn thành quy trình streamer/viewer trên giao diện hiện có, không còn phụ thuộc thao tác API thủ công.
 
+**Phân kỳ 2026-10-30:** Giai đoạn 6A ưu tiên Stream Manager: STR-601–605 và phần preview owner của STR-607/608. Giai đoạn 6B sẽ làm trang watch viewer và các phần nghiệm thu còn lại; discovery/list cần contract/task riêng. Chưa đánh dấu M6 hoàn tất.
+
+**Tiến độ 6A:** Đã triển khai dashboard và preview, chạy build/lint, test streaming và kiểm tra browser với backend/MediaMTX bằng nguồn FFmpeg. Chưa nghiệm thu OBS thật và các tình huống thủ công đầy đủ. Xem [hướng dẫn và kết quả 6A](../testing/Streaming%20MVP%20Phase%206A%20Test%20Plan.md). Review bổ sung phát hiện lỗi đồng bộ form sau PATCH khi GET thất bại và dialog không đóng khi polling nhận ENDED; chưa chốt 6A. Xem [Acceptance Review 6A](../testing/Streaming%20MVP%20Phase%206A%20Acceptance%20Review.md).
+
 ### STR-601 — Thêm stream API client, types và form schema
 
 - **Phụ thuộc:** STR-505.
