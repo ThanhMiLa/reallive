@@ -37,6 +37,22 @@ Normal requests never fetch auth state from User Service on a Redis miss. Login 
 
 Channel ownership, channel-specific moderators, bans on chat/viewing, email verification and streamer status remain separate business rules. Stream authentication follows this contract; future VOD and Chat authentication must also follow it; mobile clients continue using the gateway cookie API.
 
+### Stream session endpoint permissions
+
+All paths below are relative to `/stream/api/streams`. The `STREAMER` role receives all five `STREAM_*` permissions through User Service migration V10; other roles receive no implicit grants. The migration also advances existing streamers' auth revisions and queues publication tasks so the auth-state worker refreshes Redis without requiring login again.
+
+| Endpoint | Method authorization |
+|---|---|
+| `POST /` | Both `STREAM_CREATE` and `STREAM_PUBLISH`, because creation also returns publish credentials |
+| `GET /me/current` | `STREAM_VIEW_OWN` |
+| `GET /{sessionId}` | Authentication only; no dedicated permission |
+| `POST /{sessionId}/playback-access` | Authentication only; no dedicated permission |
+| `PATCH /{sessionId}` | `STREAM_UPDATE` |
+| `POST /{sessionId}/publish-credentials` | `STREAM_PUBLISH` |
+| `POST /{sessionId}/end` | `STREAM_END` |
+
+Controller method authorization rejects missing permissions before calling business services. Session ownership, public visibility, lifecycle state and streaming eligibility remain service-level checks; possessing a permission does not bypass them.
+
 ## Committed publication and recovery
 
 `AuthTokenService` prepares the signed pair and a detached authorities snapshot inside the database transaction. It publishes only after commit and before the controller emits cookies. Refresh consumption and publication are a single Redis script, so a cache-write failure does not separately consume the old refresh token. Concurrent replay permits at most one successful consumption. A connection timeout after Redis executed the script has an uncertain outcome: both publication and revocation may already have succeeded even though the client receives 503. Cookie retention does not make that consumed refresh token reusable; recovery may require login.

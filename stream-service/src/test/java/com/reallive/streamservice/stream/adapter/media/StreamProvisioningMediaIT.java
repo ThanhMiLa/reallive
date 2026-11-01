@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -107,7 +108,12 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
 
     @BeforeEach
     void eligibility() {
-        when(authorities.read(any())).thenReturn(List.of());
+        when(authorities.read(any())).thenReturn(List.of(
+                new SimpleGrantedAuthority("STREAM_CREATE"),
+                new SimpleGrantedAuthority("STREAM_VIEW_OWN"),
+                new SimpleGrantedAuthority("STREAM_UPDATE"),
+                new SimpleGrantedAuthority("STREAM_PUBLISH"),
+                new SimpleGrantedAuthority("STREAM_END")));
         when(eligibility.requirePublishContext(eq(owner), any())).thenAnswer(call ->
                 new StreamPublishContext(owner, streamer, channel, call.getArgument(1)));
     }

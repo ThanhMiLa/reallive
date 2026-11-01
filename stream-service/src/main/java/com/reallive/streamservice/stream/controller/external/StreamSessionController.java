@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,6 +43,7 @@ public class StreamSessionController {
     StreamPlaybackService streamPlaybackService;
 
     @PostMapping
+    @PreAuthorize("hasAuthority('STREAM_CREATE') and hasAuthority('STREAM_PUBLISH')")
     public ResponseEntity<ApiResponse<CreateStreamSessionResponse>> createStreamSession(
             @AuthenticationPrincipal Jwt principal, @Valid @RequestBody CreateStreamSessionRequest request) {
         var result = streamSessionService.create(AuthenticationUserId.getAuthenticatedUserId(principal), request);
@@ -51,6 +53,7 @@ public class StreamSessionController {
     }
 
     @GetMapping("/me/current")
+    @PreAuthorize("hasAuthority('STREAM_VIEW_OWN')")
     public ResponseEntity<ApiResponse<StreamSessionResponse>> getCurrentStreamSession(@AuthenticationPrincipal Jwt principal) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
                 streamSessionService.current(AuthenticationUserId.getAuthenticatedUserId(principal)), 200, "Current stream session retrieved"));
@@ -71,6 +74,7 @@ public class StreamSessionController {
     }
 
     @PatchMapping("/{sessionId}")
+    @PreAuthorize("hasAuthority('STREAM_UPDATE')")
     public ResponseEntity<ApiResponse<StreamSessionResponse>> updateStreamSession(
             @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal,
             @Valid @RequestBody UpdateStreamSessionRequest request) {
@@ -79,6 +83,7 @@ public class StreamSessionController {
     }
 
     @PostMapping("/{sessionId}/publish-credentials")
+    @PreAuthorize("hasAuthority('STREAM_PUBLISH')")
     public ResponseEntity<ApiResponse<StreamPublishCredentialsResponse>> issuePublishCredentials(
             @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(streamSessionService.publishCredentials(
@@ -86,6 +91,7 @@ public class StreamSessionController {
     }
 
     @PostMapping("/{sessionId}/end")
+    @PreAuthorize("hasAuthority('STREAM_END')")
     public ResponseEntity<ApiResponse<StreamSessionResponse>> endStreamSession(
             @PathVariable UUID sessionId, @AuthenticationPrincipal Jwt principal) {
         var response = streamSessionClosureService.end(sessionId,

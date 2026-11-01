@@ -8,6 +8,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class StreamerMigrationTest {
+
+    private static final List<String> STREAM_PERMISSIONS = List.of(
+            "STREAM_CREATE", "STREAM_END", "STREAM_PUBLISH", "STREAM_UPDATE", "STREAM_VIEW_OWN");
 
     private final String schema = "streamer_migration_" + UUID.randomUUID().toString().replace("-", "");
     private final HikariDataSource dataSource = createDataSource();
@@ -30,15 +35,17 @@ class StreamerMigrationTest {
     }
 
     @Test
-    void migratesFreshDatabaseAndGrantsOwnChannelViewToStreamerRole() {
+    void migratesFreshDatabaseAndGrantsChannelAndStreamPermissionsToStreamerRole() {
         Flyway flyway = migrations().load();
-        assertEquals(9, flyway.migrate().migrationsExecuted);
+        assertEquals(10, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
         assertEquals(0, count("user_roles", ""));
         assertEquals(1, count("permissions", "WHERE name = 'CHANNEL_VIEW_OWN'"));
-        assertEquals(1, count("role_permissions", ""));
+        assertEquals(STREAM_PERMISSIONS, streamerPermissions());
+        assertEquals(6, count("role_permissions", ""));
+        assertEquals(0, count("auth_state_sync_tasks", ""));
         assertEquals(0, count("streamers", ""));
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }
@@ -58,12 +65,12 @@ class StreamerMigrationTest {
         jdbc.update("INSERT INTO " + table("user_roles") + " (user_id, role_id) VALUES (?, ?)", userId, roleId);
 
         Flyway flyway = migrations().load();
-        assertEquals(6, flyway.migrate().migrationsExecuted);
+        assertEquals(7, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
         assertEquals(roleId, jdbc.queryForObject("SELECT id FROM " + table("roles") + " WHERE name = 'STREAMER'", UUID.class));
-        assertEquals(2, count("role_permissions", ""));
+        assertEquals(7, count("role_permissions", ""));
         assertEquals(1, count("role_permissions", "WHERE permission_id = '" + permissionId + "'"));
         assertEquals(1, count("role_permissions", "WHERE permission_id = (SELECT id FROM "
                 + table("permissions") + " WHERE name = 'CHANNEL_VIEW_OWN')"));
@@ -88,7 +95,7 @@ class StreamerMigrationTest {
                 profileId, userId);
 
         Flyway flyway = migrations().load();
-        assertEquals(5, flyway.migrate().migrationsExecuted);
+        assertEquals(6, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("users", ""));
@@ -101,6 +108,76 @@ class StreamerMigrationTest {
                 + table("\"flyway_schema_history\"") + " WHERE \"version\" = '4'", Integer.class));
         assertEquals("V6__create_streamers_table.sql", jdbc.queryForObject("SELECT \"script\" FROM "
                 + table("\"flyway_schema_history\"") + " WHERE \"version\" = '6'", String.class));
+    }
+
+    @Test
+    void upgradesV9WithoutDuplicateGrantsAndQueuesOnlyExistingStreamersForAuthStateSync() {
+        migrations().target("9").load().migrate();
+        UUID streamerRoleId = jdbc.queryForObject("SELECT id FROM " + table("roles")
+                + " WHERE name = 'STREAMER'", UUID.class);
+        UUID viewerRoleId = UUID.randomUUID();
+        UUID adminRoleId = UUID.randomUUID();
+        UUID existingPermissionId = UUID.randomUUID();
+        UUID streamerWithPendingTask = UUID.randomUUID();
+        UUID streamerWithoutPendingTask = UUID.randomUUID();
+        UUID viewer = UUID.randomUUID();
+        jdbc.update("INSERT INTO " + table("roles") + " (id, name) VALUES (?, 'USER'), (?, 'ADMIN')",
+                viewerRoleId, adminRoleId);
+        jdbc.update("INSERT INTO " + table("permissions") + " (id, name) VALUES (?, 'STREAM_CREATE')",
+                existingPermissionId);
+        jdbc.update("INSERT INTO " + table("role_permissions") + " (role_id, permission_id) VALUES (?, ?)",
+                streamerRoleId, existingPermissionId);
+        jdbc.update("INSERT INTO " + table("users")
+                        + " (id, username, email, password_hash, auth_revision) VALUES"
+                        + " (?, 'streamer-one', 'one@example.com', 'hash', 7),"
+                        + " (?, 'streamer-two', 'two@example.com', 'hash', 0),"
+                        + " (?, 'viewer', 'viewer@example.com', 'hash', 5)",
+                streamerWithPendingTask, streamerWithoutPendingTask, viewer);
+        jdbc.update("INSERT INTO " + table("user_roles") + " (user_id, role_id) VALUES (?, ?), (?, ?), (?, ?), (?, ?)",
+                streamerWithPendingTask, streamerRoleId, streamerWithPendingTask, viewerRoleId,
+                streamerWithoutPendingTask, streamerRoleId, viewer, viewerRoleId);
+        LocalDateTime nextRetry = LocalDateTime.now().plusDays(1).withNano(0);
+        jdbc.update("INSERT INTO " + table("auth_state_sync_tasks")
+                        + " (user_id, revision, attempts, next_attempt_at) VALUES (?, 7, 4, ?), (?, 5, 3, ?)",
+                streamerWithPendingTask, nextRetry, viewer, nextRetry);
+
+        Flyway flyway = migrations().load();
+        assertEquals(1, flyway.migrate().migrationsExecuted);
+        flyway.validate();
+
+        assertEquals(STREAM_PERMISSIONS, streamerPermissions());
+        assertEquals(existingPermissionId, jdbc.queryForObject("SELECT id FROM " + table("permissions")
+                + " WHERE name = 'STREAM_CREATE'", UUID.class));
+        assertEquals(6, count("permissions", ""));
+        assertEquals(6, count("role_permissions", ""));
+        assertEquals(0, count("role_permissions", "WHERE role_id IN ('" + viewerRoleId + "', '" + adminRoleId + "')"));
+        assertEquals(4, count("user_roles", ""));
+        assertEquals(8L, jdbc.queryForObject("SELECT auth_revision FROM " + table("users") + " WHERE id = ?",
+                Long.class, streamerWithPendingTask));
+        assertEquals(1L, jdbc.queryForObject("SELECT auth_revision FROM " + table("users") + " WHERE id = ?",
+                Long.class, streamerWithoutPendingTask));
+        assertEquals(5L, jdbc.queryForObject("SELECT auth_revision FROM " + table("users") + " WHERE id = ?",
+                Long.class, viewer));
+        assertEquals(3, count("auth_state_sync_tasks", ""));
+        assertEquals(8L, jdbc.queryForObject("SELECT revision FROM " + table("auth_state_sync_tasks")
+                + " WHERE user_id = ?", Long.class, streamerWithPendingTask));
+        assertEquals(1L, jdbc.queryForObject("SELECT revision FROM " + table("auth_state_sync_tasks")
+                + " WHERE user_id = ?", Long.class, streamerWithoutPendingTask));
+        assertEquals(2, count("auth_state_sync_tasks", "WHERE attempts = 0 AND next_attempt_at <= CURRENT_TIMESTAMP"));
+        assertEquals(3, jdbc.queryForObject("SELECT attempts FROM " + table("auth_state_sync_tasks")
+                + " WHERE user_id = ?", Integer.class, viewer));
+        assertEquals(nextRetry, jdbc.queryForObject("SELECT next_attempt_at FROM " + table("auth_state_sync_tasks")
+                + " WHERE user_id = ?", LocalDateTime.class, viewer));
+        assertEquals(0, flyway.migrate().migrationsExecuted);
+        assertEquals(8L, jdbc.queryForObject("SELECT auth_revision FROM " + table("users") + " WHERE id = ?",
+                Long.class, streamerWithPendingTask));
+    }
+
+    private List<String> streamerPermissions() {
+        return jdbc.queryForList("SELECT permission.name FROM " + table("permissions") + " permission"
+                + " JOIN " + table("role_permissions") + " role_permission ON role_permission.permission_id = permission.id"
+                + " JOIN " + table("roles") + " role ON role.id = role_permission.role_id"
+                + " WHERE role.name = 'STREAMER' AND permission.name LIKE 'STREAM_%' ORDER BY permission.name", String.class);
     }
 
     private FluentConfiguration migrations() {

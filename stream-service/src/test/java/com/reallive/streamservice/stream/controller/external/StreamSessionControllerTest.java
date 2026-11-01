@@ -20,14 +20,19 @@ import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -67,6 +72,44 @@ class StreamSessionControllerTest {
         verifyNoInteractions(service, closureService, playbackService);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ROLE_USER", "ROLE_STREAMER", "STREAM_UNRELATED"})
+    void ownerEndpointsRejectMissingPermissionsBeforeCallingServices(String authority) throws Exception {
+        mvc.perform(post("/api/streams").with(ownerWithPermissions(authority))
+                        .contentType("application/json").content(createBody()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+        mvc.perform(get("/api/streams/me/current").with(ownerWithPermissions(authority)))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+        mvc.perform(patch("/api/streams/" + session).with(ownerWithPermissions(authority))
+                        .contentType("application/json").content("{\"title\":\"new\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+        mvc.perform(post("/api/streams/" + session + "/publish-credentials").with(ownerWithPermissions(authority)))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+        mvc.perform(post("/api/streams/" + session + "/end").with(ownerWithPermissions(authority)))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+        verifyNoInteractions(service, closureService, playbackService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STREAM_CREATE", "STREAM_PUBLISH"})
+    void creatingSessionRequiresBothCreateAndPublishPermissions(String permission) throws Exception {
+        mvc.perform(post("/api/streams").with(ownerWithPermissions(permission))
+                        .contentType("application/json").content(createBody()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+        verifyNoInteractions(service, closureService, playbackService);
+    }
+
+    @Test
+    void viewerEndpointsNeedNoApplicationPermissions() throws Exception {
+        mvc.perform(get("/api/streams/" + session).with(ownerWithPermissions()))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/streams/" + session + "/playback-access").with(ownerWithPermissions()))
+                .andExpect(status().isOk());
+        verify(service).metadata(session);
+        verify(playbackService).access(session, owner);
+        verifyNoInteractions(closureService);
+    }
+
     @Test
     void createAndIdempotentReplayHaveMatchingEnvelopeStatusAndNoStore() throws Exception {
         var credentials = new StreamPublishCredentialsResponse(session, "rtmp://localhost:1935/live",
@@ -75,7 +118,7 @@ class StreamSessionControllerTest {
         when(service.create(eq(owner), any())).thenReturn(new SessionProvisioningResult(response, true),
                 new SessionProvisioningResult(response, false));
         for (int status : List.of(201, 200)) {
-            mvc.perform(post("/api/streams").with(jwt().jwt(token -> token.subject(owner.toString())))
+            mvc.perform(post("/api/streams").with(ownerWithPermissions("STREAM_CREATE", "STREAM_PUBLISH"))
                             .contentType("application/json").content(createBody()))
                     .andExpect(status().is(status)).andExpect(jsonPath("$.status").value(status))
                     .andExpect(jsonPath("$.code").value(1000)).andExpect(header().string("Cache-Control", "no-store"))
@@ -88,13 +131,15 @@ class StreamSessionControllerTest {
     void invalidCreateAndPatchBodiesAreRejectedBeforeCallingService() throws Exception {
         for (String body : List.of("{}", "{\"requestId\":\"bad\"}",
                 "{\"requestId\":\"" + UUID.randomUUID() + "\",\"title\":\"   \",\"categoryId\":\"" + UUID.randomUUID() + "\"}")) {
-            mvc.perform(post("/api/streams").with(jwt()).contentType("application/json").content(body))
+            mvc.perform(post("/api/streams").with(ownerWithPermissions("STREAM_CREATE", "STREAM_PUBLISH"))
+                            .contentType("application/json").content(body))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
         }
         for (String body : List.of("{}", "{\"title\":null}", "{\"categoryId\":null}", "{\"title\":\"  \"}",
                 "{\"status\":\"LIVE\"}", "{\"title\":\"new\",\"owner\":\"someone\"}",
                 "{\"title\":\"" + "x".repeat(256) + "\"}")) {
-            mvc.perform(patch("/api/streams/" + session).with(jwt()).contentType("application/json").content(body))
+            mvc.perform(patch("/api/streams/" + session).with(ownerWithPermissions("STREAM_UPDATE"))
+                            .contentType("application/json").content(body))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
         }
         verifyNoInteractions(service);
@@ -102,7 +147,7 @@ class StreamSessionControllerTest {
 
     @Test
     void patchPreservesFieldPresenceAndUsesTheAuthenticatedOwner() throws Exception {
-        mvc.perform(patch("/api/streams/" + session).with(jwt().jwt(token -> token.subject(owner.toString())))
+        mvc.perform(patch("/api/streams/" + session).with(ownerWithPermissions("STREAM_UPDATE"))
                         .contentType("application/json").content("{\"title\":\"  Updated title  \"}"))
                 .andExpect(status().isOk());
         var request = ArgumentCaptor.forClass(UpdateStreamSessionRequest.class);
@@ -114,7 +159,7 @@ class StreamSessionControllerTest {
 
     @Test
     void currentCanBeNullAndDoesNotContainCredentials() throws Exception {
-        mvc.perform(get("/api/streams/me/current").with(jwt().jwt(token -> token.subject(owner.toString()))))
+        mvc.perform(get("/api/streams/me/current").with(ownerWithPermissions("STREAM_VIEW_OWN")))
                 .andExpect(status().isOk()).andExpect(content().string(containsString("\"result\":null")))
                 .andExpect(jsonPath("$.publishCredentials").doesNotExist());
         verify(service).current(owner);
@@ -125,14 +170,14 @@ class StreamSessionControllerTest {
         var credentials = new StreamPublishCredentialsResponse(session, "rtmp://localhost:1935/live", "key", Instant.now());
         when(service.publishCredentials(session, owner)).thenReturn(credentials);
         mvc.perform(post("/api/streams/" + session + "/publish-credentials")
-                        .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                        .with(ownerWithPermissions("STREAM_PUBLISH")))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.result.streamKey").value("key"));
         for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_OWNED, ErrorCode.STREAM_SESSION_NOT_FOUND,
                 ErrorCode.STREAM_SESSION_STATE_INVALID, ErrorCode.MEDIA_SERVER_UNAVAILABLE)) {
             doThrow(new AppException(error)).when(service).publishCredentials(session, owner);
             mvc.perform(post("/api/streams/" + session + "/publish-credentials")
-                            .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                            .with(ownerWithPermissions("STREAM_PUBLISH")))
                     .andExpect(status().is(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.code").value(error.getCode()));
@@ -146,7 +191,7 @@ class StreamSessionControllerTest {
         when(closureService.end(session, owner, null)).thenReturn(endResponse);
 
         mvc.perform(post("/api/streams/" + session + "/end")
-                        .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                        .with(ownerWithPermissions("STREAM_END")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200))
                 .andExpect(jsonPath("$.result.id").value(session.toString()))
@@ -158,7 +203,7 @@ class StreamSessionControllerTest {
                 ErrorCode.MEDIA_SERVER_UNAVAILABLE)) {
             doThrow(new AppException(error)).when(closureService).end(session, owner, null);
             mvc.perform(post("/api/streams/" + session + "/end")
-                            .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                            .with(ownerWithPermissions("STREAM_END")))
                     .andExpect(status().is(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.code").value(error.getCode()));
@@ -236,5 +281,11 @@ class StreamSessionControllerTest {
 
     private String createBody() {
         return "{\"requestId\":\"" + UUID.randomUUID() + "\",\"title\":\"Stream title\",\"categoryId\":\"" + UUID.randomUUID() + "\"}";
+    }
+
+    private JwtRequestPostProcessor ownerWithPermissions(String... permissions) {
+        return jwt().jwt(token -> token.subject(owner.toString()))
+                .authorities(Arrays.stream(permissions).map(SimpleGrantedAuthority::new)
+                        .toArray(SimpleGrantedAuthority[]::new));
     }
 }
