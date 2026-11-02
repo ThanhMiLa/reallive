@@ -40,6 +40,11 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(before, [hashlib.sha256(path.read_bytes()).digest() for path in paths])
         self.assertTrue(all(path.stat().st_mode & 0o077 == 0 for path in paths))
 
+    def test_prepare_writes_private_media_server_environment(self):
+        environment = self.state / 'media-server.env'
+        self.assertEqual('# Media Server env\n', environment.read_text())
+        self.assertEqual(0, environment.stat().st_mode & 0o077)
+
     def test_incomplete_key_pair_is_not_replaced(self):
         with tempfile.TemporaryDirectory() as directory:
             private = Path(directory) / 'private.pem'

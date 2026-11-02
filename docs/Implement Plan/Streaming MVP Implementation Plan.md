@@ -365,7 +365,7 @@ Read JWT dùng `action: read` trên cùng path. Token Control API dùng `action:
 Các file dự kiến:
 
 ```text
-mediamtx/
+media-server/
   Dockerfile
   mediamtx.yml
   media_hook.py
@@ -670,11 +670,11 @@ Tham khảo [API hls.js v1.7.3](https://github.com/video-dev/hls.js/blob/v1.7.3/
 | `STREAM_RECONNECT_GRACE` | `60s`, đã chốt | Backend |
 | `STREAM_RTMP_PUBLIC_URL` | `rtmp://localhost:1935/live` | Trả cho OBS |
 | `STREAM_HLS_PUBLIC_BASE_URL` | `http://localhost:8898` | Ghép playbackUrl |
-| `STREAM_MEDIAMTX_CONTROL_URL` | `http://127.0.0.1:9997` | Backend adapter |
-| `STREAM_MEDIAMTX_JWKS_URL` | `http://host.docker.internal:8082/stream/api/media/jwks` | Env override `authJWTJWKS` của MediaMTX (gọi trực tiếp Stream Service) |
+| `STREAM_MEDIA_CONTROL_API_URL` | `http://127.0.0.1:9997` | Backend adapter |
+| `STREAM_MEDIA_JWKS_URL` | `http://host.docker.internal:8082/stream/api/media/jwks` | Env override `authJWTJWKS` của MediaMTX (gọi trực tiếp Stream Service) |
 | `STREAM_MEDIA_CALLBACK_URL` | `http://host.docker.internal:8082/stream/api/media/events` | URL callback trực tiếp tới Stream Service |
 | `STREAM_RECONNECT_SWEEP_DELAY` | `1s`, đề xuất | Chỉ quét deadline reconnect |
-| `STREAM_MEDIAMTX_CONNECT_TIMEOUT` / `STREAM_MEDIAMTX_READ_TIMEOUT` | `2s` / `5s`, đề xuất | Adapter |
+| `STREAM_MEDIA_CONTROL_CONNECT_TIMEOUT` / `STREAM_MEDIA_CONTROL_REQUEST_TIMEOUT` | `2s` / `5s`, đề xuất | Adapter |
 | `STREAM_MEDIA_ALLOWED_ORIGINS` | `http://localhost:5173` | Map sang `hlsAllowOrigins` đúng dạng list |
 
 - Dùng `@ConfigurationProperties`/validation cho nhóm cấu hình khi phù hợp; map rõ tên env ứng dụng sang tên config/env mà MediaMTX thực sự hiểu.

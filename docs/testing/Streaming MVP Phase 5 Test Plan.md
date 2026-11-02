@@ -43,7 +43,7 @@ Các Java service chạy bằng cấu hình IDE đã dùng ở Phase 0–4, ho�
 Trong root `.env`, MediaMTX phải dùng JWKS/callback backend thật:
 
 ```text
-STREAM_MEDIAMTX_JWKS_URL=http://host.docker.internal:8082/stream/api/media/jwks
+STREAM_MEDIA_JWKS_URL=http://host.docker.internal:8082/stream/api/media/jwks
 STREAM_MEDIA_CALLBACK_URL=http://host.docker.internal:8082/stream/api/media/events
 STREAM_MEDIA_ALLOWED_ORIGINS=http://localhost:5173
 ```

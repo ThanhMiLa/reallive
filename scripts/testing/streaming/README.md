@@ -43,7 +43,7 @@ python3 scripts/testing/streaming/media.py probe
 python3 scripts/testing/streaming/smoke.py
 ```
 
-Service MediaMTX được khai báo trực tiếp trong `docker-compose.yml` ở root và chạy mặc định cùng các service khác. `compose.fixture.yml` kế thừa đúng service đó và chỉ override JWKS/callback/origin sang fixture. `stack.py` đặt project directory về root để dùng đúng đường dẫn và `.env` của repository; chuẩn bị `.env` root theo `.env.example` trước khi chạy. Nếu gọi Compose trực tiếp, thêm `--project-directory .` và chạy từ root.
+Service `media-server` (chạy MediaMTX) được khai báo trực tiếp trong `docker-compose.yml` ở root và chạy mặc định cùng các service khác. `compose.fixture.yml` kế thừa đúng service đó và chỉ override JWKS/callback/origin sang fixture. `stack.py` đặt project directory về root để dùng đúng đường dẫn và `.env` của repository; chuẩn bị `.env` root theo `.env.example` trước khi chạy. Nếu gọi Compose trực tiếp, thêm `--project-directory .` và chạy từ root.
 
 Nếu build timeout khi lấy metadata public image do Docker credential helper, dùng `stack.py up --anonymous-registry`. Script chỉ tạo Docker config `auths={}` trong `.local/streaming/docker-public`, giữ endpoint của context hiện tại và không sửa Docker config của người dùng.
 

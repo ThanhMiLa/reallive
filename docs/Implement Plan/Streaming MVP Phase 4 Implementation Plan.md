@@ -9,7 +9,7 @@
 
 ## 1. STR-401 — Hook callback gửi trực tiếp tới Stream Service
 
-Tập tin `mediamtx/media_hook.py` được tinh chỉnh theo thiết kế đồng bộ (Implementation Plan §9.1 & §14):
+Tập tin `media-server/media_hook.py` được tinh chỉnh theo thiết kế đồng bộ (Implementation Plan §9.1 & §14):
 - Gửi HTTP POST JSON trực tiếp tới Stream Service endpoint `http://host.docker.internal:8082/stream/api/media/events`.
 - Thực hiện một lần duy nhất (**single-shot**) với `timeout=10` giây; bỏ vòng lặp 5 lần thử lại cũ để tránh cạnh tranh và nghẽn tiến trình MediaMTX.
 - Trả mã thoát rõ ràng:

@@ -150,10 +150,10 @@ def prepare(state):
                     'wrongSignatureRead': corrupt_signature(read)}}
     write_private_json(state / 'fixtures.json', fixtures)
     write_private_json(state / 'jwks.json', jwks(state))
-    environment = state / 'mediamtx.env'
+    environment = state / 'media-server.env'
     descriptor = os.open(environment, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, 'w') as output:
-        output.write('# MediaMTX env\n')
+        output.write('# Media Server env\n')
     print('Prepared fixtures.json and public-only jwks.json; token values were not printed.', flush=True)
 
 

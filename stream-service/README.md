@@ -82,7 +82,7 @@ memory and never committed.
 Prerequisites: Docker, FFmpeg with H.264/AAC, JDK 21, and the locally built media image. From repository root:
 
 ```sh
-docker build -f mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
+docker build -f media-server/Dockerfile -t reallive-media-server:1.21.2 .
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
 ```
 
@@ -144,4 +144,3 @@ The OBS method is deliberately opt-in and is skipped by this command. [Phase 3 T
 - Synchronous End API:
   - `POST /stream/api/streams/{sessionId}/end` requires authenticated channel owner.
   - Deletes media path and kicks source before committing `ENDED/CLOSED`. Idempotent if already ended. Failures rollback DB and return 503.
-

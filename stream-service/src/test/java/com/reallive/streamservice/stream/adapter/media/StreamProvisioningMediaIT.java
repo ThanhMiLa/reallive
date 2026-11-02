@@ -73,10 +73,10 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
 
     private static final String SCHEMA = newSchema();
     private static final int STREAM_PORT = freePort();
-    private static final Path REPOSITORY = Files.exists(Path.of("mediamtx/mediamtx.yml"))
+    private static final Path REPOSITORY = Files.exists(Path.of("media-server/mediamtx.yml"))
             ? Path.of(".").toAbsolutePath() : Path.of("..").toAbsolutePath();
     @Container
-    private static final GenericContainer<?> MEDIA = new GenericContainer<>(DockerImageName.parse("reallive-mediamtx:1.21.2"))
+    private static final GenericContainer<?> MEDIA = new GenericContainer<>(DockerImageName.parse("reallive-media-server:1.21.2"))
             .withCopyToContainer(Transferable.of(mediaConfiguration()), "/mediamtx.yml")
             .withExtraHost("host.docker.internal", "host-gateway")
             .withEnv("MTX_AUTHJWTJWKS", "http://host.docker.internal:" + STREAM_PORT + "/stream/api/media/jwks")
@@ -376,7 +376,7 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
     }
 
     private static String mediaConfiguration() {
-        try { return Files.readString(REPOSITORY.resolve("mediamtx/mediamtx.yml")); }
+        try { return Files.readString(REPOSITORY.resolve("media-server/mediamtx.yml")); }
         catch (Exception exception) { throw new IllegalStateException("Cannot read pinned MediaMTX configuration"); }
     }
 }

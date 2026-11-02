@@ -49,7 +49,7 @@ class HookTest(unittest.TestCase):
     def launch(self, env=None, action='online'):
         import sys
         run_env = env if env is not None else self.environment
-        self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'mediamtx/media_hook.py'), action],
+        self.process = subprocess.Popen([sys.executable, str(fixture.REPO / 'media-server/media_hook.py'), action],
                                         env=run_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_single_shot_success(self):

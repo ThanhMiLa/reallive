@@ -290,7 +290,7 @@ Bốn lệnh Maven đều BUILD SUCCESS và đóng gói JAR. 37 test bị bỏ q
 Chạy sau khi có local image MediaMTX:
 
 ```sh
-docker build -f mediamtx/Dockerfile -t reallive-mediamtx:1.21.2 .
+docker build -f media-server/Dockerfile -t reallive-media-server:1.21.2 .
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
 ```
 
@@ -392,7 +392,7 @@ docker compose config --quiet
 
 ## STR-401–STR-407 — Bằng chứng hành vi
 
-- `mediamtx/media_hook.py` chuyển sang single-shot timeout 10s, trả mã thoát 0 khi HTTP 2xx và 1 khi lỗi; không log stream key/query params. Rebuilt container `reallive-mediamtx:1.21.2`.
+- `media-server/media_hook.py` chuyển sang single-shot timeout 10s, trả mã thoát 0 khi HTTP 2xx và 1 khi lỗi; không log stream key/query params. Rebuilt container `reallive-media-server:1.21.2`.
 - `MediaEventController` tiếp nhận callback tại `POST /stream/api/media/events` (permitAll cho MediaMTX). Ghi audit log `eventId`, `streamId`, `type`, `outcome`, `status`.
 - `StreamMediaLifecycleServiceImpl.onOnline` khóa bi quan session, kiểm tra Control API `getSource(streamId)` xác nhận `online=true` và đúng connection ID/source type trước khi chuyển `READY`/`RECONNECTING` sang `LIVE`. Ghi nhận `startedAt` lần đầu và ghi `StreamStatusHistoryEntity`. Duplicate ONLINE cho cùng nguồn trả `IGNORED` an toàn.
 - `StreamMediaLifecycleServiceImpl.onOffline` khóa bi quan session, kiểm tra source ID (bỏ qua event từ connection cũ), chuyển `LIVE` sang `RECONNECTING` với grace 60s (`reconnectDeadline = now + 60s`). Duplicate OFFLINE không reset deadline.
