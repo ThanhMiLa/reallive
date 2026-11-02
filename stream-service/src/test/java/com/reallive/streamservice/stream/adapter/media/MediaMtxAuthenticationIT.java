@@ -56,7 +56,8 @@ class MediaMtxAuthenticationIT {
 
     @Test
     void javaTokensAuthenticateAgainstMediaMtxUsingDirectStreamServiceJwks() throws Exception {
-        Path repository = Files.exists(Path.of("media-server/mediamtx.yml"))
+        Path repository = Files.exists(Path.of("media-server/config/mediamtx.yml"))
+                || Files.exists(Path.of("media-server/mediamtx.yml"))
                 ? Path.of(".").toAbsolutePath() : Path.of("..").toAbsolutePath();
         String jwksUrl = "http://127.0.0.1:" + streamPort + "/stream/api/media/jwks";
         var jwks = mapper.readTree(request("GET", jwksUrl, null, null).body());
@@ -72,7 +73,10 @@ class MediaMtxAuthenticationIT {
         assertEquals(404, http.send(callbackRequest, HttpResponse.BodyHandlers.ofString()).statusCode(),
                 "Direct callback for unknown session must reach stream-service and return 404");
 
-        String config = Files.readString(repository.resolve("media-server/mediamtx.yml"))
+        Path configPath = Files.exists(repository.resolve("media-server/config/mediamtx.yml"))
+                ? repository.resolve("media-server/config/mediamtx.yml")
+                : repository.resolve("media-server/mediamtx.yml");
+        String config = Files.readString(configPath)
                 .replaceAll("(?m)^\\s*runOn(?:Online|Offline):[^\\n]*\\n", "");
         try (var media = new GenericContainer<>(DockerImageName.parse("reallive-media-server:1.21.2"))
                 .withCopyToContainer(Transferable.of(config), "/mediamtx.yml")

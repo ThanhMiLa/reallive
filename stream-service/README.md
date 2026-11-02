@@ -82,7 +82,7 @@ memory and never committed.
 Prerequisites: Docker, FFmpeg with H.264/AAC, JDK 21, and the locally built media image. From repository root:
 
 ```sh
-docker build -f media-server/Dockerfile -t reallive-media-server:1.21.2 .
+docker build -f media-server/docker/Dockerfile -t reallive-media-server:1.21.2 .
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
 ```
 

@@ -2,7 +2,21 @@
 
 Một container MediaMTX `1.21.2`, custom image có shell/Python standard library/CA certificates để chạy hook HTTP JSON trực tiếp. Không có FFmpeg/transcoding trong container.
 
-Service `media-server` được khai báo trực tiếp trong [docker-compose.yml ở root](../docker-compose.yml), dùng image nội bộ `reallive-media-server:1.21.2` và chạy cùng các service khác bằng `docker compose up -d`. Không cần env file callback secret hoặc fixture trước khi chạy backend thật. Thư mục này giữ Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
+Service `media-server` được khai báo trực tiếp trong [docker-compose.yml ở root](../docker-compose.yml), dùng image nội bộ `reallive-media-server:1.21.2` và chạy cùng các service khác bằng `docker compose up -d`. Không cần env file callback secret hoặc fixture trước khi chạy backend thật. Module này quản lý Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
+
+## Cấu trúc thư mục
+
+```text
+media-server/
+├── config/
+│   └── mediamtx.yml             # Cấu hình MediaMTX (JWT, port RTMP/HLS, paths)
+├── docker/
+│   ├── Dockerfile               # Multi-stage image đóng gói MediaMTX và Python runtime
+│   └── Dockerfile.dockerignore  # Quy tắc lọc build context cho image
+├── hooks/
+│   └── media_hook.py            # Webhook script xử lý sự kiện online/offline
+└── README.md                    # Tài liệu hướng dẫn module
+```
 
 Tên module/service là `media-server`; phần mềm bên trong vẫn là MediaMTX. Giữ nguyên image upstream `bluenviron/mediamtx`, binary `/mediamtx`, cấu hình `mediamtx.yml`, biến `MTX_*` và JWT claim `mediamtx_permissions` theo contract của MediaMTX.
 
