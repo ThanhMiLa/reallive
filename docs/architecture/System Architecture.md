@@ -1,7 +1,7 @@
 # SYSTEM ARCHITECTURE
 
 ## 1. System Architecture Design
-![Architecture Design](./Architecture%20Design.png)
+![Architecture Design](./image/Architecture%20Design.png)
 
 ---
 
