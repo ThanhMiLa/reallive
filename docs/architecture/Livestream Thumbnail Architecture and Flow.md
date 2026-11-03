@@ -10,7 +10,7 @@ Tự động tạo và cập nhật thumbnail cho các phiên livestream đang L
 |---|---|
 | OBS | Phát video/audio tới MediaMTX |
 | Stream Service | Quản lý lịch chụp, query session đến hạn, tạo jobId, ghép URL HLS đầy đủ, ký Read JWT, gửi batch và nhận callback cập nhật DB |
-| PostgreSQL | Lưu stream session, URL thumbnail, thời điểm chụp, hạn tiếp theo và thông tin điều phối công việc |
+| PostgreSQL | Lưu stream session, URL thumbnail, thời điểm cập nhật thành công thumbnail_updated_at và thông tin điều phối công việc |
 | Media Worker API | Ứng dụng Node.js + TypeScript + NestJS nhận batch qua HTTP và thêm từng công việc vào queue |
 | BullMQ / Redis | Lưu công việc đang chờ, quản lý trạng thái và hỗ trợ retry, chống nhận trùng |
 | Media Worker processor | Lấy job từ queue, chạy FFmpeg, upload ảnh lên R2, gửi callback và dọn file tạm |
@@ -34,13 +34,13 @@ Media Worker API và processor là hai vai trò của cùng ứng dụng, chạy
   <tbody>
     <tr>
       <td>1</td>
-      <td>Khởi tạo lịch khi session bắt đầu LIVE</td>
-      <td>Stream Service đặt <code>next_thumbnail_at</code> bằng thời điểm session lần đầu chuyển sang <code>LIVE</code> cộng <code>X</code> giây.</td>
+      <td>Ghi nhận mốc LIVE đầu tiên</td>
+      <td>Stream Service giữ <code>started_at</code> của lần đầu LIVE. Khi chưa có ảnh, <code>thumbnail_updated_at</code> là NULL và lượt đầu đến hạn sau <code>started_at + X</code>; reconnect không reset các mốc này.</td>
     </tr>
     <tr>
       <td>2</td>
       <td>Quét lịch và chọn các job cần gửi</td>
-      <td>Kết thúc job đang chờ quá hạn trước, rồi chỉ xét session <code>LIVE</code>: gửi lại job <code>PENDING_DISPATCH</code> còn hạn, hoặc tạo lượt mới nếu <code>next_thumbnail_at &lt;= now</code> và không còn job đang chờ.</td>
+      <td>Kết thúc job đang chờ quá hạn trước, rồi chỉ xét session <code>LIVE</code>: gửi lại job <code>PENDING_DISPATCH</code> còn hạn, hoặc tạo lượt mới khi không còn job đang chờ và <code>thumbnail_updated_at + X &lt;= now</code>. Nếu chưa từng cập nhật ảnh thì dùng <code>started_at + X &lt;= now</code>.</td>
     </tr>
     <tr>
       <td>3</td>
@@ -80,12 +80,12 @@ Media Worker API và processor là hai vai trò của cùng ứng dụng, chạy
     <tr>
       <td>10</td>
       <td>Kiểm tra và cập nhật thumbnail</td>
-      <td>Backend kiểm tra <code>jobId</code> khớp, job còn <code>PENDING_DISPATCH</code> hoặc <code>ACCEPTED</code>, session vẫn <code>LIVE</code> và ảnh hợp lệ trước khi lưu URL cùng thời điểm chụp. Bỏ qua kết quả trùng, cũ hoặc không đủ điều kiện.</td>
+      <td>Backend kiểm tra <code>jobId</code> khớp, job còn <code>PENDING_DISPATCH</code> hoặc <code>ACCEPTED</code>, session vẫn <code>LIVE</code> và ảnh hợp lệ trước khi lưu URL. Bỏ qua kết quả trùng, cũ hoặc không đủ điều kiện.</td>
     </tr>
     <tr>
       <td>11</td>
-      <td>Hoàn tất job và hẹn lượt kế tiếp</td>
-      <td>Trong cùng transaction cập nhật ảnh, chuyển job sang <code>SUCCEEDED</code>, giữ <code>thumbnail_job_id</code> và đặt <code>next_thumbnail_at</code> bằng thời điểm cập nhật thành công cộng <code>X</code>. Chỉ giao lượt mới khi session <code>LIVE</code>; <code>RECONNECTING</code> tạm ngừng và <code>ENDED</code> dừng giao việc.</td>
+      <td>Hoàn tất job và ghi nhận mốc cập nhật</td>
+      <td>Trong cùng transaction cập nhật ảnh, chuyển job sang <code>SUCCEEDED</code>, giữ <code>thumbnail_job_id</code> và đặt <code>thumbnail_updated_at = now</code> theo đồng hồ backend. Lượt mới đến hạn sau mốc này cộng <code>X</code>; <code>RECONNECTING</code> tạm ngừng và <code>ENDED</code> dừng giao việc.</td>
     </tr>
     <tr>
       <td>12</td>
@@ -115,6 +115,7 @@ Media Worker API và processor là hai vai trò của cùng ứng dụng, chạy
 
 Các quy tắc dùng chung:
 
+- **Mốc tính lịch:** chỉ lưu `thumbnail_updated_at` cho thời điểm backend cập nhật ảnh thành công. Chưa có ảnh thì dùng `started_at + X`; đã có ảnh thì dùng `thumbnail_updated_at + X`. Tạo/gửi job, ACK, callback bị bỏ qua và lỗi xử lý không thay đổi mốc này; Worker không cần gửi thời điểm chụp ảnh trong callback.
 - **Lưu trước khi gửi:** dùng một transaction ngắn cho batch để lưu `thumbnail_job_id`, trạng thái `PENDING_DISPATCH` và hạn chờ; commit trước khi gọi HTTP. Không giữ transaction DB mở trong lúc chờ worker.
 - **Phân biệt công việc mới và công việc gửi lại:** scheduler vừa chọn session đến hạn để tạo job mới, vừa lấy các job `PENDING_DISPATCH` còn hạn để gửi lại. Công việc gửi lại giữ nguyên ID; không tạo lượt chụp mới cho session đang chờ.
 - **Xác nhận tiếp nhận:** nhận `202` thì đổi đúng job còn `PENDING_DISPATCH` thành `ACCEPTED`. `Connect timeout` và `readTimeout` đều giữ trạng thái hiện tại, không cần transaction bổ sung nếu không ghi thêm dữ liệu.
@@ -128,6 +129,8 @@ Các quy tắc dùng chung:
 
 ## 5. Diagram kiến trúc
 
+Database chỉ lưu `thumbnail_updated_at`. Mốc đến hạn thể hiện trong ảnh là giá trị tính toán `COALESCE(thumbnail_updated_at, started_at) + X`, không phải cột lưu riêng. Callback thành công đặt `thumbnail_updated_at = now` theo đồng hồ backend; mã Mermaid bên dưới dùng trực tiếp tên cột này.
+
 ![Kiến trúc và workflow tạo thumbnail livestream](./image/Livestream%20Thumbnail%20Architecture%20and%20Flow.png)
 
 <details>
@@ -137,8 +140,8 @@ Các quy tắc dùng chung:
 %%{init: {"flowchart": {"nodeSpacing": 28, "rankSpacing": 28, "wrappingWidth": 320}}}%%
 flowchart TB
     subgraph DISPATCH["Stream Service — lập lịch và gửi job"]
-        INIT["1. Lần đầu LIVE: đặt lịch chụp<br/>next_thumbnail_at = bắt đầu + X"]
-        SCHED["2. Scheduler sẵn sàng và mỗi 10 giây<br/>Kết thúc job quá hạn, chọn session LIVE"]
+        INIT["1. Lần đầu LIVE: ghi nhận started_at<br/>Chưa có ảnh: thumbnail_updated_at là NULL"]
+        SCHED["2. Scheduler sẵn sàng và mỗi 10 giây<br/>Kết thúc job quá hạn, chọn session LIVE đến hạn<br/>Mốc cập nhật hoặc started_at cộng X ≤ now"]
         PREPARE["3. Ghi job và commit DB<br/>Ghép URL HLS đầy đủ, ký Read JWT"]
         SEND["4. FeignClient gửi batch<br/>Ngoài transaction DB"]
         WAIT["Giữ trạng thái đã lưu<br/>Chỉ gửi lại PENDING_DISPATCH còn hạn, cùng ID"]
@@ -172,14 +175,14 @@ flowchart TB
     subgraph RESULT["Stream Service — nhận phản hồi và cập nhật kết quả"]
         ACCEPT["202: PENDING_DISPATCH → ACCEPTED<br/>Chỉ khi đúng ID và job vẫn đang chờ"]
         CHECK{"10. Đúng jobId và job đang chờ?<br/>Session LIVE, ảnh hợp lệ?"}
-        SUCCESS["11. Lưu ảnh, SUCCEEDED; giữ jobId<br/>next_thumbnail_at = cập nhật + X"]
+        SUCCESS["11. Lưu ảnh, SUCCEEDED; giữ jobId<br/>thumbnail_updated_at = now; lượt sau xét mốc này + X"]
         IGNORE["Bỏ qua kết quả cũ, trùng hoặc không hợp lệ"]
 
         CHECK -->|"Có"| SUCCESS
         CHECK -.->|"Không"| IGNORE
     end
 
-    DB[("PostgreSQL<br/>Lịch, job và URL thumbnail")]
+    DB[("PostgreSQL<br/>Mốc cập nhật, job và URL thumbnail")]
     MTX["MediaMTX<br/>Nguồn HLS, xác thực Read JWT"]
     R2[("Cloudflare R2<br/>Ảnh JPEG")]
     LIST["Stream Service<br/>API danh sách livestream"]
@@ -193,7 +196,7 @@ flowchart TB
     FFMPEG -->|"HTTP HLS + Read JWT"| MTX
     UPLOAD -->|"Upload JPEG"| R2
     CALLBACK -->|"HTTP callback nội bộ"| CHECK
-    SUCCESS -->|"Commit kết quả và hạn tiếp theo"| DB
+    SUCCESS -->|"Commit kết quả và thumbnail_updated_at"| DB
 
     DB -->|"Metadata thumbnail"| LIST
     LIST -->|"Trả thumbnailUrl"| FRONTEND

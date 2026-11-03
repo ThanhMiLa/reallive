@@ -1,0 +1,336 @@
+# Kế hoạch triển khai Livestream Thumbnail
+
+File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
+Trạng thái: Chưa triển khai.  
+Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
+
+## 1. Mục tiêu và phạm vi
+
+Triển khai phần tạo và cập nhật thumbnail tương ứng bước 1–11 của workflow kiến trúc: Stream Service lập lịch theo từng session, giao công việc cho Media Worker, Worker dùng FFmpeg tạo JPEG và upload R2, sau đó callback để backend cập nhật kết quả vào DB.
+
+Kiến trúc sử dụng FeignClient + HTTP, NestJS, BullMQ/Redis, FFmpeg và Cloudflare R2 theo tài liệu đã chốt.
+
+Phạm vi đợt này gồm scheduler, queue, xử lý ảnh, upload R2, callback, cập nhật DB và cleanup. Bước 12 về cung cấp dữ liệu và hiển thị thumbnail sẽ triển khai sau; API danh sách livestream, dữ liệu card từ Channel Service, bổ sung thumbnail vào API đọc hiện có và giao diện Browse chưa thuộc đợt này. Trang watch, transcoding, viewer count, chat, donate và upload thumbnail thủ công nằm ngoài plan này.
+
+### Thành phần tái sử dụng
+
+| Thành phần hiện có | Cách sử dụng |
+|---|---|
+| Lifecycle của Stream Service | Dùng startedAt làm mốc cho lượt đầu; giữ nguyên startedAt và thumbnail_updated_at khi reconnect |
+| StreamSessionRepository | Bổ sung truy vấn đến hạn và cập nhật job dưới khóa |
+| MediaJwtIssuer | Tái sử dụng logic ký Read JWT với quyền đọc đúng path |
+| FeignClient và cấu hình không retry | Gửi batch; scheduler chịu trách nhiệm gửi lại |
+| Redis trong Docker Compose | Lưu queue BullMQ với prefix riêng |
+
+## 2. Quyết định triển khai và contract
+
+### 2.1. Dữ liệu trong Stream Service
+
+Bổ sung migration mới; không sửa các migration đã chạy.
+
+| Column | Kiểu | Mục đích |
+|---|---|---|
+| thumbnail_url | VARCHAR(1000), nullable | URL ảnh hiện tại |
+| thumbnail_object_key | VARCHAR(500), nullable | Object R2 đang được tham chiếu |
+| thumbnail_updated_at | TIMESTAMP UTC, nullable | Thời điểm backend cập nhật thumbnail thành công gần nhất |
+| thumbnail_job_id | UUID, nullable | ID lượt xử lý gần nhất |
+| thumbnail_job_status | VARCHAR(30), nullable | Trạng thái công việc |
+| thumbnail_job_deadline_at | TIMESTAMP UTC, nullable | Hạn kết thúc lượt xử lý |
+
+Trạng thái công việc gồm PENDING_DISPATCH, ACCEPTED, SUCCEEDED, FAILED. NULL nghĩa là chưa từng giao job.
+
+Các quy tắc:
+
+- Chưa từng cập nhật ảnh (thumbnail_updated_at IS NULL): đến hạn khi started_at + X <= now.
+- Đã cập nhật ảnh: đến hạn khi thumbnail_updated_at + X <= now.
+- Callback thành công: cập nhật ảnh, đặt thumbnail_updated_at = now theo đồng hồ backend, chuyển SUCCEEDED và giữ job ID trong cùng transaction.
+- Tạo/gửi job, ACK, callback bị bỏ qua hoặc lượt xử lý thất bại không thay đổi thumbnail_updated_at.
+- Lỗi giao HTTP: giữ PENDING_DISPATCH và cùng ID.
+- Job quá hạn: chuyển FAILED, giữ ảnh hiện tại và ID.
+- Session đang RECONNECTING hoặc ENDED: không giao công việc.
+- Không dùng updated_at để tính lịch thumbnail.
+
+### 2.2. API giữa Stream Service và Worker
+
+Worker nhận batch:
+
+```http
+POST /internal/api/thumbnail-jobs/batch
+X-Internal-Token: ...
+```
+
+```json
+{
+  "jobs": [
+    {
+      "jobId": "uuid",
+      "sessionId": "uuid",
+      "playbackUrl": "http://media-server:8888/live/uuid/index.m3u8",
+      "readToken": "...",
+      "readExpiresAt": "2026-11-03T10:05:00Z",
+      "jobDeadlineAt": "2026-11-03T10:04:00Z"
+    }
+  ]
+}
+```
+
+Response 202 trả kết quả theo từng phần tử:
+
+```json
+{
+  "acceptedJobIds": ["uuid"],
+  "rejectedJobs": [
+    {
+      "jobId": "uuid",
+      "reason": "QUEUE_FULL"
+    }
+  ]
+}
+```
+
+- Job đã tồn tại trong BullMQ vẫn được xác nhận tiếp nhận.
+- Chỉ ID thuộc acceptedJobIds được chuyển sang ACCEPTED.
+- Redis lỗi khiến kết quả tiếp nhận không xác định: trả 503; backend gửi lại cùng ID.
+- Request sai schema: 400; sai token nội bộ: 401.
+- Không áp dụng transaction toàn batch giữa HTTP, Redis và PostgreSQL.
+
+Worker callback kết quả:
+
+```http
+POST /stream/internal/api/thumbnail-results
+X-Internal-Token: ...
+```
+
+```json
+{
+  "jobId": "uuid",
+  "sessionId": "uuid",
+  "objectKey": "livestream-thumbnails/uuid/uuid.jpg",
+  "contentType": "image/jpeg",
+  "sizeBytes": 48210,
+  "width": 640,
+  "height": 360
+}
+```
+
+Backend tự dựng URL từ public R2 base URL và object key đã kiểm tra, đồng thời tự đặt thumbnail_updated_at theo thời điểm cập nhật thành công. Worker không gửi thời điểm chụp ảnh hoặc quyết định mốc cập nhật DB. Response 200 có outcome APPLIED hoặc IGNORED.
+
+Callback áp dụng khi đúng job ID, trạng thái còn chờ, chưa quá deadline và session vẫn LIVE. Kết quả trùng, cũ hoặc không đủ điều kiện được bỏ qua.
+
+Hai API dùng token nội bộ từ biến môi trường, không dùng account cookie và không được Gateway public ra ngoài.
+
+### 2.3. Cấu hình mặc định
+
+| Cấu hình | Mặc định |
+|---|---|
+| Khoảng cập nhật X | Dev 60 giây; production 300 giây |
+| Chu kỳ scheduler | 10 giây; chạy thêm một lượt khi application ready |
+| Batch gửi Worker | Tối đa 50 job/request |
+| Deadline một lượt thumbnail | 240 giây |
+| Read JWT | Tái sử dụng TTL hiện tại, mặc định 300 giây |
+| Feign connect/read timeout | 2 giây / 5 giây |
+| Worker concurrency | 2 |
+| Giới hạn job chưa kết thúc trong queue | 1.000 |
+| Timeout FFmpeg | 20 giây |
+| Timeout upload R2 | 10 giây |
+| Timeout callback | 5 giây |
+| JPEG | Khung 640 × 360, giữ tỉ lệ bằng padding |
+| Giữ job BullMQ đã kết thúc | Tối thiểu 24 giờ |
+| Quét dọn rác | Mỗi giờ; chỉ xét dữ liệu cũ trên 24 giờ |
+
+Tất cả các giá trị trên phải cấu hình được qua biến môi trường. Validate quan hệ giữa deadline, timeout và thời gian giữ job khi khởi động.
+
+## 3. Các Step/Task triển khai
+
+### Step 1 — Chuẩn bị contract và nền tảng Media Worker
+
+Vai trò: Tạo nền tảng để hai service có thể phát triển độc lập theo cùng contract.
+
+Phụ thuộc: Không.
+
+| Task | Công việc |
+|---|---|
+| THM-101 | Ghi lại schema batch, response từng job, callback và error contract; tạo dữ liệu mẫu dùng chung cho kiểm thử Java/Node |
+| THM-102 | Tạo ứng dụng độc lập media-worker/ bằng NestJS + TypeScript; chia module tiếp nhận job, queue, processor, FFmpeg, storage và callback |
+| THM-103 | Thiết lập configuration validation, health/readiness, lint, unit test, build và Dockerfile có FFmpeg |
+| THM-104 | Thiết lập xác thực token nội bộ; giới hạn batch, request body và URL nguồn theo MediaMTX base URL được cấu hình |
+
+Điều kiện hoàn tất: Worker build được, khởi động được với cấu hình mẫu; request thiếu token hoặc sai schema bị từ chối trước khi thêm queue.
+
+### Step 2 — Bổ sung dữ liệu và lịch theo từng session
+
+Vai trò: Lưu bền vững thời điểm cập nhật thumbnail thành công và trạng thái công việc; tính hạn chụp từ mốc này hoặc startedAt cho lượt đầu.
+
+Phụ thuộc: Step 1.
+
+| Task | Công việc |
+|---|---|
+| THM-201 | Thêm migration, entity fields, enum và index phục vụ truy vấn LIVE theo thumbnail_updated_at/started_at, job pending và job quá deadline |
+| THM-202 | Giữ startedAt của lần LIVE đầu tiên làm mốc xét startedAt + X; thumbnail_updated_at giữ NULL đến khi có callback thành công, event trùng và reconnect không reset các mốc |
+| THM-203 | Với session hiện có chưa có thumbnail, giữ thumbnail_updated_at NULL và xét startedAt + X; không backfill thời điểm cập nhật thành công giả |
+| THM-204 | Cập nhật mapper, snapshot và DTO nội bộ cần thiết cho điều phối/callback thumbnail; việc bổ sung thumbnail vào response API đọc sẽ triển khai ở đợt sau |
+
+Dữ liệu thumbnail ban đầu là NULL, bao gồm thumbnail_updated_at. Migration không tạo job, ký JWT hoặc gán thời điểm cập nhật thành công khi chưa có ảnh.
+
+Điều kiện hoàn tất: Session mới và session có sẵn đều có lịch đúng; chỉnh title/category không làm thay đổi lịch thumbnail.
+
+### Step 3 — Scheduler và điều phối batch tại Stream Service
+
+Vai trò: Thực hiện bước 2–4 của workflow, bảo đảm có thể khôi phục sau restart.
+
+Phụ thuộc: Step 2.
+
+| Task | Công việc |
+|---|---|
+| THM-301 | Tạo scheduler thumbnail riêng với reconnect scheduler; chạy khi application ready và theo fixed delay, ngăn hai lượt chạy chồng trong cùng process |
+| THM-302 | Đầu mỗi lượt, kết thúc các job PENDING_DISPATCH/ACCEPTED quá deadline trong transaction ngắn |
+| THM-303 | Chọn session LIVE đến hạn theo thumbnail_updated_at + X, hoặc startedAt + X nếu chưa có ảnh, và không còn job đang chờ; gửi lại pending còn hạn với cùng ID; giới hạn số lượng truy vấn, khóa và recheck trước khi tạo job |
+| THM-304 | Dùng TransactionTemplate lưu job ID, trạng thái và deadline; commit trước khi ký token và gọi HTTP |
+| THM-305 | Tạo FeignClient dưới module stream.client; ghép HLS URL đầy đủ bằng internal MediaMTX base URL và playback path; gửi batch với retry tự động tắt |
+| THM-306 | Áp dụng response theo từng ID; chỉ chuyển PENDING_DISPATCH → ACCEPTED nếu ID vẫn khớp; lỗi HTTP/timeout giữ trạng thái hiện tại |
+
+Quy tắc triển khai:
+
+- Dùng batch truy vấn để tránh tải toàn bộ session LIVE vào RAM.
+- Tính cutoff = now - X một lần mỗi lượt quét: lấy thumbnail_updated_at <= cutoff, hoặc thumbnail_updated_at IS NULL và started_at <= cutoff. Chỉ tạo lượt mới khi session LIVE và không còn job đang chờ.
+- Job gửi lại giữ ID và deadline ban đầu.
+- Read JWT ký bằng danh tính kỹ thuật media-worker, quyền read đúng path; không mượn account streamer và không gọi publish-credentials.
+- Bổ sung method ký token kỹ thuật trong MediaJwtIssuer, dùng chung bộ ký và key hiện có.
+- Callback hoàn tất trước response 202 phải được giữ nguyên.
+- Dùng khóa hàng để hai scheduler không tạo hai job ID khác nhau cho cùng session; việc gửi trùng cùng ID được Worker xử lý.
+- Scheduler thumbnail không được làm nghẽn reconnect scheduler; cấu hình executor riêng.
+
+Điều kiện hoàn tất: Tắt Worker, restart backend hoặc gây timeout đều không mất công việc; DB transaction đã kết thúc trước khi gọi HTTP.
+
+### Step 4 — Tiếp nhận batch và quản lý BullMQ
+
+Vai trò: Thực hiện bước 5–6, tách mỗi phần tử thành một công việc độc lập.
+
+Phụ thuộc: Step 1; kiểm thử tích hợp với Step 3.
+
+| Task | Công việc |
+|---|---|
+| THM-401 | Thêm queue thumbnail với prefix Redis riêng; lấy jobId từ Stream Service làm BullMQ job ID |
+| THM-402 | Tách batch, kiểm tra job tồn tại trước khi xét capacity và trả kết quả tiếp nhận từng ID |
+| THM-403 | Giới hạn queue, giữ completed/failed job trong thời gian chống trùng; không xóa job ngay sau xử lý |
+| THM-404 | Processor lấy job theo concurrency; kiểm tra cả JWT expiry và job deadline trước khi chạy FFmpeg |
+| THM-405 | Thiết lập attempts một lần, không tự chạy lại pipeline khi lỗi; xử lý shutdown, Redis disconnect và stalled job theo chính sách chấp nhận bỏ một lượt thumbnail |
+
+Mặc định phiên bản đầu có một Worker API nhận batch; các request enqueue được tuần tự hóa qua mutex để việc kiểm tra capacity và thêm queue không vượt giới hạn do request đồng thời. Processor có thể mở rộng riêng, dùng chung queue. Không triển khai nhiều API replica trong phạm vi này.
+
+Job tồn tại được xác nhận ngay cả khi queue đầy. Redis lỗi sau khi thêm một phần batch phải cho phép backend gửi lại an toàn.
+
+BullMQ chỉ chống trùng ID khi bản ghi job còn tồn tại; cấu hình retention và test phải bảo vệ điều này. Tài liệu BullMQ (https://docs.bullmq.io/guide/jobs/job-ids)
+
+Điều kiện hoàn tất: Gửi cùng batch nhiều lần chỉ tạo một công việc cho mỗi ID; job đã xử lý vẫn không bị thêm lại trong thời gian giữ bản ghi.
+
+### Step 5 — FFmpeg, JPEG và upload R2
+
+Vai trò: Thực hiện bước 7–8 của workflow.
+
+Phụ thuộc: Step 4.
+
+| Task | Công việc |
+|---|---|
+| THM-501 | Tạo FFmpeg adapter dùng spawn() với argument array, không dùng shell; truyền Authorization Bearer qua HTTP header |
+| THM-502 | Đọc HLS từ MediaMTX, trích một frame có thể giải mã, resize/pad và xuất một JPEG vào thư mục tạm riêng của job |
+| THM-503 | Giới hạn thời gian chạy, tài nguyên và dung lượng output; khi timeout/shutdown phải kết thúc tiến trình con |
+| THM-504 | Kiểm tra JPEG trước upload: file tồn tại, kích thước hợp lệ, định dạng và dimensions đúng |
+| THM-505 | Upload từ Worker qua S3 SDK lên R2; key bất biến theo session/job ID, content type image/jpeg; chỉ callback sau khi upload được xác nhận |
+| THM-506 | Dọn file trong finally; lỗi dọn file không chặn callback nếu upload đã thành công |
+
+Dùng object key livestream-thumbnails/{sessionId}/{jobId}.jpg. Không ghi đè một URL cố định, tránh frontend/CDN giữ ảnh cũ.
+
+Worker là nơi giữ R2 credential và upload JPEG. Stream Service không nhận binary ảnh. R2 cung cấp API tương thích S3 để thực hiện thao tác này. Tài liệu Cloudflare R2 (https://developers.cloudflare.com/r2/api/s3/api/)
+
+Điều kiện hoàn tất: Với stream OBS thật, Worker đọc được HLS có JWT và tạo JPEG tải được từ R2. MediaMTX mất kết nối, FFmpeg lỗi, filesystem lỗi hoặc upload lỗi đều kết thúc job mà không callback.
+
+### Step 6 — Callback và cập nhật thumbnail nguyên tử
+
+Vai trò: Thực hiện bước 9–11; bảo vệ kết quả khi callback và response đến không đúng thứ tự.
+
+Phụ thuộc: Step 2 và Step 5.
+
+| Task | Công việc |
+|---|---|
+| THM-601 | Worker callback một lần qua HTTP với timeout hữu hạn; tắt retry trong HTTP client |
+| THM-602 | Thêm controller nội bộ tại Stream Service, security chain/token validation riêng, không phụ thuộc account cookie |
+| THM-603 | Khóa session trong transaction ngắn; kiểm tra ID, trạng thái, deadline, session LIVE và thông tin ảnh |
+| THM-604 | Trong cùng transaction, lưu URL/key, đặt thumbnail_updated_at = now theo đồng hồ backend, chuyển SUCCEEDED và giữ ID; scheduler tính lượt tiếp theo bằng thumbnail_updated_at + X |
+| THM-605 | Trả APPLIED/IGNORED; xử lý callback trùng, callback cũ, session ENDED/RECONNECTING và response 202 đến muộn |
+
+Quy tắc lỗi:
+
+- Callback lỗi hoặc timeout: Worker ghi log rồi kết thúc, không gửi lại.
+- Backend đã commit nhưng response mất: giữ nguyên ảnh và trạng thái SUCCEEDED.
+- Backend chưa cập nhật được: scheduler hiện tại kết thúc job khi quá hạn; lượt sau có thể tạo job mới.
+- Kiểm tra ảnh tại backend gồm object key đúng session/job và JPEG metadata hợp lệ; thời điểm cập nhật do backend tự đặt khi áp dụng thành công, không gọi R2 trong transaction cập nhật.
+
+Điều kiện hoàn tất: Các thứ tự đến khác nhau của callback, ACK và scheduler không ghi đè ảnh mới bằng kết quả cũ.
+
+### Step 7 — Dọn rác, vận hành và nghiệm thu
+
+Vai trò: Hoàn thiện phần vận hành và kiểm chứng pipeline tạo ảnh, upload và cập nhật thumbnail vào DB.
+
+Phụ thuộc: Step 1–6.
+
+| Task | Công việc |
+|---|---|
+| THM-701 | Dọn thư mục tạm quá hạn tại Worker; chỉ xóa file không thuộc job đang chạy |
+| THM-702 | Worker quét object thumbnail cũ trên 24 giờ; hỏi Stream Service theo batch object key nào còn được tham chiếu trước khi xóa |
+| THM-703 | Thêm API nội bộ kiểm tra object reference; nếu backend lỗi hoặc response không đầy đủ thì bỏ qua việc xóa |
+| THM-704 | Bổ sung Docker Compose/config mẫu, kết nối Worker → MediaMTX và Worker → Stream Service; giữ cổng nội bộ khỏi Gateway |
+| THM-705 | Thêm log/metrics cho dispatch, queue wait, processing, callback, deadline và cleanup; che JWT, secret và credential |
+| THM-706 | Viết hướng dẫn chạy, test plan và bảng nghiệm thu các rủi ro trong tài liệu kiến trúc; kiểm chứng R2 và DB trực tiếp, regression cho API hiện có |
+
+Dọn object theo prefix thumbnail riêng, có phân trang và giới hạn mỗi lượt. Giữ mọi object còn được tham chiếu, kể cả thumbnail của session đã ENDED. Không xóa ảnh khi callback timeout vì backend có thể đã lưu thành công.
+
+Endpoint kiểm tra reference chỉ phục vụ cleanup, không được gọi trước mỗi job thumbnail.
+
+Điều kiện hoàn tất: Có thể khởi động môi trường bằng cấu hình mẫu; các object/file bỏ lại được dọn an toàn; với OBS stream thật, object JPEG tồn tại trên R2 và đúng session trong DB có thumbnail mới, thumbnail_updated_at cùng trạng thái SUCCEEDED. Kiểm tra bằng R2/HTTP tải ảnh và truy vấn DB, không phụ thuộc API danh sách hoặc frontend.
+
+## 4. Kiểm thử và tiêu chí nghiệm thu
+
+Viết test cùng từng task; Step 7 tổng hợp kết quả.
+
+| Nhóm | Kịch bản bắt buộc |
+|---|---|
+| Migration và lịch | Schema mới; thumbnail_updated_at ban đầu NULL; lượt đầu theo startedAt + X, lượt sau theo thumbnail_updated_at + X; reconnect/event trùng và cập nhật title không đổi mốc |
+| Scheduler | Chưa đến hạn không lấy; đúng hạn được lấy; không tạo job mới khi còn job đang chờ; restart sau commit vẫn gửi tiếp |
+| Transaction | Không giữ transaction khi gọi HTTP; callback/ACK/deadline cạnh tranh không ghi đè nhau |
+| Dispatch | Connect timeout, read timeout, Worker ngừng, queue đầy, response từng phần, response 202 mất |
+| Queue | Gửi trùng trước/sau hoàn tất; Redis lỗi giữa batch; capacity với request đồng thời; expiry khi chờ |
+| FFmpeg | HLS có JWT; JWT sai/hết hạn; MediaMTX restart; không có frame; timeout; tiến trình con được dọn |
+| File và R2 | JPEG hợp lệ; ổ đĩa lỗi/đầy; upload timeout; dọn file lỗi nhưng callback vẫn chạy |
+| Callback | Đến trước ACK; trùng ID đã SUCCEEDED; sai ID; quá deadline; RECONNECTING/ENDED; backend commit rồi mất response; chỉ callback được áp dụng thành công mới cập nhật thumbnail_updated_at |
+| R2 và DB | Object JPEG tải được; URL/key trong DB trỏ đúng ảnh; thumbnail_updated_at và SUCCEEDED chỉ đổi khi callback được áp dụng thành công |
+| Cleanup | Không xóa ảnh đang tham chiếu; callback timeout vẫn giữ ảnh; backend không truy cập được thì không xóa |
+| Regression | Create/update/End, reconnect, metadata, playback-access và Stream Manager tiếp tục hoạt động |
+
+Công cụ kiểm thử:
+
+- Java: unit test và PostgreSQL Testcontainers cho migration, khóa và cạnh tranh cập nhật.
+- Worker: Jest; integration với Redis thật; test HTTP contract và FFmpeg với nguồn media kiểm soát được.
+- E2E: OBS → MediaMTX → Worker → R2 → callback → Stream Service cập nhật DB; kiểm tra object ảnh và record session trực tiếp.
+
+Đạt nghiệm thu khi:
+
+1. Stream LIVE được tạo thumbnail trên R2 và cập nhật DB sau X, cộng sai số scheduler và thời gian xử lý.
+2. Hai lần cập nhật ảnh thành công liên tiếp cách nhau tối thiểu X.
+3. Không làm thay đổi luồng xem HLS và lifecycle hiện tại.
+4. Gửi lại cùng job không tạo thêm pipeline xử lý trong thời gian chống trùng.
+5. Mất một lượt thumbnail giữ ảnh hiện tại và không khiến session bị kẹt job vĩnh viễn.
+6. Các rủi ro đã thống nhất đều có test tự động hoặc bước kiểm chứng thủ công cụ thể.
+
+## 5. Thứ tự triển khai và đưa vào sử dụng
+
+Thực hiện theo thứ tự Step 1 → 2 → 3 → 4 → 5 → 6 → 7. Task có test chỉ được đánh dấu hoàn tất khi test liên quan đã qua.
+
+- Migration và DTO nội bộ triển khai trước, có tính tương thích với dữ liệu cũ.
+- Tính năng có cờ bật/tắt scheduler; test profile mặc định tắt scheduler.
+- Triển khai Worker và callback trước khi bật dispatch.
+- Chạy dev với X = 60 giây, nghiệm thu OBS → ảnh trên R2 → dữ liệu thumbnail trong DB; production đặt X = 300 giây.
+- Khi cần dừng tính năng, tắt scheduler và ngừng nhận job mới; giữ ảnh và metadata thumbnail hiện tại.
+- Theo dõi tuổi job lâu nhất, số pending quá hạn, thời gian FFmpeg và tỷ lệ callback được áp dụng để điều chỉnh batch/concurrency.
+
+Giả định của phiên bản đầu: một Worker API nhận batch, queue dùng Redis hiện có với prefix riêng, ảnh có thể kiểm tra qua public R2 base URL; phạm vi nghiệm thu kết thúc ở ảnh trên R2 và dữ liệu thumbnail đã cập nhật trong DB. Các giá trị cấu hình trong mục 2.3 là mặc định triển khai ban đầu và phải ghi rõ trong file cấu hình mẫu.
