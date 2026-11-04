@@ -1,0 +1,5 @@
+{
+  "statusCode": 503,
+  "code": "QUEUE_UNAVAILABLE",
+  "message": "Thumbnail queue is not available"
+}
