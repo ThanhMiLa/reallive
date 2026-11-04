@@ -5,6 +5,7 @@
 This monorepo contains independently built applications:
 - `api-gateway/`, `user-service/`, `channel-service/`, `stream-service/`, `vod-service/`, `payment-service/`, and `notification-service/`: Java 21 Spring Boot services. Code lives in `src/main/java`, configuration in `src/main/resources`, and tests in `src/test/java`.
 - `chat-service/`: NestJS and TypeScript; implementation and unit tests are in `src/`, with end-to-end tests in `test/`.
+- `media-worker/`: NestJS and TypeScript thumbnail worker; implementation and unit tests are in `src/`, with HTTP contract tests in `test/`.
 - `media-server/`: MediaMTX media server container configuration and webhook scripts.
 - `web-app/`: React, TypeScript, and Vite; code and imported assets are in `src/`, static assets in `public/`.
 - `mobile-app/`: Kotlin and Jetpack Compose Android app; code and resources are under `app/src/main/`, with `test/` and `androidTest/` alongside it.
@@ -33,6 +34,7 @@ Run commands inside the relevant module; there is no root build orchestrator.
 - Node applications: `npm ci` installs dependencies from the lockfile.
 - Web: `npm run dev` starts Vite; `npm run build` checks TypeScript and builds; `npm run lint` runs ESLint.
 - Chat: `npm run start:dev` starts watch mode; `npm run build` compiles; `npm run lint` runs Oxlint; `npm run format` applies Prettier.
+- Media worker: `npm run start:dev` starts watch mode; `npm run build` compiles; `npm run lint` runs Oxlint; `npm test` runs unit tests; `npm run test:e2e` runs HTTP contract tests. Build its container with `docker build -t reallive-media-worker ./media-worker`.
 - Android: `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` builds, tests, and lints. Run `:app:connectedDebugAndroidTest` with a device or emulator.
 
 ## Coding Style & Naming Conventions
@@ -45,7 +47,7 @@ Keep Java application error handling in each service's `common.exception` packag
 
 ## Testing Guidelines
 
-Java uses JUnit Jupiter/Spring Boot tests named `*Test.java` or `*Tests.java`. Chat uses Jest: `npm test`, `npm run test:e2e`, and `npm run test:cov`; name tests `*.spec.ts` and `*.e2e-spec.ts`. Android uses JUnit 4 and AndroidX instrumentation. No coverage threshold or web test runner is currently configured. Add relevant regression tests for behavior changes.
+Java uses JUnit Jupiter/Spring Boot tests named `*Test.java` or `*Tests.java`. Chat and Media worker use Jest: `npm test`, `npm run test:e2e`, and `npm run test:cov`; name tests `*.spec.ts` and `*.e2e-spec.ts`. Android uses JUnit 4 and AndroidX instrumentation. No coverage threshold or web test runner is currently configured. Add relevant regression tests for behavior changes.
 
 ## Commit & Pull Request Guidelines
 

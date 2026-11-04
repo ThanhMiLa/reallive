@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "jobId": "11111111-1111-4111-8111-111111111111",
+      "sessionId": "22222222-2222-4222-8222-222222222222",
+      "playbackUrl": "http://media-server:8888/live/22222222-2222-4222-8222-222222222222/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "33333333-3333-4333-8333-333333333333",
+      "sessionId": "44444444-4444-4444-8444-444444444444",
+      "playbackUrl": "http://media-server:8888/live/44444444-4444-4444-8444-444444444444/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-2",
+      "readExpiresAt": "2030-01-15T10:06:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:30Z"
+    }
+  ]
+}

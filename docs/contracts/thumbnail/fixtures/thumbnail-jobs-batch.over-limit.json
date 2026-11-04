@@ -1,0 +1,412 @@
+{
+  "jobs": [
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000001",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000001/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-1",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000002",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000002",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000002/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-2",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000003",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000003",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000003/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-3",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000004",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000004",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000004/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-4",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000005",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000005",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000005/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-5",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000006",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000006",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000006/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-6",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000007",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000007",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000007/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-7",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000008",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000008",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000008/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-8",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000009",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000009",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000009/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-9",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000010",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000010",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000010/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-10",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000011",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000011",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000011/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-11",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000012",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000012",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000012/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-12",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000013",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000013",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000013/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-13",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000014",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000014",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000014/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-14",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000015",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000015",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000015/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-15",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000016",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000016",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000016/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-16",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000017",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000017",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000017/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-17",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000018",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000018",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000018/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-18",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000019",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000019",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000019/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-19",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000020",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000020",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000020/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-20",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000021",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000021",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000021/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-21",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000022",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000022",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000022/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-22",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000023",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000023",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000023/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-23",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000024",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000024",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000024/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-24",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000025",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000025",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000025/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-25",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000026",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000026",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000026/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-26",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000027",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000027",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000027/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-27",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000028",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000028",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000028/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-28",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000029",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000029",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000029/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-29",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000030",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000030",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000030/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-30",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000031",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000031",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000031/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-31",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000032",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000032",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000032/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-32",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000033",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000033",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000033/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-33",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000034",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000034",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000034/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-34",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000035",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000035",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000035/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-35",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000036",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000036",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000036/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-36",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000037",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000037",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000037/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-37",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000038",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000038",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000038/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-38",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000039",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000039",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000039/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-39",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000040",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000040",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000040/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-40",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000041",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000041",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000041/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-41",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000042",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000042",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000042/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-42",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000043",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000043",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000043/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-43",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000044",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000044",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000044/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-44",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000045",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000045",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000045/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-45",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000046",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000046",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000046/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-46",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000047",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000047",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000047/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-47",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000048",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000048",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000048/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-48",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000049",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000049",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000049/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-49",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000050",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000050",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000050/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-50",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    },
+    {
+      "jobId": "aaaaaaaa-aaaa-4aaa-8aaa-000000000051",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-000000000051",
+      "playbackUrl": "http://media-server:8888/live/bbbbbbbb-bbbb-4bbb-8bbb-000000000051/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt-51",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    }
+  ]
+}

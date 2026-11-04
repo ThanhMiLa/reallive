@@ -1,0 +1,11 @@
+{
+  "jobs": [
+    {
+      "jobId": 11111111,
+      "playbackUrl": "http://media-server:8888/live/22222222-2222-4222-8222-222222222222/index.m3u8",
+      "readToken": "fixture-read-token-not-a-jwt",
+      "readExpiresAt": "2030-01-15T10:05:00Z",
+      "jobDeadlineAt": "2030-01-15T10:04:00Z"
+    }
+  ]
+}
