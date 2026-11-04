@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Chưa triển khai.  
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2–7 chưa triển khai.  
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
 ## 1. Mục tiêu và phạm vi
@@ -148,14 +148,23 @@ Vai trò: Tạo nền tảng để hai service có thể phát triển độc l�
 
 Phụ thuộc: Không.
 
-| Task | Công việc |
-|---|---|
-| THM-101 | Ghi lại schema batch, response từng job, callback và error contract; tạo dữ liệu mẫu dùng chung cho kiểm thử Java/Node |
-| THM-102 | Tạo ứng dụng độc lập media-worker/ bằng NestJS + TypeScript; chia module tiếp nhận job, queue, processor, FFmpeg, storage và callback |
-| THM-103 | Thiết lập configuration validation, health/readiness, lint, unit test, build và Dockerfile có FFmpeg |
-| THM-104 | Thiết lập xác thực token nội bộ; giới hạn batch, request body và URL nguồn theo MediaMTX base URL được cấu hình |
+| Task | Công việc | Trạng thái |
+|---|---|---|
+| THM-101 | Ghi lại schema batch, response từng job, callback và error contract; tạo dữ liệu mẫu dùng chung cho kiểm thử Java/Node | Hoàn tất 2026-11-04 |
+| THM-102 | Tạo ứng dụng độc lập media-worker/ bằng NestJS + TypeScript; chia module tiếp nhận job, queue, processor, FFmpeg, storage và callback | Hoàn tất 2026-11-04 |
+| THM-103 | Thiết lập configuration validation, health/readiness, lint, unit test, build và Dockerfile có FFmpeg | Hoàn tất 2026-11-04 |
+| THM-104 | Thiết lập xác thực token nội bộ; giới hạn batch, request body và URL nguồn theo MediaMTX base URL được cấu hình | Hoàn tất 2026-11-04 |
 
 Điều kiện hoàn tất: Worker build được, khởi động được với cấu hình mẫu; request thiếu token hoặc sai schema bị từ chối trước khi thêm queue.
+
+Bằng chứng hoàn tất Step 1:
+
+- Contract và fixtures dùng chung tại `docs/contracts/thumbnail/`; error envelope, giới hạn batch/body và quy tắc URL nguồn được ghi rõ.
+- Ứng dụng `media-worker/` có API, queue port, processor/FFmpeg/storage/callback port, config/auth/health dùng chung. Queue chưa tích hợp nên request hợp lệ trả `503 QUEUE_UNAVAILABLE`, không trả `202` hoặc `acceptedJobIds` giả; readiness trả `503` với queue `down`.
+- `npm run lint`, `npm test` (14 test), `npm run test:e2e` (28 test) và `npm run build` đều đạt sau khi bổ sung regression cho timestamp đầy đủ có múi giờ, retention tối thiểu 24 giờ và fixture theo URL local.
+- Đã chạy lệnh kiểm tra trong README với cấu hình local từ `.env.example`; fixture được đổi URL trong bộ nhớ và API trả `503 QUEUE_UNAVAILABLE` đúng chủ đích.
+- Docker image build đạt; container chạy bằng UID/GID 10001, có FFmpeg 5.1.9, liveness trả `200`, readiness và batch hợp lệ trả `503` đúng chủ đích.
+- Chưa triển khai queue/processor/FFmpeg/R2/callback thật; các phần này thuộc Step 4–6.
 
 ### Step 2 — Bổ sung dữ liệu và lịch theo từng session
 
