@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–7 chưa triển khai.
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–8 chưa triển khai.
 
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
@@ -166,7 +166,7 @@ Bằng chứng hoàn tất Step 1:
 - `npm run lint`, `npm test` (14 test), `npm run test:e2e` (28 test) và `npm run build` đều đạt sau khi bổ sung regression cho timestamp đầy đủ có múi giờ, retention tối thiểu 24 giờ và fixture theo URL local.
 - Đã chạy lệnh kiểm tra trong README với cấu hình local từ `.env.example`; fixture được đổi URL trong bộ nhớ và API trả `503 QUEUE_UNAVAILABLE` đúng chủ đích.
 - Docker image build đạt; container chạy bằng UID/GID 10001, có FFmpeg 5.1.9, liveness trả `200`, readiness và batch hợp lệ trả `503` đúng chủ đích.
-- Chưa triển khai queue/processor/FFmpeg/R2/callback thật; các phần này thuộc Step 4–6.
+- Chưa triển khai queue/processor/FFmpeg/R2/callback thật; các phần này được triển khai từ Step 4 trở đi.
 
 ### Step 2 — Bổ sung dữ liệu và lịch theo từng session
 
@@ -195,7 +195,7 @@ Bằng chứng hoàn tất Step 2:
 - Migration test chứng minh cài mới chạy 4 migration, nâng cấp từ V1/V2/V3 giữ nguyên dữ liệu và để sáu trường mới NULL, mọi trạng thái job hợp lệ được chấp nhận, cấu hình job thiếu/không hợp lệ bị từ chối.
 - `./mvnw verify` đạt 189 test, 0 failure, 0 error, 0 skip; build và đóng gói thành công.
 
-Scheduler, repository query đến hạn, Feign client, ký Read JWT, BullMQ/FFmpeg/R2 và callback thật vẫn thuộc Step 3–6.
+Tại thời điểm hoàn tất Step 2, scheduler, Feign client, ký Read JWT, BullMQ, FFmpeg, R2 và callback vẫn thuộc các step tiếp theo.
 
 ### Step 3 — Scheduler và điều phối batch tại Stream Service
 
@@ -236,7 +236,7 @@ Bằng chứng hoàn tất Step 3:
 - ACK chỉ áp dụng `acceptedJobIds` của batch hiện tại, loại ID vừa accepted vừa rejected, khóa hàng và chỉ chuyển `PENDING_DISPATCH` → `ACCEPTED` khi job ID còn khớp. `QUEUE_FULL`, HTTP 400/401/503, timeout, response hỏng/thiếu `acceptedJobIds`, callback `SUCCEEDED` đến trước ACK, `FAILED` và job ID bị thay thế đều không bị ghi đè; job giữ `PENDING_DISPATCH` và được gửi lại với cùng ID.
 - Dispatch đọc `MEDIA_WORKER_INTERNAL_TOKEN`, không dùng `STREAM_SERVICE_INTERNAL_TOKEN` dành cho callback; regression test kiểm tra hai secret khác nhau và từ chối dùng callback token thay worker token. Dữ liệu test dùng cùng session ID trong playback path, assertion URL dựa trực tiếp trên session ID của payload.
 - Kiểm thử gồm 20 test PostgreSQL cho dispatch/expiry/ACK/đồng thời, 3 test repository selection/expiry, 1 test bật scheduler với executor riêng, 1 test Worker không truy cập được, 5 test scheduler, 6 test cấu hình/Feign/Read JWT và 3 test khởi động cấu hình thumbnail sau khi tập trung scheduler, cùng 4 test wrapper HTTP client. `./mvnw clean verify` đạt 232 test, 0 failure, 0 error, 0 skip; build và đóng gói thành công.
-- Chưa triển khai callback endpoint, BullMQ/FFmpeg/R2, cleanup và API/frontend thumbnail (Step 4–7).
+- Tại thời điểm hoàn tất Step 3, callback endpoint, BullMQ, FFmpeg, R2 và cleanup chưa được triển khai; API/frontend thumbnail thuộc đợt sau.
 
 ### Step 4 — Tiếp nhận batch và quản lý BullMQ
 
@@ -269,9 +269,9 @@ Cập nhật triển khai Step 4:
 - Chưa kiểm chứng crash/shutdown cưỡng bức khi pipeline FFmpeg đang chạy; chuyển sang Step 5 khi có processor thật. Chưa có pipeline FFmpeg, R2 hoặc callback thật; giữ scheduler dispatch tắt khi chưa sẵn sàng xử lý.
 
 
-### Step 5 — FFmpeg, JPEG và upload R2
+### Step 5 — FFmpeg và JPEG
 
-Vai trò: Thực hiện bước 7–8 của workflow.
+Vai trò: Thực hiện bước 7 của workflow; đọc HLS và tạo một file JPEG hợp lệ từ livestream.
 
 Phụ thuộc: Step 4.
 
@@ -280,29 +280,50 @@ Phụ thuộc: Step 4.
 | THM-501 | Tạo FFmpeg adapter dùng spawn() với argument array, không dùng shell; truyền Authorization Bearer qua HTTP header |
 | THM-502 | Đọc HLS từ MediaMTX, trích một frame có thể giải mã, resize/pad và xuất một JPEG vào thư mục tạm riêng của job |
 | THM-503 | Giới hạn thời gian chạy, tài nguyên và dung lượng output; khi timeout/shutdown phải kết thúc tiến trình con |
-| THM-504 | Kiểm tra JPEG trước upload: file tồn tại, kích thước hợp lệ, định dạng và dimensions đúng |
-| THM-505 | Upload từ Worker qua S3 SDK lên R2; key bất biến theo session/job ID, content type image/jpeg; chỉ callback sau khi upload được xác nhận |
-| THM-506 | Dọn file trong finally; lỗi dọn file không chặn callback nếu upload đã thành công |
+| THM-504 | Kiểm tra JPEG: file tồn tại, kích thước hợp lệ, định dạng và dimensions đúng |
+| THM-505 | Kiểm chứng crash/shutdown khi FFmpeg đang chạy; tiến trình con được kết thúc, không tự chạy lại pipeline và file tạm được dọn khi có thể |
 
-Dùng object key livestream-thumbnails/{sessionId}/{jobId}.jpg. Không ghi đè một URL cố định, tránh frontend/CDN giữ ảnh cũ.
+Kết quả của phần trích ảnh là đường dẫn file JPEG tạm và metadata cần thiết cho bước upload. File phải tồn tại cho đến khi bước upload ở Step 6 sử dụng xong; test và công cụ chạy thử độc lập tự dọn file sau khi kiểm tra.
 
-Worker là nơi giữ R2 credential và upload JPEG. Stream Service không nhận binary ảnh. R2 cung cấp API tương thích S3 để thực hiện thao tác này. Tài liệu Cloudflare R2 (https://developers.cloudflare.com/r2/api/s3/api/)
+Consumer production tiếp tục tắt. Chưa đánh dấu job hoàn tất chỉ vì đã tạo được JPEG; chỉ ghép và bật pipeline thực tế sau khi upload và callback ở Step 6–7 sẵn sàng.
 
-Điều kiện hoàn tất: Với stream OBS thật, Worker đọc được HLS có JWT và tạo JPEG tải được từ R2. MediaMTX mất kết nối, FFmpeg lỗi, filesystem lỗi hoặc upload lỗi đều kết thúc job mà không callback.
+Điều kiện hoàn tất: Với stream OBS thật, FFmpeg đọc HLS bằng Read JWT và tạo JPEG hợp lệ trong thư mục tạm. MediaMTX mất kết nối, FFmpeg lỗi/timeout hoặc filesystem lỗi được kiểm chứng; không upload R2 hoặc callback trong bước này.
 
-### Step 6 — Callback và cập nhật thumbnail nguyên tử
+### Step 6 — Upload JPEG lên R2
 
-Vai trò: Thực hiện bước 9–11; bảo vệ kết quả khi callback và response đến không đúng thứ tự.
+Vai trò: Thực hiện phần upload và dọn file tạm ở bước 8 của workflow.
 
-Phụ thuộc: Step 2 và Step 5.
+Phụ thuộc: Step 5.
 
 | Task | Công việc |
 |---|---|
-| THM-601 | Worker callback một lần qua HTTP với timeout hữu hạn; tắt retry trong HTTP client |
-| THM-602 | Thêm controller nội bộ tại Stream Service, security chain/token validation riêng, không phụ thuộc account cookie |
-| THM-603 | Khóa session trong transaction ngắn; kiểm tra ID, trạng thái, deadline, session LIVE và thông tin ảnh |
-| THM-604 | Trong cùng transaction, lưu URL/key, đặt thumbnail_updated_at = now theo đồng hồ backend, chuyển SUCCEEDED và giữ ID; scheduler tính lượt tiếp theo bằng thumbnail_updated_at + X |
-| THM-605 | Trả APPLIED/IGNORED; xử lý callback trùng, callback cũ, session ENDED/RECONNECTING và response 202 đến muộn |
+| THM-601 | Tạo storage adapter trong Media Worker sử dụng S3 SDK và cấu hình Cloudflare R2 từ biến môi trường |
+| THM-602 | Upload JPEG đã kiểm tra với content type image/jpeg và object key bất biến theo session/job ID; xác nhận upload thành công |
+| THM-603 | Giới hạn thời gian upload; xử lý lỗi hoặc timeout bằng cách kết thúc lượt xử lý, không callback khi chưa xác nhận upload thành công |
+| THM-604 | Dọn file tạm trong finally sau khi upload thành công hoặc thất bại; lỗi dọn file không ngăn callback ở Step 7 nếu upload đã thành công |
+| THM-605 | Kiểm thử tích hợp tạo JPEG → upload → tải và kiểm tra ảnh trên R2; kiểm chứng lỗi upload, timeout và dọn file |
+
+Dùng object key `livestream-thumbnails/{sessionId}/{jobId}.jpg`. Không ghi đè một URL cố định, tránh frontend/CDN giữ ảnh cũ.
+
+Worker giữ R2 credential và upload JPEG; Stream Service không nhận binary ảnh. R2 cung cấp API tương thích S3. Tài liệu Cloudflare R2 (https://developers.cloudflare.com/r2/api/s3/api/)
+
+Consumer production tiếp tục tắt cho đến khi callback Step 7 được triển khai và pipeline hoàn chỉnh sẵn sàng.
+
+Điều kiện hoàn tất: Với JPEG từ Step 5, Worker upload thành công và có thể tải lại đúng ảnh từ R2; khi upload lỗi hoặc timeout không báo thành công hay callback. File tạm được dọn sau khi sử dụng, còn lỗi dọn file được ghi nhận để cleanup xử lý sau.
+
+### Step 7 — Callback và cập nhật thumbnail nguyên tử
+
+Vai trò: Thực hiện bước 9–11; bảo vệ kết quả khi callback và response đến không đúng thứ tự.
+
+Phụ thuộc: Step 2 và Step 6.
+
+| Task | Công việc |
+|---|---|
+| THM-701 | Worker callback một lần qua HTTP với timeout hữu hạn; tắt retry trong HTTP client |
+| THM-702 | Thêm controller nội bộ tại Stream Service, security chain/token validation riêng, không phụ thuộc account cookie |
+| THM-703 | Khóa session trong transaction ngắn; kiểm tra ID, trạng thái, deadline, session LIVE và thông tin ảnh |
+| THM-704 | Trong cùng transaction, lưu URL/key, đặt thumbnail_updated_at = now theo đồng hồ backend, chuyển SUCCEEDED và giữ ID; scheduler tính lượt tiếp theo bằng thumbnail_updated_at + X |
+| THM-705 | Trả APPLIED/IGNORED; xử lý callback trùng, callback cũ, session ENDED/RECONNECTING và response 202 đến muộn |
 
 Quy tắc lỗi:
 
@@ -313,20 +334,20 @@ Quy tắc lỗi:
 
 Điều kiện hoàn tất: Các thứ tự đến khác nhau của callback, ACK và scheduler không ghi đè ảnh mới bằng kết quả cũ.
 
-### Step 7 — Dọn rác, vận hành và nghiệm thu
+### Step 8 — Dọn rác, vận hành và nghiệm thu
 
 Vai trò: Hoàn thiện phần vận hành và kiểm chứng pipeline tạo ảnh, upload và cập nhật thumbnail vào DB.
 
-Phụ thuộc: Step 1–6.
+Phụ thuộc: Step 1–7.
 
 | Task | Công việc |
 |---|---|
-| THM-701 | Dọn thư mục tạm quá hạn tại Worker; chỉ xóa file không thuộc job đang chạy |
-| THM-702 | Worker quét object thumbnail cũ trên 24 giờ; hỏi Stream Service theo batch object key nào còn được tham chiếu trước khi xóa |
-| THM-703 | Thêm API nội bộ kiểm tra object reference; nếu backend lỗi hoặc response không đầy đủ thì bỏ qua việc xóa |
-| THM-704 | Bổ sung Docker Compose/config mẫu, kết nối Worker → MediaMTX và Worker → Stream Service; giữ cổng nội bộ khỏi Gateway |
-| THM-705 | Thêm log/metrics cho dispatch, queue wait, processing, callback, deadline và cleanup; che JWT, secret và credential |
-| THM-706 | Viết hướng dẫn chạy, test plan và bảng nghiệm thu các rủi ro trong tài liệu kiến trúc; kiểm chứng R2 và DB trực tiếp, regression cho API hiện có |
+| THM-801 | Dọn thư mục tạm quá hạn tại Worker; chỉ xóa file không thuộc job đang chạy |
+| THM-802 | Worker quét object thumbnail cũ trên 24 giờ; hỏi Stream Service theo batch object key nào còn được tham chiếu trước khi xóa |
+| THM-803 | Thêm API nội bộ kiểm tra object reference; nếu backend lỗi hoặc response không đầy đủ thì bỏ qua việc xóa |
+| THM-804 | Bổ sung Docker Compose/config mẫu, kết nối Worker → MediaMTX và Worker → Stream Service; giữ cổng nội bộ khỏi Gateway |
+| THM-805 | Thêm log/metrics cho dispatch, queue wait, processing, callback, deadline và cleanup; che JWT, secret và credential |
+| THM-806 | Viết hướng dẫn chạy, test plan và bảng nghiệm thu các rủi ro trong tài liệu kiến trúc; kiểm chứng R2 và DB trực tiếp, regression cho API hiện có |
 
 Dọn object theo prefix thumbnail riêng, có phân trang và giới hạn mỗi lượt. Giữ mọi object còn được tham chiếu, kể cả thumbnail của session đã ENDED. Không xóa ảnh khi callback timeout vì backend có thể đã lưu thành công.
 
@@ -336,7 +357,7 @@ Endpoint kiểm tra reference chỉ phục vụ cleanup, không được gọi t
 
 ## 4. Kiểm thử và tiêu chí nghiệm thu
 
-Viết test cùng từng task; Step 7 tổng hợp kết quả.
+Viết test cùng từng task; Step 8 tổng hợp kết quả.
 
 | Nhóm | Kịch bản bắt buộc |
 |---|---|
@@ -369,11 +390,11 @@ Công cụ kiểm thử:
 
 ## 5. Thứ tự triển khai và đưa vào sử dụng
 
-Thực hiện theo thứ tự Step 1 → 2 → 3 → 4 → 5 → 6 → 7. Task có test chỉ được đánh dấu hoàn tất khi test liên quan đã qua.
+Thực hiện theo thứ tự Step 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Task có test chỉ được đánh dấu hoàn tất khi test liên quan đã qua.
 
 - Migration và DTO nội bộ triển khai trước, có tính tương thích với dữ liệu cũ.
 - Tính năng có cờ bật/tắt scheduler; test profile mặc định tắt scheduler.
-- Triển khai Worker và callback trước khi bật dispatch.
+- Giữ consumer production và scheduler dispatch tắt trong Step 5–6; chỉ bật sau khi Worker, upload R2 và callback Step 7 đã sẵn sàng.
 - Chạy dev với X = 60 giây, nghiệm thu OBS → ảnh trên R2 → dữ liệu thumbnail trong DB; production đặt X = 300 giây.
 - Khi cần dừng tính năng, tắt scheduler và ngừng nhận job mới; giữ ảnh và metadata thumbnail hiện tại.
 - Theo dõi tuổi job lâu nhất, số pending quá hạn, thời gian FFmpeg và tỷ lệ callback được áp dụng để điều chỉnh batch/concurrency.
