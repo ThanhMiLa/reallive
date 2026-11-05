@@ -16,7 +16,7 @@ Phạm vi đợt này gồm scheduler, queue, xử lý ảnh, upload R2, callbac
 
 | Thành phần hiện có | Cách sử dụng |
 |---|---|
-| Lifecycle của Stream Service | Dùng startedAt làm mốc cho lượt đầu; giữ nguyên startedAt và thumbnail_updated_at khi reconnect |
+| Lifecycle của Stream Service | Session LIVE chưa có ảnh được xét ngay ở lượt scheduler kế tiếp; giữ nguyên startedAt và thumbnail_updated_at khi reconnect |
 | StreamSessionRepository | Bổ sung truy vấn đến hạn và cập nhật job dưới khóa |
 | MediaJwtIssuer | Tái sử dụng logic ký Read JWT với quyền đọc đúng path |
 | FeignClient và cấu hình không retry | Gửi batch; scheduler chịu trách nhiệm gửi lại |
@@ -41,14 +41,15 @@ Trạng thái công việc gồm PENDING_DISPATCH, ACCEPTED, SUCCEEDED, FAILED. 
 
 Các quy tắc:
 
-- Chưa từng cập nhật ảnh (thumbnail_updated_at IS NULL): đến hạn khi started_at + X <= now.
+- Chưa từng cập nhật ảnh (thumbnail_updated_at IS NULL): được xét ngay ở lượt scheduler kế tiếp khi session LIVE, không chờ X giây từ started_at.
 - Đã cập nhật ảnh: đến hạn khi thumbnail_updated_at + X <= now.
+- Chỉ tạo job mới khi session LIVE và không có job đang chờ (PENDING_DISPATCH hoặc ACCEPTED), kể cả khi thumbnail_updated_at vẫn NULL.
 - Callback thành công: cập nhật ảnh, đặt thumbnail_updated_at = now theo đồng hồ backend, chuyển SUCCEEDED và giữ job ID trong cùng transaction.
 - Tạo/gửi job, ACK, callback bị bỏ qua hoặc lượt xử lý thất bại không thay đổi thumbnail_updated_at.
 - Lỗi giao HTTP: giữ PENDING_DISPATCH và cùng ID.
 - Job quá hạn: chuyển FAILED, giữ ảnh hiện tại và ID.
 - Session đang RECONNECTING hoặc ENDED: không giao công việc.
-- Không dùng updated_at để tính lịch thumbnail.
+- Không dùng updated_at để tính lịch thumbnail; không gán thumbnail_updated_at bằng started_at - X hoặc một thời điểm giả khi chưa cập nhật ảnh thành công.
 
 ### 2.2. API giữa Stream Service và Worker
 
@@ -168,20 +169,20 @@ Bằng chứng hoàn tất Step 1:
 
 ### Step 2 — Bổ sung dữ liệu và lịch theo từng session
 
-Vai trò: Lưu bền vững thời điểm cập nhật thumbnail thành công và trạng thái công việc; tính hạn chụp từ mốc này hoặc startedAt cho lượt đầu.
+Vai trò: Lưu bền vững thời điểm cập nhật thumbnail thành công và trạng thái công việc; chuẩn bị dữ liệu để lượt đầu được xét ngay khi LIVE, các lượt sau tính hạn từ lần cập nhật thành công gần nhất.
 
 Phụ thuộc: Step 1.
 
 | Task | Công việc |
 |---|---|
-| THM-201 | Thêm migration, entity fields, enum và index phục vụ truy vấn LIVE theo thumbnail_updated_at/started_at, job pending và job quá deadline |
-| THM-202 | Giữ startedAt của lần LIVE đầu tiên làm mốc xét startedAt + X; thumbnail_updated_at giữ NULL đến khi có callback thành công, event trùng và reconnect không reset các mốc |
-| THM-203 | Với session hiện có chưa có thumbnail, giữ thumbnail_updated_at NULL và xét startedAt + X; không backfill thời điểm cập nhật thành công giả |
+| THM-201 | Thêm migration, entity fields, enum và index phục vụ truy vấn LIVE chưa có ảnh hoặc đến hạn theo thumbnail_updated_at, job pending và job quá deadline |
+| THM-202 | Khi session lần đầu LIVE, giữ thumbnail_updated_at NULL để được xét ngay ở lượt scheduler kế tiếp nếu không có job đang chờ; giữ startedAt của lần LIVE đầu tiên, event trùng và reconnect không reset các mốc |
+| THM-203 | Với session hiện có chưa có thumbnail, giữ thumbnail_updated_at NULL; session LIVE và không có job đang chờ được xét ngay ở lượt scheduler kế tiếp, không chờ startedAt + X và không backfill thời điểm cập nhật thành công giả |
 | THM-204 | Cập nhật mapper, snapshot và DTO nội bộ cần thiết cho điều phối/callback thumbnail; việc bổ sung thumbnail vào response API đọc sẽ triển khai ở đợt sau |
 
 Dữ liệu thumbnail ban đầu là NULL, bao gồm thumbnail_updated_at. Migration không tạo job, ký JWT hoặc gán thời điểm cập nhật thành công khi chưa có ảnh.
 
-Điều kiện hoàn tất: Session mới và session có sẵn đều có lịch đúng; chỉnh title/category không làm thay đổi lịch thumbnail.
+Điều kiện hoàn tất: Dữ liệu của session mới và session có sẵn hỗ trợ xét lượt đầu ngay khi LIVE, không chờ X; các lượt sau tính từ thumbnail_updated_at. Reconnect, event trùng và chỉnh title/category không làm thay đổi các mốc này.
 
 ### Step 3 — Scheduler và điều phối batch tại Stream Service
 
@@ -193,7 +194,7 @@ Phụ thuộc: Step 2.
 |---|---|
 | THM-301 | Tạo scheduler thumbnail riêng với reconnect scheduler; chạy khi application ready và theo fixed delay, ngăn hai lượt chạy chồng trong cùng process |
 | THM-302 | Đầu mỗi lượt, kết thúc các job PENDING_DISPATCH/ACCEPTED quá deadline trong transaction ngắn |
-| THM-303 | Chọn session LIVE đến hạn theo thumbnail_updated_at + X, hoặc startedAt + X nếu chưa có ảnh, và không còn job đang chờ; gửi lại pending còn hạn với cùng ID; giới hạn số lượng truy vấn, khóa và recheck trước khi tạo job |
+| THM-303 | Chọn session LIVE chưa có ảnh (thumbnail_updated_at IS NULL) ngay ở lượt quét kế tiếp, hoặc đã đến hạn theo thumbnail_updated_at + X, và không còn job đang chờ; gửi lại pending còn hạn với cùng ID; giới hạn số lượng truy vấn, khóa và recheck trước khi tạo job |
 | THM-304 | Dùng TransactionTemplate lưu job ID, trạng thái và deadline; commit trước khi ký token và gọi HTTP |
 | THM-305 | Tạo FeignClient dưới module stream.client; ghép HLS URL đầy đủ bằng internal MediaMTX base URL và playback path; gửi batch với retry tự động tắt |
 | THM-306 | Áp dụng response theo từng ID; chỉ chuyển PENDING_DISPATCH → ACCEPTED nếu ID vẫn khớp; lỗi HTTP/timeout giữ trạng thái hiện tại |
@@ -201,7 +202,7 @@ Phụ thuộc: Step 2.
 Quy tắc triển khai:
 
 - Dùng batch truy vấn để tránh tải toàn bộ session LIVE vào RAM.
-- Tính cutoff = now - X một lần mỗi lượt quét: lấy thumbnail_updated_at <= cutoff, hoặc thumbnail_updated_at IS NULL và started_at <= cutoff. Chỉ tạo lượt mới khi session LIVE và không còn job đang chờ.
+- Tính cutoff = now - X một lần mỗi lượt quét: điều kiện thời gian là thumbnail_updated_at IS NULL OR thumbnail_updated_at <= cutoff. Chỉ tạo lượt mới khi session LIVE và thumbnail_job_status không phải PENDING_DISPATCH/ACCEPTED (bao gồm trường hợp trạng thái job NULL). Lượt đầu không phụ thuộc tuổi của started_at.
 - Job gửi lại giữ ID và deadline ban đầu.
 - Read JWT ký bằng danh tính kỹ thuật media-worker, quyền read đúng path; không mượn account streamer và không gọi publish-credentials.
 - Bổ sung method ký token kỹ thuật trong MediaJwtIssuer, dùng chung bộ ký và key hiện có.
@@ -304,8 +305,8 @@ Viết test cùng từng task; Step 7 tổng hợp kết quả.
 
 | Nhóm | Kịch bản bắt buộc |
 |---|---|
-| Migration và lịch | Schema mới; thumbnail_updated_at ban đầu NULL; lượt đầu theo startedAt + X, lượt sau theo thumbnail_updated_at + X; reconnect/event trùng và cập nhật title không đổi mốc |
-| Scheduler | Chưa đến hạn không lấy; đúng hạn được lấy; không tạo job mới khi còn job đang chờ; restart sau commit vẫn gửi tiếp |
+| Migration và lịch | Schema mới; thumbnail_updated_at ban đầu NULL, không gán thời điểm giả; session mới hoặc có sẵn LIVE chưa có ảnh được xét ngay không chờ X, lượt sau theo thumbnail_updated_at + X; reconnect/event trùng và cập nhật title không đổi mốc |
+| Scheduler | LIVE chưa có ảnh và không có job đang chờ được chọn ngay ở lượt quét kế tiếp; READY/RECONNECTING/ENDED không được chọn; đã có ảnh thì chưa đủ X không lấy và đúng hạn được lấy; không tạo job mới khi còn job đang chờ kể cả thumbnail_updated_at NULL; restart sau commit vẫn gửi tiếp cùng ID |
 | Transaction | Không giữ transaction khi gọi HTTP; callback/ACK/deadline cạnh tranh không ghi đè nhau |
 | Dispatch | Connect timeout, read timeout, Worker ngừng, queue đầy, response từng phần, response 202 mất |
 | Queue | Gửi trùng trước/sau hoàn tất; Redis lỗi giữa batch; capacity với request đồng thời; expiry khi chờ |
@@ -324,7 +325,7 @@ Công cụ kiểm thử:
 
 Đạt nghiệm thu khi:
 
-1. Stream LIVE được tạo thumbnail trên R2 và cập nhật DB sau X, cộng sai số scheduler và thời gian xử lý.
+1. Session LIVE chưa có ảnh và không có job đang chờ được xét ở lượt scheduler kế tiếp, không chờ X giây từ startedAt; trong điều kiện pipeline hoạt động bình thường, ảnh được tạo trên R2 và cập nhật DB sau thời gian dispatch, chờ queue và xử lý.
 2. Hai lần cập nhật ảnh thành công liên tiếp cách nhau tối thiểu X.
 3. Không làm thay đổi luồng xem HLS và lifecycle hiện tại.
 4. Gửi lại cùng job không tạo thêm pipeline xử lý trong thời gian chống trùng.
