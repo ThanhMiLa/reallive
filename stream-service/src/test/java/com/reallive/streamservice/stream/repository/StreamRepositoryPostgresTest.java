@@ -7,8 +7,11 @@ import com.reallive.streamservice.stream.entity.enums.MediaPathState;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -33,6 +36,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DataJpaTest(showSql = false, properties = "spring.jpa.hibernate.ddl-auto=validate")
@@ -105,6 +109,74 @@ class StreamRepositoryPostgresTest extends PostgresIntegrationTestSupport {
         var byRequest = sessionRepository.findByOwnerUserIdAndCreationRequestId(ownerId, requestId);
         assertTrue(byRequest.isPresent());
         assertEquals(saved.getId(), byRequest.get().getId());
+    }
+
+    @ParameterizedTest
+    @EnumSource(ThumbnailJobStatus.class)
+    void persistsAndReloadsThumbnailImageAndEveryJobStatus(ThumbnailJobStatus status) {
+        LocalDateTime updatedAt = LocalDateTime.of(2026, 11, 5, 1, 2, 3);
+        LocalDateTime deadline = updatedAt.plusMinutes(4);
+        UUID jobId = UUID.randomUUID();
+        String objectKey = "livestream-thumbnails/" + UUID.randomUUID() + "/" + jobId + ".jpg";
+
+        StreamSessionEntity session = sessionRepository.saveAndFlush(StreamSessionEntity.builder()
+                .channelId(UUID.randomUUID())
+                .streamerId(UUID.randomUUID())
+                .ownerUserId(UUID.randomUUID())
+                .categoryId(UUID.randomUUID())
+                .title("Thumbnail Roundtrip Stream")
+                .visibility(StreamVisibility.PUBLIC)
+                .status(StreamSessionStatus.LIVE)
+                .playbackPath("/live/" + UUID.randomUUID() + "/index.m3u8")
+                .creationRequestId(UUID.randomUUID())
+                .mediaPathState(MediaPathState.OPEN)
+                .mediaSourceId(UUID.randomUUID())
+                .mediaSourceType(MediaSourceType.RTMP_CONN)
+                .startedAt(updatedAt.minusMinutes(10))
+                .thumbnailUrl("https://cdn.example.com/" + objectKey)
+                .thumbnailObjectKey(objectKey)
+                .thumbnailUpdatedAt(updatedAt)
+                .thumbnailJobId(jobId)
+                .thumbnailJobStatus(status)
+                .thumbnailJobDeadlineAt(deadline)
+                .build());
+
+        StreamSessionEntity reloaded = sessionRepository.findById(session.getId()).orElseThrow();
+
+        assertEquals("https://cdn.example.com/" + objectKey, reloaded.getThumbnailUrl());
+        assertEquals(objectKey, reloaded.getThumbnailObjectKey());
+        assertEquals(updatedAt, reloaded.getThumbnailUpdatedAt());
+        assertEquals(jobId, reloaded.getThumbnailJobId());
+        assertEquals(status, reloaded.getThumbnailJobStatus());
+        assertEquals(deadline, reloaded.getThumbnailJobDeadlineAt());
+    }
+
+    @Test
+    void keepsThumbnailStateNullWhenNoJobHasBeenDispatched() {
+        StreamSessionEntity session = sessionRepository.saveAndFlush(StreamSessionEntity.builder()
+                .channelId(UUID.randomUUID())
+                .streamerId(UUID.randomUUID())
+                .ownerUserId(UUID.randomUUID())
+                .categoryId(UUID.randomUUID())
+                .title("No Thumbnail Yet")
+                .visibility(StreamVisibility.PUBLIC)
+                .status(StreamSessionStatus.LIVE)
+                .playbackPath("/live/" + UUID.randomUUID() + "/index.m3u8")
+                .creationRequestId(UUID.randomUUID())
+                .mediaPathState(MediaPathState.OPEN)
+                .mediaSourceId(UUID.randomUUID())
+                .mediaSourceType(MediaSourceType.RTMP_CONN)
+                .startedAt(LocalDateTime.of(2026, 11, 5, 1, 0))
+                .build());
+
+        StreamSessionEntity reloaded = sessionRepository.findById(session.getId()).orElseThrow();
+
+        assertNull(reloaded.getThumbnailUrl());
+        assertNull(reloaded.getThumbnailObjectKey());
+        assertNull(reloaded.getThumbnailUpdatedAt());
+        assertNull(reloaded.getThumbnailJobId());
+        assertNull(reloaded.getThumbnailJobStatus());
+        assertNull(reloaded.getThumbnailJobDeadlineAt());
     }
 
     @Test
@@ -238,7 +310,7 @@ class StreamRepositoryPostgresTest extends PostgresIntegrationTestSupport {
     void persistsImmutableHistoryWithEventDeduplication() {
         UUID ownerId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.of(2026, 11, 5, 0, 0, 0, 123_456_000);
 
         StreamSessionEntity session = sessionRepository.save(StreamSessionEntity.builder()
                 .channelId(channelId)

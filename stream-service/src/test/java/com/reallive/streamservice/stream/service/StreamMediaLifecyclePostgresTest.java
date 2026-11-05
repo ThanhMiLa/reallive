@@ -12,10 +12,12 @@ import com.reallive.streamservice.stream.dto.MediaOfflineCommand;
 import com.reallive.streamservice.stream.dto.MediaOnlineCommand;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
 import com.reallive.streamservice.stream.dto.request.CreateStreamSessionRequest;
+import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.MediaPathState;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
+import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.repository.StreamStatusHistoryRepository;
 import org.junit.jupiter.api.AfterAll;
@@ -32,11 +34,13 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.SQLException;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Optional;
@@ -46,7 +50,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -65,6 +68,7 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
     @Autowired private StreamSessionClosureService closureService;
     @Autowired private StreamSessionRepository sessions;
     @Autowired private StreamStatusHistoryRepository history;
+    @Autowired private PlatformTransactionManager transactions;
     @Autowired private MutableClock clock;
 
     @MockitoBean private StreamEligibilityService eligibility;
@@ -130,6 +134,8 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
 
         var reloaded = sessions.findById(session.getId()).orElseThrow();
         assertEquals(StreamSessionStatus.LIVE, reloaded.getStatus());
+        assertEquals(BASE.plusSeconds(2).atZone(ZoneOffset.UTC).toLocalDateTime(), reloaded.getStartedAt());
+        assertNoThumbnailState(reloaded);
 
         var streamHistory = history.findByStreamIdOrderByCreatedAtAscIdAsc(session.getId());
         assertEquals(2, streamHistory.size()); // READY + LIVE
@@ -176,10 +182,15 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
 
         var first = lifecycleService.onOnline(command);
         assertEquals(MediaEventOutcome.APPLIED, first.outcome());
+        var firstStartedAt = first.session().getStartedAt();
+        ThumbnailState thumbnail = seedThumbnail(session.getId());
 
         var second = lifecycleService.onOnline(command);
         assertEquals(MediaEventOutcome.IGNORED, second.outcome());
 
+        var reloaded = sessions.findById(session.getId()).orElseThrow();
+        assertEquals(firstStartedAt, reloaded.getStartedAt(), "A duplicate online event must not reset startedAt");
+        assertThumbnailState(thumbnail, reloaded);
         assertEquals(2, history.findByStreamIdOrderByCreatedAtAscIdAsc(session.getId()).size());
     }
 
@@ -249,6 +260,7 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
         var online1 = lifecycleService.onOnline(new MediaOnlineCommand(session.getId(), firstSource,
                 MediaSourceType.RTMP_CONN, UUID.randomUUID(), BASE.atZone(ZoneOffset.UTC).toLocalDateTime()));
         var firstStartedAt = online1.session().getStartedAt();
+        ThumbnailState thumbnail = seedThumbnail(session.getId());
 
         // Disconnect at +10s
         clock.now = BASE.plusSeconds(10);
@@ -271,6 +283,37 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(secondSource, result.session().getMediaSourceId());
         assertNull(result.session().getReconnectDeadlineAt());
         assertNull(result.session().getDisconnectedAt());
+        assertThumbnailState(thumbnail, result.session());
+        assertThumbnailState(thumbnail, sessions.findById(session.getId()).orElseThrow());
+    }
+
+    @Test
+    void titleAndCategoryUpdatesLeaveStartedAtAndThumbnailJobStateUnchanged() {
+        var owner = createOwner();
+        var session = createReadySession(owner);
+        UUID sourceId = UUID.randomUUID();
+
+        when(media.getSource(session.getId())).thenReturn(Optional.of(
+                new MediaPathStatus("live/" + session.getId(), true, sourceId, MediaSourceType.RTMP_CONN)));
+        clock.now = BASE.plusSeconds(2);
+        var live = lifecycleService.onOnline(new MediaOnlineCommand(session.getId(), sourceId,
+                MediaSourceType.RTMP_CONN, UUID.randomUUID(), clock.now.atZone(ZoneOffset.UTC).toLocalDateTime()));
+        var startedAt = live.session().getStartedAt();
+        ThumbnailState thumbnail = seedThumbnail(session.getId());
+        UUID newCategory = UUID.randomUUID();
+
+        var update = new UpdateStreamSessionRequest();
+        update.setTitle("  Renamed stream  ");
+        update.setCategoryId(newCategory);
+        var response = sessionService.update(session.getId(), owner.user(), update);
+
+        assertEquals("Renamed stream", response.title());
+        assertEquals(newCategory, response.categoryId());
+        var reloaded = sessions.findById(session.getId()).orElseThrow();
+        assertEquals("Renamed stream", reloaded.getTitle());
+        assertEquals(newCategory, reloaded.getCategoryId());
+        assertEquals(startedAt, reloaded.getStartedAt());
+        assertThumbnailState(thumbnail, reloaded);
     }
 
     @Test
@@ -444,6 +487,43 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(MediaPathState.CLOSED, reloaded.getMediaPathState());
     }
 
+    private ThumbnailState seedThumbnail(UUID sessionId) {
+        LocalDateTime updatedAt = BASE.minusSeconds(120).atZone(ZoneOffset.UTC).toLocalDateTime();
+        LocalDateTime deadline = updatedAt.plusMinutes(4);
+        UUID jobId = UUID.randomUUID();
+        String objectKey = "livestream-thumbnails/" + sessionId + "/" + jobId + ".jpg";
+        String url = "https://cdn.example.com/" + objectKey;
+        new TransactionTemplate(transactions).executeWithoutResult(status -> {
+            StreamSessionEntity session = sessions.findByIdForUpdate(sessionId).orElseThrow();
+            session.setThumbnailUrl(url);
+            session.setThumbnailObjectKey(objectKey);
+            session.setThumbnailUpdatedAt(updatedAt);
+            session.setThumbnailJobId(jobId);
+            session.setThumbnailJobStatus(ThumbnailJobStatus.SUCCEEDED);
+            session.setThumbnailJobDeadlineAt(deadline);
+            sessions.saveAndFlush(session);
+        });
+        return new ThumbnailState(url, objectKey, updatedAt, jobId, ThumbnailJobStatus.SUCCEEDED, deadline);
+    }
+
+    private void assertThumbnailState(ThumbnailState expected, StreamSessionEntity actual) {
+        assertEquals(expected.url(), actual.getThumbnailUrl());
+        assertEquals(expected.objectKey(), actual.getThumbnailObjectKey());
+        assertEquals(expected.updatedAt(), actual.getThumbnailUpdatedAt());
+        assertEquals(expected.jobId(), actual.getThumbnailJobId());
+        assertEquals(expected.status(), actual.getThumbnailJobStatus());
+        assertEquals(expected.deadline(), actual.getThumbnailJobDeadlineAt());
+    }
+
+    private void assertNoThumbnailState(StreamSessionEntity session) {
+        assertNull(session.getThumbnailUrl());
+        assertNull(session.getThumbnailObjectKey());
+        assertNull(session.getThumbnailUpdatedAt());
+        assertNull(session.getThumbnailJobId());
+        assertNull(session.getThumbnailJobStatus());
+        assertNull(session.getThumbnailJobDeadlineAt());
+    }
+
     private Owner createOwner() {
         var owner = new Owner(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         when(eligibility.requirePublishContext(eq(owner.user()), any())).thenAnswer(call ->
@@ -462,6 +542,15 @@ class StreamMediaLifecyclePostgresTest extends PostgresIntegrationTestSupport {
             UUID streamer,
             UUID channel,
             UUID category
+    ) {}
+
+    private record ThumbnailState(
+            String url,
+            String objectKey,
+            LocalDateTime updatedAt,
+            UUID jobId,
+            ThumbnailJobStatus status,
+            LocalDateTime deadline
     ) {}
 
     @TestConfiguration

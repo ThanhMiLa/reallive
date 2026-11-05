@@ -5,6 +5,7 @@ import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.MediaPathState;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
+import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
 import com.reallive.streamservice.stream.mapper.StreamSessionMapper;
 import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
@@ -53,14 +54,28 @@ class StreamContractsTest {
     }
 
     @Test
-    void metadataContainsNoCredentialOrInternalMediaDetailsAndUsesUtc() {
+    void metadataAndOwnerResponsesContainNoCredentialMediaOrThumbnailDetailsAndUseUtc() {
         var entity = StreamSessionEntity.builder().status(StreamSessionStatus.LIVE).mediaPathState(MediaPathState.OPEN)
-                .startedAt(LocalDateTime.of(2026, 10, 26, 0, 0)).build();
-        var response = new StreamSessionMapper().toMetadataResponse(entity, Instant.parse("2026-10-26T01:00:00Z"));
-        var tree = mapper.valueToTree(response);
-        assertEquals("2026-10-26T00:00:00Z", response.startedAt().toString());
-        for (String field : new String[]{"streamKey", "readToken", "publishCredentials", "mediaSourceId", "version", "publishReady"}) {
-            assertFalse(tree.has(field));
+                .startedAt(LocalDateTime.of(2026, 10, 26, 0, 0))
+                .thumbnailUrl("https://cdn.example.com/livestream-thumbnails/session/job.jpg")
+                .thumbnailObjectKey("livestream-thumbnails/session/job.jpg")
+                .thumbnailUpdatedAt(LocalDateTime.of(2026, 10, 26, 0, 30))
+                .thumbnailJobId(UUID.randomUUID())
+                .thumbnailJobStatus(ThumbnailJobStatus.SUCCEEDED)
+                .thumbnailJobDeadlineAt(LocalDateTime.of(2026, 10, 26, 0, 34))
+                .build();
+        var sessionMapper = new StreamSessionMapper();
+        var metadata = sessionMapper.toMetadataResponse(entity, Instant.parse("2026-10-26T01:00:00Z"));
+        var owner = sessionMapper.toOwnerResponse(entity, Instant.parse("2026-10-26T01:00:00Z"));
+        assertEquals("2026-10-26T00:00:00Z", metadata.startedAt().toString());
+        for (var response : List.of(metadata, owner)) {
+            var tree = mapper.valueToTree(response);
+            for (String field : new String[]{"streamKey", "readToken", "publishCredentials", "mediaSourceId", "version",
+                    "thumbnailUrl", "thumbnailObjectKey", "thumbnailUpdatedAt", "thumbnailJobId",
+                    "thumbnailJobStatus", "thumbnailJobDeadlineAt"}) {
+                assertFalse(tree.has(field), field + " must not be exposed by the current API");
+            }
         }
+        assertFalse(mapper.valueToTree(metadata).has("publishReady"));
     }
 }

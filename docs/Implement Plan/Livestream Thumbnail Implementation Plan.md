@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2–7 chưa triển khai.  
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3–7 chưa triển khai.  
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
 ## 1. Mục tiêu và phạm vi
@@ -173,16 +173,28 @@ Vai trò: Lưu bền vững thời điểm cập nhật thumbnail thành công v
 
 Phụ thuộc: Step 1.
 
-| Task | Công việc |
-|---|---|
-| THM-201 | Thêm migration, entity fields, enum và index phục vụ truy vấn LIVE chưa có ảnh hoặc đến hạn theo thumbnail_updated_at, job pending và job quá deadline |
-| THM-202 | Khi session lần đầu LIVE, giữ thumbnail_updated_at NULL để được xét ngay ở lượt scheduler kế tiếp nếu không có job đang chờ; giữ startedAt của lần LIVE đầu tiên, event trùng và reconnect không reset các mốc |
-| THM-203 | Với session hiện có chưa có thumbnail, giữ thumbnail_updated_at NULL; session LIVE và không có job đang chờ được xét ngay ở lượt scheduler kế tiếp, không chờ startedAt + X và không backfill thời điểm cập nhật thành công giả |
-| THM-204 | Cập nhật mapper, snapshot và DTO nội bộ cần thiết cho điều phối/callback thumbnail; việc bổ sung thumbnail vào response API đọc sẽ triển khai ở đợt sau |
+| Task | Công việc | Trạng thái |
+|---|---|---|
+| THM-201 | Thêm migration, entity fields, enum và index phục vụ truy vấn LIVE chưa có ảnh hoặc đến hạn theo thumbnail_updated_at, job pending và job quá deadline | Hoàn tất 2026-11-05 |
+| THM-202 | Khi session lần đầu LIVE, giữ thumbnail_updated_at NULL để được xét ngay ở lượt scheduler kế tiếp nếu không có job đang chờ; giữ startedAt của lần LIVE đầu tiên, event trùng và reconnect không reset các mốc | Hoàn tất 2026-11-05 |
+| THM-203 | Với session hiện có chưa có thumbnail, giữ thumbnail_updated_at NULL; session LIVE và không có job đang chờ được xét ngay ở lượt scheduler kế tiếp, không chờ startedAt + X và không backfill thời điểm cập nhật thành công giả | Hoàn tất 2026-11-05 |
+| THM-204 | Cập nhật mapper, snapshot và DTO nội bộ cần thiết cho điều phối/callback thumbnail; việc bổ sung thumbnail vào response API đọc sẽ triển khai ở đợt sau | Hoàn tất 2026-11-05 |
 
 Dữ liệu thumbnail ban đầu là NULL, bao gồm thumbnail_updated_at. Migration không tạo job, ký JWT hoặc gán thời điểm cập nhật thành công khi chưa có ảnh.
 
 Điều kiện hoàn tất: Dữ liệu của session mới và session có sẵn hỗ trợ xét lượt đầu ngay khi LIVE, không chờ X; các lượt sau tính từ thumbnail_updated_at. Reconnect, event trùng và chỉnh title/category không làm thay đổi các mốc này.
+
+Bằng chứng hoàn tất Step 2:
+
+- `V4__add_stream_session_thumbnail_schedule.sql` thêm đúng sáu cột nullable `thumbnail_url`, `thumbnail_object_key`, `thumbnail_updated_at`, `thumbnail_job_id`, `thumbnail_job_status`, `thumbnail_job_deadline_at`; không backfill, không tạo job và không sửa V1–V3.
+- Ràng buộc DB giới hạn `thumbnail_job_status` trong `PENDING_DISPATCH`, `ACCEPTED`, `SUCCEEDED`, `FAILED` và buộc status/job ID/deadline cùng NULL hoặc cùng có giá trị. Enum `ThumbnailJobStatus` lưu dạng chuỗi và cho phép NULL.
+- Ba partial index: session LIVE không có job đang chờ theo `(thumbnail_updated_at NULLS FIRST, id)`, job `PENDING_DISPATCH` theo `(thumbnail_job_deadline_at, id)`, và job `PENDING_DISPATCH`/`ACCEPTED` quá hạn theo `(thumbnail_job_deadline_at, id)`. Predicate không dùng `now()`.
+- `StreamSessionSnapshot` và mapper nội bộ giữ đủ sáu trường thumbnail/job; response owner, metadata, create/update và playback-access giữ nguyên contract, không lộ trường điều phối.
+- Lifecycle tái sử dụng `onMediaOnline`: lần LIVE đầu giữ `thumbnail_updated_at` NULL và `startedAt` là mốc LIVE đầu tiên; event trùng, reconnect và cập nhật title/category không reset `startedAt` hoặc làm mất thumbnail/job đã có.
+- Migration test chứng minh cài mới chạy 4 migration, nâng cấp từ V1/V2/V3 giữ nguyên dữ liệu và để sáu trường mới NULL, mọi trạng thái job hợp lệ được chấp nhận, cấu hình job thiếu/không hợp lệ bị từ chối.
+- `./mvnw verify` đạt 189 test, 0 failure, 0 error, 0 skip; build và đóng gói thành công.
+
+Scheduler, repository query đến hạn, Feign client, ký Read JWT, BullMQ/FFmpeg/R2 và callback thật vẫn thuộc Step 3–6.
 
 ### Step 3 — Scheduler và điều phối batch tại Stream Service
 
