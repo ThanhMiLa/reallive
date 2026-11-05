@@ -28,9 +28,6 @@ async function bootstrap(): Promise<void> {
   logger.log(
     `Batch limit ${config.http.maxBatchSize} jobs; body limit ${config.http.maxBodyBytes} bytes`,
   );
-  logger.warn(
-    'Thumbnail queue is not integrated in Step 1; batch requests return 503',
-  );
 }
 
 bootstrap().catch((error: unknown) => {

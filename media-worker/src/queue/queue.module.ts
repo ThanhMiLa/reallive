@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { THUMBNAIL_QUEUE } from './thumbnail-queue.port';
-import { UnavailableThumbnailQueue } from './unavailable-thumbnail-queue';
+import { BullmqThumbnailQueue } from './bullmq-thumbnail-queue';
 
 @Module({
   providers: [
-    UnavailableThumbnailQueue,
+    BullmqThumbnailQueue,
     {
       provide: THUMBNAIL_QUEUE,
-      useExisting: UnavailableThumbnailQueue,
+      useExisting: BullmqThumbnailQueue,
     },
   ],
   exports: [THUMBNAIL_QUEUE],

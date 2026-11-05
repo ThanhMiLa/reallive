@@ -1,3 +1,5 @@
+import { BullmqThumbnailQueue } from '../src/queue/bullmq-thumbnail-queue';
+import { UnavailableThumbnailQueue } from '../src/queue/unavailable-thumbnail-queue';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -52,7 +54,10 @@ async function createApplication(
   setEnvironment(overrides);
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
-  }).compile();
+  })
+    .overrideProvider(BullmqThumbnailQueue)
+    .useClass(UnavailableThumbnailQueue)
+    .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bodyParser: false,
     logger: false,
@@ -294,7 +299,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
     expect(typeof response.body.uptimeSeconds).toBe('number');
   });
 
-  it('reports readiness as unavailable while the queue is not integrated', async () => {
+  it('reports readiness as unavailable when the queue is unavailable', async () => {
     const response = await request(app.getHttpServer())
       .get('/health/ready')
       .expect(503);
@@ -303,7 +308,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
       status: 'not_ready',
       checks: {
         configuration: 'ok',
-        queue: { status: 'down', reason: 'not_integrated' },
+        queue: { status: 'down', reason: 'redis_unavailable' },
       },
     });
   });

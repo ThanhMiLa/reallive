@@ -34,6 +34,11 @@ export interface WorkerConfig {
   };
   queue: {
     concurrency: number;
+    processorEnabled: boolean;
+    connectTimeoutMs: number;
+    commandTimeoutMs: number;
+    batchTimeoutMs: number;
+    shutdownTimeoutMs: number;
     maxPendingJobs: number;
     retentionMs: number;
     prefix: string;
@@ -69,6 +74,11 @@ export const WORKER_ENV_KEYS = [
   'MEDIA_WORKER_UPLOAD_TIMEOUT_MS',
   'MEDIA_WORKER_CALLBACK_TIMEOUT_MS',
   'MEDIA_WORKER_QUEUE_CONCURRENCY',
+  'MEDIA_WORKER_PROCESSOR_ENABLED',
+  'MEDIA_WORKER_REDIS_CONNECT_TIMEOUT_MS',
+  'MEDIA_WORKER_REDIS_COMMAND_TIMEOUT_MS',
+  'MEDIA_WORKER_BATCH_TIMEOUT_MS',
+  'MEDIA_WORKER_SHUTDOWN_TIMEOUT_MS',
   'MEDIA_WORKER_MAX_PENDING_JOBS',
   'MEDIA_WORKER_JOB_RETENTION_SECONDS',
   'MEDIA_WORKER_QUEUE_PREFIX',
@@ -313,6 +323,27 @@ export function loadWorkerConfig(
     min: 1,
     max: 64,
   }) as number;
+  const enabledValue = reader.string('MEDIA_WORKER_PROCESSOR_ENABLED', {
+    defaultValue: 'false',
+  });
+  if (enabledValue !== 'true' && enabledValue !== 'false')
+    reader.issues.push('MEDIA_WORKER_PROCESSOR_ENABLED must be true or false');
+  const connectTimeoutMs = reader.integer(
+    'MEDIA_WORKER_REDIS_CONNECT_TIMEOUT_MS',
+    { defaultValue: 1000, min: 1 },
+  ) as number;
+  const commandTimeoutMs = reader.integer(
+    'MEDIA_WORKER_REDIS_COMMAND_TIMEOUT_MS',
+    { defaultValue: 1000, min: 1 },
+  ) as number;
+  const batchTimeoutMs = reader.integer('MEDIA_WORKER_BATCH_TIMEOUT_MS', {
+    defaultValue: 3000,
+    min: 1,
+  }) as number;
+  const shutdownTimeoutMs = reader.integer('MEDIA_WORKER_SHUTDOWN_TIMEOUT_MS', {
+    defaultValue: 45000,
+    min: 1,
+  }) as number;
   const maxPendingJobs = reader.integer('MEDIA_WORKER_MAX_PENDING_JOBS', {
     defaultValue: DEFAULTS.maxPendingJobs,
     min: 1,
@@ -435,6 +466,11 @@ export function loadWorkerConfig(
     },
     queue: {
       concurrency: queueConcurrency,
+      processorEnabled: enabledValue === 'true',
+      connectTimeoutMs,
+      commandTimeoutMs,
+      batchTimeoutMs,
+      shutdownTimeoutMs,
       maxPendingJobs,
       retentionMs,
       prefix: queuePrefix,

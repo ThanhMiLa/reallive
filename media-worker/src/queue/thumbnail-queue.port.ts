@@ -7,6 +7,7 @@ export const THUMBNAIL_QUEUE = Symbol('THUMBNAIL_QUEUE');
 
 export interface ThumbnailQueue {
   isReady(): Promise<boolean>;
+  isStopping?(): boolean;
   enqueueBatch(
     jobs: readonly ThumbnailJobInput[],
   ): Promise<ThumbnailBatchAcceptedResponse>;

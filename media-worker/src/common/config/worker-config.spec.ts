@@ -48,6 +48,11 @@ describe('loadWorkerConfig', () => {
     });
     expect(config.queue).toMatchObject({
       concurrency: 2,
+      processorEnabled: false,
+      connectTimeoutMs: 1_000,
+      commandTimeoutMs: 1_000,
+      batchTimeoutMs: 3_000,
+      shutdownTimeoutMs: 45_000,
       maxPendingJobs: 1_000,
       retentionMs: 86_400_000,
       prefix: 'media-worker:thumbnail',
@@ -74,7 +79,12 @@ describe('loadWorkerConfig', () => {
       MEDIA_WORKER_FFMPEG_TIMEOUT_MS: '15000',
       MEDIA_WORKER_UPLOAD_TIMEOUT_MS: '5000',
       MEDIA_WORKER_CALLBACK_TIMEOUT_MS: '1000',
+      MEDIA_WORKER_PROCESSOR_ENABLED: 'true',
       MEDIA_WORKER_QUEUE_CONCURRENCY: '4',
+      MEDIA_WORKER_REDIS_CONNECT_TIMEOUT_MS: '2500',
+      MEDIA_WORKER_REDIS_COMMAND_TIMEOUT_MS: '3500',
+      MEDIA_WORKER_BATCH_TIMEOUT_MS: '4500',
+      MEDIA_WORKER_SHUTDOWN_TIMEOUT_MS: '60000',
       MEDIA_WORKER_MAX_PENDING_JOBS: '200',
       MEDIA_WORKER_JOB_RETENTION_SECONDS: '172800',
       MEDIA_WORKER_THUMBNAIL_WIDTH: '1280',
@@ -91,8 +101,17 @@ describe('loadWorkerConfig', () => {
     expect(config.http.maxBatchSize).toBe(10);
     expect(config.job.deadlineMs).toBe(120_000);
     expect(config.job.width).toBe(1_280);
-    expect(config.queue.retentionMs).toBe(172_800_000);
-    expect(config.queue.redis.password).toBe('fixture-redis-password');
+    expect(config.queue).toMatchObject({
+      processorEnabled: true,
+      concurrency: 4,
+      connectTimeoutMs: 2_500,
+      commandTimeoutMs: 3_500,
+      batchTimeoutMs: 4_500,
+      shutdownTimeoutMs: 60_000,
+      maxPendingJobs: 200,
+      retentionMs: 172_800_000,
+      redis: { password: 'fixture-redis-password' },
+    });
     expect(config.storage).toEqual({
       endpoint: 'https://account.r2.cloudflarestorage.com',
       region: 'auto',
@@ -119,6 +138,15 @@ describe('loadWorkerConfig', () => {
     expect(short).toContain(
       'MEDIA_WORKER_INTERNAL_TOKEN must be at least 32 characters',
     );
+  });
+
+  it('requires the processor flag to be true or false', () => {
+    expect(
+      issuesFrom({
+        ...baseEnv(),
+        MEDIA_WORKER_PROCESSOR_ENABLED: 'yes',
+      }),
+    ).toContain('MEDIA_WORKER_PROCESSOR_ENABLED must be true or false');
   });
 
   it.each(['240', '3600', '86399'])(

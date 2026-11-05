@@ -16,7 +16,7 @@ export interface ReadinessResponse {
     configuration: 'ok';
     queue: {
       status: 'up' | 'down';
-      reason?: 'not_integrated';
+      reason?: 'redis_unavailable' | 'shutting_down';
     };
   };
 }
@@ -49,7 +49,12 @@ export class HealthService {
         configuration: 'ok',
         queue: queueReady
           ? { status: 'up' }
-          : { status: 'down', reason: 'not_integrated' },
+          : {
+              status: 'down',
+              reason: this.queue.isStopping?.()
+                ? 'shutting_down'
+                : 'redis_unavailable',
+            },
       },
     };
   }
