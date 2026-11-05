@@ -27,6 +27,8 @@ Read the relevant design documents before implementing or changing a feature. Al
 
 Organize Java services by business module, with a service-local `common` package for shared code. Follow [.agents/skills/code-architecture/SKILL.md](.agents/skills/code-architecture/SKILL.md) when placing new code, adding integrations, refactoring packages, or reviewing code architecture. Use `adapter` for infrastructure and external-provider integrations, and `client` for API calls to other application microservices.
 
+For Feign integrations, follow [.agents/skills/feign-client/SKILL.md](.agents/skills/feign-client/SKILL.md): separate the `<Target>ApiClient` HTTP interface from a concrete `<Target>Client` wrapper that prepares requests and handles transport failures. Keep business decisions in services.
+
 ## Build, Test, and Development Commands
 
 Run commands inside the relevant module; there is no root build orchestrator.
