@@ -103,3 +103,14 @@ stream:
     reconnect-sweep-enabled: ${STREAM_RECONNECT_SWEEP_ENABLED:true}
     reconnect-sweep-delay: ${STREAM_RECONNECT_SWEEP_DELAY:1s}
     reconnect-sweep-batch-size: ${STREAM_RECONNECT_SWEEP_BATCH_SIZE:20}
+  thumbnail:
+    enabled: ${STREAM_THUMBNAIL_ENABLED:false}
+    interval: ${STREAM_THUMBNAIL_INTERVAL:60s}
+    scheduler-delay: ${STREAM_THUMBNAIL_SCHEDULER_DELAY:10s}
+    batch-size: ${STREAM_THUMBNAIL_BATCH_SIZE:50}
+    job-deadline: ${STREAM_THUMBNAIL_JOB_DEADLINE:240s}
+    worker-base-url: ${MEDIA_WORKER_BASE_URL:http://localhost:8090}
+    internal-token: ${MEDIA_WORKER_INTERNAL_TOKEN:}
+    internal-hls-base-url: ${STREAM_MEDIA_INTERNAL_HLS_BASE_URL:http://localhost:8898}
+    worker-connect-timeout: ${STREAM_THUMBNAIL_WORKER_CONNECT_TIMEOUT:2s}
+    worker-read-timeout: ${STREAM_THUMBNAIL_WORKER_READ_TIMEOUT:5s}

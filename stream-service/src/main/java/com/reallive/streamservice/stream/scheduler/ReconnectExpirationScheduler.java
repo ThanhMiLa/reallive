@@ -35,7 +35,10 @@ public class ReconnectExpirationScheduler {
     @Value("${stream.lifecycle.reconnect-sweep-batch-size:20}")
     int batchSize = 20;
 
-    @Scheduled(fixedDelayString = "${stream.lifecycle.reconnect-sweep-delay:1s}")
+    @Scheduled(
+            fixedDelayString = "${stream.lifecycle.reconnect-sweep-delay:1s}",
+            scheduler = "reconnectTaskScheduler"
+    )
     public void sweepExpiredReconnections() {
         LocalDateTime now = LocalDateTime.now(streamClock);
         List<UUID> expiredIds = streamSessionRepository.findExpiredReconnectingIds(now, PageRequest.of(0, batchSize));
