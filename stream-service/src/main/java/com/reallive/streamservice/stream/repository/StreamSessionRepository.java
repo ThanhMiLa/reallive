@@ -74,6 +74,36 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
             """)
     List<UUID> findExpiredReconnectingIds(@Param("now") LocalDateTime now, Pageable pageable);
 
+    @Query("""
+            SELECT s.id
+            FROM StreamSessionEntity s
+            WHERE s.thumbnailJobStatus IN ('PENDING_DISPATCH', 'ACCEPTED')
+              AND s.thumbnailJobDeadlineAt <= :now
+            ORDER BY s.thumbnailJobDeadlineAt ASC, s.id ASC
+            """)
+    List<UUID> findExpiredThumbnailJobIds(@Param("now") LocalDateTime now, Pageable pageable);
+
+    @Query("""
+            SELECT s.id
+            FROM StreamSessionEntity s
+            WHERE s.status = 'LIVE'
+              AND s.thumbnailJobStatus = 'PENDING_DISPATCH'
+              AND s.thumbnailJobDeadlineAt > :now
+            ORDER BY s.thumbnailJobDeadlineAt ASC, s.id ASC
+            """)
+    List<UUID> findPendingThumbnailDispatchIds(@Param("now") LocalDateTime now, Pageable pageable);
+
+    @Query(value = """
+            SELECT id
+            FROM stream_sessions
+            WHERE status = 'LIVE'
+              AND (thumbnail_job_status IS NULL OR thumbnail_job_status NOT IN ('PENDING_DISPATCH', 'ACCEPTED'))
+              AND (thumbnail_updated_at IS NULL OR thumbnail_updated_at <= :cutoff)
+            ORDER BY thumbnail_updated_at ASC NULLS FIRST, id ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<UUID> findDueThumbnailSessionIds(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
+
     Page<StreamSessionEntity> findByVisibilityAndStatusOrderByStartedAtDescIdAsc(
             StreamVisibility visibility,
             StreamSessionStatus status,
