@@ -5,6 +5,7 @@ import com.reallive.streamservice.stream.entity.enums.MediaPathState;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -96,6 +97,25 @@ public class StreamSessionEntity extends BaseEntity implements Persistable<UUID>
 
     @Column(name = "ended_at")
     LocalDateTime endedAt;
+
+    @Column(name = "thumbnail_url", length = 1000)
+    String thumbnailUrl;
+
+    @Column(name = "thumbnail_object_key", length = 500)
+    String thumbnailObjectKey;
+
+    @Column(name = "thumbnail_updated_at")
+    LocalDateTime thumbnailUpdatedAt;
+
+    @Column(name = "thumbnail_job_id")
+    UUID thumbnailJobId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "thumbnail_job_status", length = 30)
+    ThumbnailJobStatus thumbnailJobStatus;
+
+    @Column(name = "thumbnail_job_deadline_at")
+    LocalDateTime thumbnailJobDeadlineAt;
 
     @Transient
     @Builder.Default
