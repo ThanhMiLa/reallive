@@ -1,7 +1,8 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4–7 chưa triển khai.  
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–7 chưa triển khai.
+
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
 ## 1. Mục tiêu và phạm vi
@@ -258,6 +259,15 @@ Job tồn tại được xác nhận ngay cả khi queue đầy. Redis lỗi sau
 BullMQ chỉ chống trùng ID khi bản ghi job còn tồn tại; cấu hình retention và test phải bảo vệ điều này. Tài liệu BullMQ (https://docs.bullmq.io/guide/jobs/job-ids)
 
 Điều kiện hoàn tất: Gửi cùng batch nhiều lần chỉ tạo một công việc cho mỗi ID; job đã xử lý vẫn không bị thêm lại trong thời gian giữ bản ghi.
+
+Cập nhật triển khai Step 4:
+
+- Media Worker sử dụng BullMQ/Redis, giới hạn batch/capacity, chống trùng theo job ID và giữ completed/failed ít nhất 24 giờ; lỗi Redis hoặc kết quả không xác định trả `503`.
+- Consumer mặc định tắt (`MEDIA_WORKER_PROCESSOR_ENABLED=false`); bật khi chưa có pipeline sẽ không khởi động. Khi được kết nối với pipeline, consumer kiểm tra JWT expiry và job deadline trước xử lý, cấu hình `attempts=1` và `maxStalledCount=0`.
+- Đã chạy lint, build, 15 unit test, 28 HTTP contract test và 11 integration test với Redis trong Testcontainers, gồm HTTP `202`, queue đầy/trùng, Redis mất kết nối, thêm một phần batch, concurrency, expiry và mô phỏng mất lock.
+- Đã kiểm chứng trực tiếp Stream Service → Media Worker thật → Redis/PostgreSQL: job được gửi qua HTTP, lưu đúng `jobId`/payload/retention, session chuyển `ACCEPTED`; gửi lại cùng `jobId` sau khi đưa session về `PENDING_DISPATCH` không tạo job trùng. Job đang chờ vẫn tồn tại sau SIGTERM và SIGKILL của Worker.
+- Chưa kiểm chứng crash/shutdown cưỡng bức khi pipeline FFmpeg đang chạy; chuyển sang Step 5 khi có processor thật. Chưa có pipeline FFmpeg, R2 hoặc callback thật; giữ scheduler dispatch tắt khi chưa sẵn sàng xử lý.
+
 
 ### Step 5 — FFmpeg, JPEG và upload R2
 

@@ -1,6 +1,6 @@
 # Livestream Thumbnail Worker Contract
 
-Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Step 1 chỉ định nghĩa contract, fixtures và phía Worker; callback tại Stream Service, queue, FFmpeg, upload R2 và cập nhật DB được triển khai ở các step sau.
+Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Worker tiếp nhận job qua BullMQ/Redis; FFmpeg, upload R2 và callback tại Stream Service thuộc các step tiếp theo.
 
 - Base URL của Worker trong môi trường nội bộ: `http://media-worker:8090` (cấu hình khi triển khai; không public qua Gateway).
 - Mọi API nội bộ dùng header `X-Internal-Token`; giá trị lấy từ biến môi trường, không dùng account cookie, không dùng JWT người dùng.
@@ -19,7 +19,7 @@ X-Internal-Token: <internal token>
 | Field | Kiểu | Bắt buộc | Quy tắc |
 | --- | --- | --- | --- |
 | `jobs` | array | Có | 1 đến `MEDIA_WORKER_MAX_BATCH_SIZE` phần tử, mặc định tối đa 50 |
-| `jobs[].jobId` | string | Có | UUID do Stream Service tạo; dùng làm BullMQ job ID ở Step 4 |
+| `jobs[].jobId` | string | Có | UUID do Stream Service tạo; dùng làm BullMQ job ID |
 | `jobs[].sessionId` | string | Có | UUID của stream session |
 | `jobs[].playbackUrl` | string | Có | URL tuyệt đối, phải trỏ đúng MediaMTX base URL đã cấu hình và path `/live/{sessionId}/index.m3u8` |
 | `jobs[].readToken` | string | Có | Read JWT do Stream Service ký; Worker không ghi giá trị này vào log/error |
@@ -58,9 +58,9 @@ Request body mặc định giới hạn 262.144 byte (`MEDIA_WORKER_MAX_BODY_BYT
 }
 ```
 
-### 1.3. Response khi tiếp nhận thật
+### 1.3. Response khi tiếp nhận
 
-Chỉ trả `202 Accepted` sau khi implementation queue ở Step 4 thực sự thêm job hoặc xác nhận job ID đã tồn tại.
+Worker trả `202 Accepted` sau khi thêm job vào BullMQ hoặc xác nhận job ID đã tồn tại.
 
 ```json
 {
@@ -80,24 +80,9 @@ Chỉ trả `202 Accepted` sau khi implementation queue ở Step 4 thực sự t
 - Nếu Redis/dependency lỗi khiến kết quả tiếp nhận không xác định, Worker trả `503` cho toàn request; Stream Service gửi lại cùng `jobId`.
 - Không có transaction toàn batch giữa HTTP, Redis và PostgreSQL.
 
-### 1.4. Hành vi trong Step 1
+### 1.4. Trạng thái Worker hiện tại
 
-Queue chưa được tích hợp. Mọi request hợp lệ (đúng token, schema, batch, body và URL nguồn) trả:
-
-```http
-HTTP/1.1 503 Service Unavailable
-Content-Type: application/json
-```
-
-```json
-{
-  "statusCode": 503,
-  "code": "QUEUE_UNAVAILABLE",
-  "message": "Thumbnail queue is not available"
-}
-```
-
-Worker không trả `202`, không trả `acceptedJobIds` và không ghi nhận job giả. Readiness cũng trả `503` với check queue `down` cho đến khi Step 4 tích hợp queue thật.
+Khi Redis sẵn sàng, Worker trả `202` sau khi lưu hoặc xác nhận job tồn tại. Nếu Redis không khả dụng hoặc kết quả tiếp nhận không xác định, API trả `503 QUEUE_UNAVAILABLE`. Consumer mặc định tắt cho đến khi pipeline Step 5 sẵn sàng; `202` không đồng nghĩa đã tạo thumbnail. Readiness phản ánh khả năng tiếp nhận của Redis.
 
 ## 2. Callback tới Stream Service
 
@@ -178,7 +163,7 @@ Worker trả lỗi JSON theo cấu trúc:
 | `400` | `INVALID_JSON` | Body không phải JSON hợp lệ |
 | `401` | `INVALID_INTERNAL_TOKEN` | Thiếu hoặc sai `X-Internal-Token` |
 | `413` | `REQUEST_BODY_TOO_LARGE` | Body vượt giới hạn byte |
-| `503` | `QUEUE_UNAVAILABLE` | Worker chưa tích hợp queue hoặc queue/dependency không khả dụng |
+| `503` | `QUEUE_UNAVAILABLE` | Queue/dependency không khả dụng |
 | `500` | `INTERNAL_ERROR` | Lỗi không mong đợi; message không chứa chi tiết nội bộ |
 
 ## 4. Fixtures
@@ -187,7 +172,7 @@ Fixtures nằm trong [`fixtures/`](fixtures/) và được đọc trực tiếp 
 
 | File | Mục đích |
 | --- | --- |
-| [`thumbnail-jobs-batch.valid.json`](fixtures/thumbnail-jobs-batch.valid.json) | Batch hợp lệ 2 job, dùng cho happy path và kiểm tra trả `503` ở Step 1 |
+| [`thumbnail-jobs-batch.valid.json`](fixtures/thumbnail-jobs-batch.valid.json) | Batch hợp lệ 2 job để kiểm tra contract |
 | [`thumbnail-jobs-batch.invalid-job-id.json`](fixtures/thumbnail-jobs-batch.invalid-job-id.json) | UUID sai |
 | [`thumbnail-jobs-batch.invalid-timestamp.json`](fixtures/thumbnail-jobs-batch.invalid-timestamp.json) | Timestamp sai định dạng/không tồn tại |
 | [`thumbnail-jobs-batch.invalid-playback-url.json`](fixtures/thumbnail-jobs-batch.invalid-playback-url.json) | URL ngoài MediaMTX base URL |

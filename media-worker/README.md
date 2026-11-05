@@ -1,10 +1,10 @@
 # Media Worker
 
-Ứng dụng NestJS + TypeScript độc lập nhận thumbnail job từ Stream Service, dự kiến xử lý bằng BullMQ/FFmpeg, upload JPEG lên Cloudflare R2 và callback kết quả. Đây là nền tảng của **Step 1 (THM-101–THM-104)**; queue, processor, FFmpeg, upload và callback thật chưa được triển khai.
+Ứng dụng NestJS + TypeScript nhận thumbnail job từ Stream Service và lưu vào BullMQ/Redis. Consumer được thiết lập nhưng mặc định tắt; pipeline FFmpeg, upload Cloudflare R2 và callback sẽ được triển khai ở các bước tiếp theo.
 
 Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../docs/contracts/thumbnail/README.md).
 
-## Phạm vi Step 1
+## Khả năng hiện tại
 
 Đã có:
 
@@ -12,30 +12,24 @@ Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../do
 - Validate schema, UUID, timestamp, kích thước batch/body và URL nguồn MediaMTX.
 - Contract, error envelope và fixtures dùng chung cho Java/Node.
 - Cấu hình qua biến môi trường, validate khi khởi động và fail-fast.
+- BullMQ/Redis với prefix riêng, chống trùng theo `jobId`, giới hạn capacity và giữ completed/failed ít nhất 24 giờ.
+- Consumer kiểm tra expiry/deadline, giới hạn concurrency, `attempts=1`, `maxStalledCount=0` và mặc định tắt.
 - `GET /health/live` và `GET /health/ready`.
-- Lint, unit test, e2e test, build TypeScript và Dockerfile có FFmpeg, chạy bằng user không phải root.
+- Lint, unit test, HTTP contract test, integration test, build TypeScript và Dockerfile có FFmpeg, chạy bằng user không phải root.
 
 Chưa có:
 
-- Queue BullMQ, Redis connection, deduplication, capacity hoặc processor.
+- Pipeline tạo ảnh và xử lý kết quả thực tế.
 - Chạy FFmpeg, tạo JPEG, upload R2 hoặc gửi callback.
-- Callback endpoint tại Stream Service, scheduler/Stream Service changes, cleanup và frontend.
+- Callback endpoint tại Stream Service, cleanup và frontend.
 
-`src/processor`, `src/ffmpeg`, `src/storage`, `src/callback` hiện chỉ chứa port/interface cho các step sau. Không có implementation giả báo xử lý thành công.
+`src/processor`, `src/ffmpeg`, `src/storage`, `src/callback` chứa port/interface cho các step sau. Không có implementation giả báo xử lý thành công.
 
-## Hành vi API trong Step 1
+## Hành vi API
 
-Request hợp lệ đi qua toàn bộ validation nhưng **luôn trả `503 QUEUE_UNAVAILABLE`**, không trả `202`, không có `acceptedJobIds` và không ghi nhận job giả:
+Request hợp lệ được thêm vào BullMQ; API trả `202` với `acceptedJobIds` và `rejectedJobs`. ID đã tồn tại được xác nhận kể cả khi queue đầy. Nếu Redis lỗi hoặc kết quả enqueue không xác định, API trả `503 QUEUE_UNAVAILABLE`; client gửi lại cùng ID.
 
-```json
-{
-  "statusCode": 503,
-  "code": "QUEUE_UNAVAILABLE",
-  "message": "Thumbnail queue is not available"
-}
-```
-
-Readiness cũng trả `503` với check queue `down` cho đến khi Step 4 tích hợp queue thật. Liveness vẫn trả `200` và không phụ thuộc Redis/MediaMTX.
+`202` chỉ xác nhận tiếp nhận, chưa có nghĩa ảnh đã được tạo. Consumer mặc định tắt; không bật scheduler gửi job liên tục cho đến khi pipeline Step 5 sẵn sàng. Bật consumer khi chưa đăng ký pipeline sẽ làm ứng dụng từ chối khởi động. Readiness kiểm tra Redis và khả năng tiếp nhận; liveness không phụ thuộc Redis.
 
 Các lỗi chính:
 
@@ -47,7 +41,7 @@ Các lỗi chính:
 | `400` | `INVALID_JSON` | Body không phải JSON hợp lệ |
 | `401` | `INVALID_INTERNAL_TOKEN` | Thiếu hoặc sai `X-Internal-Token` |
 | `413` | `REQUEST_BODY_TOO_LARGE` | Vượt `MEDIA_WORKER_MAX_BODY_BYTES` |
-| `503` | `QUEUE_UNAVAILABLE` | Queue chưa tích hợp hoặc không khả dụng |
+| `503` | `QUEUE_UNAVAILABLE` | Queue không khả dụng |
 
 `playbackUrl` được kiểm tra bằng URL parser: protocol/host/port phải khớp `MEDIA_WORKER_MEDIAMTX_BASE_URL`, không có credential/query/fragment, path phải đúng `/live/{sessionId}/index.m3u8`. Không dùng `startsWith` và không nhận URL nguồn tùy ý.
 
@@ -63,7 +57,7 @@ media-worker/
 │   │   ├── errors/            # Error envelope/filter
 │   │   └── http/              # JSON body limit, validation pipe
 │   ├── thumbnail-jobs/        # Batch API, DTO, source URL validation
-│   ├── queue/                 # Queue port + controlled unavailable implementation
+│   ├── queue/                 # BullMQ/Redis queue + queue port
 │   ├── processor/             # Processor port (Step 5)
 │   ├── ffmpeg/                # FFmpeg port (Step 5)
 │   ├── storage/               # R2 storage port (Step 5)
@@ -121,7 +115,7 @@ curl -i http://127.0.0.1:8090/health/live
 curl -i http://127.0.0.1:8090/health/ready
 ```
 
-Request bằng fixture hợp lệ trả `503 QUEUE_UNAVAILABLE` trong Step 1.
+Request hợp lệ trả `202` khi Redis sẵn sàng, hoặc `503` nếu không thể xác nhận tiếp nhận.
 
 ## Cấu hình
 
@@ -139,11 +133,16 @@ Mọi giá trị đọc từ biến môi trường và được validate trướ
 | `MEDIA_WORKER_FFMPEG_TIMEOUT_MS` | `20000` | Step 5 |
 | `MEDIA_WORKER_UPLOAD_TIMEOUT_MS` | `10000` | Step 5 |
 | `MEDIA_WORKER_CALLBACK_TIMEOUT_MS` | `5000` | Step 6 |
-| `MEDIA_WORKER_QUEUE_CONCURRENCY` | `2` | Step 4 |
+| `MEDIA_WORKER_PROCESSOR_ENABLED` | `false` | Chỉ bật khi đã đăng ký pipeline thật |
+| `MEDIA_WORKER_QUEUE_CONCURRENCY` | `2` | Số job chạy đồng thời mỗi consumer |
+| `MEDIA_WORKER_REDIS_CONNECT_TIMEOUT_MS` | `1000` | Redis producer connect timeout |
+| `MEDIA_WORKER_REDIS_COMMAND_TIMEOUT_MS` | `1000` | Redis producer command timeout |
+| `MEDIA_WORKER_BATCH_TIMEOUT_MS` | `3000` | Ngân sách tiếp nhận batch bao gồm chờ mutex |
+| `MEDIA_WORKER_SHUTDOWN_TIMEOUT_MS` | `45000` | Thời gian tối đa chờ shutdown |
 | `MEDIA_WORKER_MAX_PENDING_JOBS` | `1000` | Step 4 |
 | `MEDIA_WORKER_JOB_RETENTION_SECONDS` | `86400` | Tối thiểu 24 giờ (86400 giây) và phải ≥ deadline |
 | `MEDIA_WORKER_QUEUE_PREFIX` | `media-worker:thumbnail` | Prefix Redis riêng |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | `localhost` / `6379` / `0` | Chưa kết nối ở Step 1 |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_DB` | `localhost` / `6379` / `0` | Kết nối Redis |
 | `REDIS_PASSWORD` | rỗng | Không bắt buộc |
 | `MEDIA_WORKER_TEMP_DIR` | `/tmp/media-worker` | Phải là đường dẫn tuyệt đối |
 | `MEDIA_WORKER_FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Step 5 |
@@ -167,6 +166,7 @@ cd media-worker
 npm run lint
 npm test
 npm run test:e2e
+npm run test:integration -- --runInBand
 npm run build
 ```
 
@@ -175,9 +175,9 @@ Test hiện có:
 - Config hợp lệ/không hợp lệ, defaults, retention tối thiểu 24 giờ, quan hệ timeout/retention/token TTL, không lộ secret trong lỗi.
 - Thiếu/sai internal token; schema, UUID, timestamp đầy đủ có múi giờ, field lạ; batch vượt giới hạn; body quá lớn; JSON lỗi.
 - URL ngoài MediaMTX origin/path, prefix attack, credential/query/fragment.
-- Request hợp lệ trả `503`, không có `acceptedJobIds` giả.
-- Fixture dùng chung được đổi URL theo cấu hình local vẫn đi qua validation và trả `503 QUEUE_UNAVAILABLE`.
-- Liveness `200`; readiness `503` khi queue chưa tích hợp.
+- HTTP contract test dùng queue giả lập để kiểm tra độc lập.
+- Integration test dùng Testcontainers với Redis thật để kiểm tra enqueue, chống trùng, capacity, xử lý hết hạn và lỗi. Cần Docker đang chạy.
+- Liveness `200`; readiness phản ánh khả năng tiếp nhận của queue.
 
 ## Docker
 
@@ -196,9 +196,9 @@ docker run --rm -p 127.0.0.1:8090:8090 \
 docker run --rm --entrypoint ffmpeg reallive-media-worker -version
 ```
 
-Image dùng multi-stage build, cài FFmpeg và chạy bằng user `mediaworker` (UID/GID 10001). Healthcheck của image chỉ gọi liveness; readiness được kiểm tra riêng vì queue chưa sẵn sàng trong Step 1. Chạy container với một MediaMTX reachable và token thật qua biến môi trường; không bake secret vào image.
+Image dùng multi-stage build, cài FFmpeg và chạy bằng user `mediaworker` (UID/GID 10001). Healthcheck của image chỉ gọi liveness; readiness được kiểm tra riêng theo kết nối Redis. Chạy container với một MediaMTX reachable và token thật qua biến môi trường; không bake secret vào image.
 
-Step 1 không thêm service vào `docker-compose.yml`. Việc nối Worker với MediaMTX/Redis/Stream Service, port nội bộ và healthcheck Compose thuộc Step 4/Step 7.
+Việc thêm Worker vào `docker-compose.yml` và cấu hình kết nối nội bộ thuộc Step 7.
 
 ## Bảo mật
 
@@ -211,8 +211,6 @@ Step 1 không thêm service vào `docker-compose.yml`. Việc nối Worker với
 
 ## Bước tiếp theo
 
-- **Step 2–3 (Stream Service):** migration/DTO, scheduler, ký Read JWT, FeignClient gửi batch.
-- **Step 4:** thay `UnavailableThumbnailQueue` bằng BullMQ thật, deduplication theo `jobId`, capacity, retention và processor.
 - **Step 5:** triển khai FFmpeg runner, JPEG validation và upload R2.
 - **Step 6:** callback một lần tới Stream Service và cập nhật thumbnail nguyên tử.
 - **Step 7:** cleanup, Compose/config môi trường, metrics và nghiệm thu end-to-end.
