@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3–7 chưa triển khai.  
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4–7 chưa triển khai.  
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
 ## 1. Mục tiêu và phạm vi
@@ -202,14 +202,14 @@ Vai trò: Thực hiện bước 2–4 của workflow, bảo đảm có thể kh�
 
 Phụ thuộc: Step 2.
 
-| Task | Công việc |
-|---|---|
-| THM-301 | Tạo scheduler thumbnail riêng với reconnect scheduler; chạy khi application ready và theo fixed delay, ngăn hai lượt chạy chồng trong cùng process |
-| THM-302 | Đầu mỗi lượt, kết thúc các job PENDING_DISPATCH/ACCEPTED quá deadline trong transaction ngắn |
-| THM-303 | Chọn session LIVE chưa có ảnh (thumbnail_updated_at IS NULL) ngay ở lượt quét kế tiếp, hoặc đã đến hạn theo thumbnail_updated_at + X, và không còn job đang chờ; gửi lại pending còn hạn với cùng ID; giới hạn số lượng truy vấn, khóa và recheck trước khi tạo job |
-| THM-304 | Dùng TransactionTemplate lưu job ID, trạng thái và deadline; commit trước khi ký token và gọi HTTP |
-| THM-305 | Tạo FeignClient dưới module stream.client; ghép HLS URL đầy đủ bằng internal MediaMTX base URL và playback path; gửi batch với retry tự động tắt |
-| THM-306 | Áp dụng response theo từng ID; chỉ chuyển PENDING_DISPATCH → ACCEPTED nếu ID vẫn khớp; lỗi HTTP/timeout giữ trạng thái hiện tại |
+| Task | Công việc | Trạng thái |
+|---|---|---|
+| THM-301 | Tạo scheduler thumbnail riêng với reconnect scheduler; chạy khi application ready và theo fixed delay, ngăn hai lượt chạy chồng trong cùng process | Hoàn tất 2026-11-05 |
+| THM-302 | Đầu mỗi lượt, kết thúc các job PENDING_DISPATCH/ACCEPTED quá deadline trong transaction ngắn | Hoàn tất 2026-11-05 |
+| THM-303 | Chọn session LIVE chưa có ảnh (thumbnail_updated_at IS NULL) ngay ở lượt quét kế tiếp, hoặc đã đến hạn theo thumbnail_updated_at + X, và không còn job đang chờ; gửi lại pending còn hạn với cùng ID; giới hạn số lượng truy vấn, khóa và recheck trước khi tạo job | Hoàn tất 2026-11-05 |
+| THM-304 | Dùng TransactionTemplate lưu job ID, trạng thái và deadline; commit trước khi ký token và gọi HTTP | Hoàn tất 2026-11-05 |
+| THM-305 | Tạo FeignClient dưới module stream.client; ghép HLS URL đầy đủ bằng internal MediaMTX base URL và playback path; gửi batch với retry tự động tắt | Hoàn tất 2026-11-05 |
+| THM-306 | Áp dụng response theo từng ID; chỉ chuyển PENDING_DISPATCH → ACCEPTED nếu ID vẫn khớp; lỗi HTTP/timeout giữ trạng thái hiện tại | Hoàn tất 2026-11-05 |
 
 Quy tắc triển khai:
 
@@ -223,6 +223,19 @@ Quy tắc triển khai:
 - Scheduler thumbnail không được làm nghẽn reconnect scheduler; cấu hình executor riêng.
 
 Điều kiện hoàn tất: Tắt Worker, restart backend hoặc gây timeout đều không mất công việc; DB transaction đã kết thúc trước khi gọi HTTP.
+
+Bằng chứng hoàn tất Step 3:
+
+- `SchedulingConfiguration` tập trung khai báo hai bean `reconnectTaskScheduler` và `thumbnailTaskScheduler`, mỗi bean có pool 1 riêng, lần lượt dùng prefix `reconnect-scheduler-` và `thumbnail-scheduler-`. Hai tác vụ chỉ định rõ bean qua `@Scheduled(scheduler = ...)`. `ThumbnailDispatchScheduler` chạy một lượt khi `ApplicationReadyEvent` và theo fixed delay mặc định 10 giây; `AtomicBoolean` bỏ qua lượt chồng trong cùng process. Scheduler thumbnail tắt mặc định ở profile test và chỉ bật bằng `stream.thumbnail.enabled=true`; lỗi hoặc rejection ở scheduler thumbnail không ảnh hưởng reconnect scheduler. `ThumbnailConfiguration` đăng ký properties và validate khi tính năng được bật.
+- Mỗi lượt giới hạn tối đa `stream.thumbnail.batch-size` (1–50). Đầu lượt, job `PENDING_DISPATCH`/`ACCEPTED` có deadline `<= now` được chuyển `FAILED` trong transaction ngắn theo từng hàng, có khóa và recheck; giữ nguyên job ID, deadline, ảnh và `thumbnail_updated_at`.
+- Truy vấn đến hạn dùng predicate tường minh `thumbnail_job_status IS NULL OR thumbnail_job_status NOT IN ('PENDING_DISPATCH','ACCEPTED')` và `thumbnail_updated_at IS NULL OR thumbnail_updated_at <= cutoff`, sắp xếp `NULLS FIRST` + id và `LIMIT`; session LIVE chưa có ảnh được chọn ngay, session vừa cập nhật trong X không bị chọn. Job `PENDING_DISPATCH` còn hạn được gửi lại trước với cùng job ID và deadline gốc; job mới chỉ được tạo sau khi khóa hàng và recheck trạng thái.
+- Job mới/claim được lưu bằng `TransactionTemplate` và commit trước khi ký Read JWT hoặc gọi HTTP; `ThumbnailDispatchServiceImpl` chạy với `Propagation.NEVER`.
+- Feign interface `stream/client/thumbnail/ThumbnailWorkerApiClient` gọi `POST /internal/api/thumbnail-jobs/batch`; `ThumbnailWorkerClient` bọc lời gọi, gửi header `X-Internal-Token`, bắt lỗi HTTP/timeout/response hỏng và trả kết quả rỗng để job giữ `PENDING_DISPATCH`. Playback URL ghép từ internal MediaMTX HLS base URL và playback path, tắt retry tự động (`Retryer.NEVER_RETRY`) và dùng timeout cấu hình 2 giây/5 giây.
+- `MediaJwtIssuer.issueWorkerRead` ký Read JWT subject `media-worker` bằng issuer/key hiện có, chỉ cấp quyền read `live/<sessionId>`, hạn mặc định 300 giây và không ngắn hơn job deadline.
+- ACK chỉ áp dụng `acceptedJobIds` của batch hiện tại, loại ID vừa accepted vừa rejected, khóa hàng và chỉ chuyển `PENDING_DISPATCH` → `ACCEPTED` khi job ID còn khớp. `QUEUE_FULL`, HTTP 400/401/503, timeout, response hỏng/thiếu `acceptedJobIds`, callback `SUCCEEDED` đến trước ACK, `FAILED` và job ID bị thay thế đều không bị ghi đè; job giữ `PENDING_DISPATCH` và được gửi lại với cùng ID.
+- Dispatch đọc `MEDIA_WORKER_INTERNAL_TOKEN`, không dùng `STREAM_SERVICE_INTERNAL_TOKEN` dành cho callback; regression test kiểm tra hai secret khác nhau và từ chối dùng callback token thay worker token. Dữ liệu test dùng cùng session ID trong playback path, assertion URL dựa trực tiếp trên session ID của payload.
+- Kiểm thử gồm 20 test PostgreSQL cho dispatch/expiry/ACK/đồng thời, 3 test repository selection/expiry, 1 test bật scheduler với executor riêng, 1 test Worker không truy cập được, 5 test scheduler, 6 test cấu hình/Feign/Read JWT và 3 test khởi động cấu hình thumbnail sau khi tập trung scheduler, cùng 4 test wrapper HTTP client. `./mvnw clean verify` đạt 232 test, 0 failure, 0 error, 0 skip; build và đóng gói thành công.
+- Chưa triển khai callback endpoint, BullMQ/FFmpeg/R2, cleanup và API/frontend thumbnail (Step 4–7).
 
 ### Step 4 — Tiếp nhận batch và quản lý BullMQ
 
