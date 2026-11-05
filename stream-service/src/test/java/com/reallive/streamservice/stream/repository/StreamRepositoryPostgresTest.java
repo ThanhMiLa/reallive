@@ -310,7 +310,7 @@ class StreamRepositoryPostgresTest extends PostgresIntegrationTestSupport {
     void persistsImmutableHistoryWithEventDeduplication() {
         UUID ownerId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.of(2026, 11, 5, 0, 0, 0, 123_456_000);
 
         StreamSessionEntity session = sessionRepository.save(StreamSessionEntity.builder()
                 .channelId(channelId)
