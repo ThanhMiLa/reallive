@@ -5,6 +5,7 @@ import com.reallive.streamservice.stream.entity.enums.MediaPathState;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -27,6 +28,12 @@ public record StreamSessionSnapshot(
         LocalDateTime reconnectDeadlineAt,
         LocalDateTime startedAt,
         LocalDateTime endedAt,
+        String thumbnailUrl,
+        String thumbnailObjectKey,
+        LocalDateTime thumbnailUpdatedAt,
+        UUID thumbnailJobId,
+        ThumbnailJobStatus thumbnailJobStatus,
+        LocalDateTime thumbnailJobDeadlineAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -52,6 +59,12 @@ public record StreamSessionSnapshot(
                 entity.getReconnectDeadlineAt(),
                 entity.getStartedAt(),
                 entity.getEndedAt(),
+                entity.getThumbnailUrl(),
+                entity.getThumbnailObjectKey(),
+                entity.getThumbnailUpdatedAt(),
+                entity.getThumbnailJobId(),
+                entity.getThumbnailJobStatus(),
+                entity.getThumbnailJobDeadlineAt(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
