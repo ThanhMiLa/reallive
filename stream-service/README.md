@@ -108,7 +108,7 @@ Owner endpoints (Gateway prefix `/stream`; controller prefix `/api/streams`):
 
 Create takes `requestId` (UUID), `title` and `categoryId`. Keep the same request ID after timeout/lost response; replay preserves the original metadata. A different request ID while the channel has an active session returns 409. Create and publish-credentials use `Cache-Control: no-store`. Tokens are not persisted or hashed, and issuing another JWT does not revoke previous tokens.
 
-`MediaMtxAdapter` uses `stream/adapter/media`; User/Channel clients stay under `stream/client`. Control API settings:
+`MediaServerAdapter` and `MediaJwtIssuer` live under `stream/adapter/media`; their implementations (`MediaMtxAdapter`, `MediaJwtIssuerImpl`) live under `stream/adapter/media/impl`. User/Channel clients stay under `stream/client`. Control API settings:
 
 ```dotenv
 STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997

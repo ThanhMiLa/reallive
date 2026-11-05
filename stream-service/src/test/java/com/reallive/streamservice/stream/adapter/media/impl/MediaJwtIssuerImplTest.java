@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.adapter.media;
+package com.reallive.streamservice.stream.adapter.media.impl;
 
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -7,6 +7,7 @@ import com.reallive.streamservice.common.configuration.MediaKeyMaterial;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import com.reallive.streamservice.stream.MediaTestSupport;
+import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
 import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Instant;
@@ -16,9 +17,9 @@ import java.util.Map;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
-class MediaJwtIssuerTest {
+class MediaJwtIssuerImplTest {
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-26T00:00:00Z"), ZoneOffset.UTC);
-    private final MediaJwtIssuer issuer = new MediaJwtIssuer(
+    private final MediaJwtIssuer issuer = new MediaJwtIssuerImpl(
             new MediaKeyMaterial((RSAPrivateKey) MediaTestSupport.KEYS.getPrivate(), (RSAPublicKey) MediaTestSupport.KEYS.getPublic()), MediaTestSupport.properties(), clock);
 
     @Test
@@ -26,7 +27,7 @@ class MediaJwtIssuerTest {
         UUID session = UUID.randomUUID();
         UUID owner = UUID.randomUUID();
         UUID viewer = UUID.randomUUID();
-        var publish = SignedJWT.parse(issuer.issuePublish(session, owner).value());
+        var publish = SignedJWT.parse(publishToken(session, owner));
         var read = SignedJWT.parse(issuer.issueRead(session, viewer).value());
         assertTrue(publish.verify(new RSASSAVerifier((RSAPublicKey) MediaTestSupport.KEYS.getPublic())));
         assertEquals("RS256", publish.getHeader().getAlgorithm().getName());
@@ -40,6 +41,17 @@ class MediaJwtIssuerTest {
         assertEquals(clock.instant().plusSeconds(8 * 3600), publish.getJWTClaimsSet().getExpirationTime().toInstant());
         assertEquals(clock.instant().plusSeconds(300), read.getJWTClaimsSet().getExpirationTime().toInstant());
         assertNotEquals(publish.getJWTClaimsSet().getJWTID(), read.getJWTClaimsSet().getJWTID());
+    }
+
+    @Test
+    void workerReadTokenUsesTechnicalIdentityAndOnlyReadsTheSessionPath() throws Exception {
+        UUID session = UUID.randomUUID();
+        var worker = SignedJWT.parse(issuer.issueWorkerRead(session).value());
+        assertTrue(worker.verify(new RSASSAVerifier((RSAPublicKey) MediaTestSupport.KEYS.getPublic())));
+        assertEquals("media-worker", worker.getJWTClaimsSet().getSubject());
+        assertEquals(List.of(Map.of("action", "read", "path", "live/" + session)),
+                worker.getJWTClaimsSet().getClaim("mediamtx_permissions"));
+        assertEquals(clock.instant().plusSeconds(300), worker.getJWTClaimsSet().getExpirationTime().toInstant());
     }
 
     @Test
@@ -61,9 +73,14 @@ class MediaJwtIssuerTest {
         var set = JWKSet.parse(issuer.publicJwks());
         assertEquals(1, set.getKeys().size());
         assertFalse(set.getKeys().getFirst().isPrivate());
-        var token = SignedJWT.parse(issuer.issuePublish(UUID.randomUUID(), UUID.randomUUID()).value());
+        var token = SignedJWT.parse(publishToken(UUID.randomUUID(), UUID.randomUUID()));
         assertTrue(token.verify(new RSASSAVerifier(set.getKeys().getFirst().toRSAKey().toRSAPublicKey())));
         assertFalse(set.toJSONObject().toString().contains("private"));
+    }
+
+    private String publishToken(UUID sessionId, UUID ownerUserId) {
+        String streamKey = issuer.publishCredentials(sessionId, ownerUserId).streamKey();
+        return streamKey.substring(streamKey.indexOf("?token=") + "?token=".length());
     }
 
 }

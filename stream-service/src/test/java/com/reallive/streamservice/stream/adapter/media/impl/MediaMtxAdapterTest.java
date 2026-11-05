@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.adapter.media;
+package com.reallive.streamservice.stream.adapter.media.impl;
 
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.streamservice.common.configuration.WebClientConfig;
@@ -77,7 +77,7 @@ class MediaMtxAdapterTest {
         properties.setRequestTimeout(Duration.ofSeconds(2));
         var keys = new MediaKeyMaterial((RSAPrivateKey) MediaTestSupport.KEYS.getPrivate(),
                 (RSAPublicKey) MediaTestSupport.KEYS.getPublic());
-        var issuer = new MediaJwtIssuer(keys, MediaTestSupport.properties(), Clock.systemUTC());
+        var issuer = new MediaJwtIssuerImpl(keys, MediaTestSupport.properties(), Clock.systemUTC());
         adapter = new MediaMtxAdapter(new WebClientConfig().mediaControlWebClient(properties), properties, issuer, mapper);
     }
 

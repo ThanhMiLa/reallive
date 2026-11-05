@@ -7,6 +7,7 @@ import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
+import com.reallive.streamservice.stream.adapter.media.impl.MediaJwtIssuerImpl;
 import com.reallive.streamservice.stream.controller.media.MediaJwksController;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = MediaJwksController.class, properties = "auth.cookie.access-token.name=access_token")
 @Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
-        MediaConfiguration.class, StreamClockConfig.class, MediaJwtIssuer.class})
+        MediaConfiguration.class, StreamClockConfig.class, MediaJwtIssuerImpl.class})
 class MediaSecurityTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper mapper;

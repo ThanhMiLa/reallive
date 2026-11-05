@@ -3,6 +3,7 @@ package com.reallive.streamservice.stream.adapter.media;
 import com.reallive.streamservice.common.configuration.MediaKeyMaterial;
 import com.reallive.streamservice.common.configuration.MediaProperties;
 import com.reallive.streamservice.stream.MediaTestSupport;
+import com.reallive.streamservice.stream.adapter.media.impl.MediaJwtIssuerImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -97,22 +98,22 @@ class MediaMtxAuthenticationIT {
         UUID owner = UUID.randomUUID();
         String path = "live/" + session;
         assertEquals(200, request("GET", api + "/v3/config/paths/list", control, null).statusCode());
-        assertDenied(request("GET", api + "/v3/config/paths/list", issuer.issuePublish(session, owner).value(), null).statusCode());
+        assertDenied(request("GET", api + "/v3/config/paths/list", publishToken(session, owner), null).statusCode());
         assertDenied(request("GET", api + "/v3/config/paths/list", issuer.issueRead(session, owner).value(), null).statusCode());
         assertEquals(200, request("POST", api + "/v3/config/paths/add/" + path, control, "{}").statusCode());
-        Process publisher = publish(rtmp + session + "?token=" + issuer.issuePublish(session, owner).value(), 45);
+        Process publisher = publish(rtmp + issuer.publishCredentials(session, owner).streamKey(), 45);
         try {
             awaitSource(api, path, control, publisher);
             String playback = hls + "/" + path + "/index.m3u8";
             var allowed = request("GET", playback, issuer.issueRead(session, owner).value(), null);
             assertEquals(200, allowed.statusCode());
             assertTrue(allowed.body().contains("#EXTM3U"));
-            var oldIssuer = new MediaJwtIssuer(keys, properties, Clock.offset(Clock.systemUTC(), Duration.ofDays(-1)));
+            var oldIssuer = new MediaJwtIssuerImpl(keys, properties, Clock.offset(Clock.systemUTC(), Duration.ofDays(-1)));
             var otherKeys = MediaTestSupport.generateKeys();
-            var wrongSigner = new MediaJwtIssuer(new MediaKeyMaterial(
+            var wrongSigner = new MediaJwtIssuerImpl(new MediaKeyMaterial(
                     (RSAPrivateKey) otherKeys.getPrivate(),
                     (RSAPublicKey) otherKeys.getPublic()), properties, Clock.systemUTC());
-            for (String token : List.of("", issuer.issuePublish(session, owner).value(),
+            for (String token : List.of("", publishToken(session, owner),
                     issuer.issueRead(UUID.randomUUID(), owner).value(), oldIssuer.issueRead(session, owner).value(),
                     wrongSigner.issueRead(session, owner).value())) {
                 assertDenied(request("GET", playback, token.isEmpty() ? null : token, null).statusCode());
@@ -152,6 +153,11 @@ class MediaMtxAuthenticationIT {
                 "-t", Integer.toString(duration), "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
                 "-g", "20", "-c:a", "aac", "-f", "flv", url)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+    }
+
+    private String publishToken(UUID sessionId, UUID ownerUserId) {
+        String streamKey = issuer.publishCredentials(sessionId, ownerUserId).streamKey();
+        return streamKey.substring(streamKey.indexOf("?token=") + "?token=".length());
     }
 
     private HttpResponse<String> request(String method, String url, String token, String body) throws Exception {

@@ -1,82 +1,78 @@
 package com.reallive.streamservice.stream.adapter.media;
 
-import com.nimbusds.jose.JOSEException;
-import com.nimbusds.jose.JOSEObjectType;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.crypto.RSASSASigner;
-import com.nimbusds.jose.jwk.KeyUse;
-import com.nimbusds.jose.jwk.RSAKey;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import com.reallive.streamservice.common.configuration.MediaKeyMaterial;
-import com.reallive.streamservice.common.configuration.MediaProperties;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
-import lombok.experimental.FieldDefaults;
-import org.springframework.stereotype.Component;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Date;
-import java.util.List;
+
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
-@Component
-@RequiredArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class MediaJwtIssuer {
-    MediaKeyMaterial keys;
-    MediaProperties properties;
-    Clock clock;
+/**
+ * Issues signed MediaMTX JWTs for publishing, playback, media worker reads and control API calls.
+ *
+ * <p>Every token is signed with the configured RS256 key and shares the configured issuer,
+ * audience and key ID. A token grants only the permission required by its caller. This contract
+ * does not validate sessions, authorize ownership or persist any state.</p>
+ */
+public interface MediaJwtIssuer {
 
-    public MediaToken issuePublish(UUID sessionId, UUID ownerUserId) {
-        return issue(Objects.requireNonNull(ownerUserId).toString(), properties.getPublishTokenTtl(),
-                Map.of("action", "publish", "path", path(sessionId)));
-    }
+    /**
+     * Issues a playback token scoped to a session's exact media path.
+     *
+     * <p>The token subject is the viewer user ID and the only granted permission is read access
+     * to {@code live/<sessionId>}. Its lifetime is the configured read token TTL.</p>
+     *
+     * @param sessionId non-null session UUID identifying the exact media path
+     * @param viewerUserId non-null viewer user ID used as the token subject
+     * @return the signed token and its expiration instant
+     * @throws NullPointerException if sessionId or viewerUserId is null
+     * @throws IllegalStateException if the token cannot be signed
+     */
+    MediaToken issueRead(UUID sessionId, UUID viewerUserId);
 
-    public MediaToken issueRead(UUID sessionId, UUID viewerUserId) {
-        return issue(Objects.requireNonNull(viewerUserId).toString(), properties.getReadTokenTtl(),
-                Map.of("action", "read", "path", path(sessionId)));
-    }
+    /**
+     * Issues a read-only token for the media worker technical identity.
+     *
+     * <p>The token subject is {@code media-worker} and the only granted permission is read access
+     * to {@code live/<sessionId>}. Its lifetime is the configured read token TTL.</p>
+     *
+     * @param sessionId non-null session UUID identifying the exact media path
+     * @return the signed token and its expiration instant
+     * @throws NullPointerException if sessionId is null
+     * @throws IllegalStateException if the token cannot be signed
+     */
+    MediaToken issueWorkerRead(UUID sessionId);
 
-    public MediaToken issueControlApi() {
-        return issue("stream-service", properties.getControlTokenTtl(), Map.of("action", "api"));
-    }
+    /**
+     * Issues a control API token for the Stream Service technical identity.
+     *
+     * <p>The token subject is {@code stream-service} and the only granted permission is access to
+     * the MediaMTX control API. Its lifetime is the configured control token TTL.</p>
+     *
+     * @return the signed token and its expiration instant
+     * @throws IllegalStateException if the token cannot be signed
+     */
+    MediaToken issueControlApi();
 
-    public StreamPublishCredentialsResponse publishCredentials(UUID sessionId, UUID ownerUserId) {
-        MediaToken token = issuePublish(sessionId, ownerUserId);
-        return new StreamPublishCredentialsResponse(sessionId, properties.getRtmpPublicUrl(),
-                sessionId + "?token=" + token.value(), token.expiresAt());
-    }
+    /**
+     * Builds RTMP publish credentials for a session owner.
+     *
+     * <p>The stream key combines the session ID with a newly issued publish token. The response
+     * contains credentials and must not be logged in clear text.</p>
+     *
+     * @param sessionId non-null session UUID identifying the exact media path
+     * @param ownerUserId non-null owner user ID used as the publish token subject
+     * @return credentials containing the configured RTMP base URL, session-scoped stream key and
+     *         publish token expiration instant
+     * @throws NullPointerException if sessionId or ownerUserId is null
+     * @throws IllegalStateException if the publish token cannot be signed
+     */
+    StreamPublishCredentialsResponse publishCredentials(UUID sessionId, UUID ownerUserId);
 
-    public Map<String, Object> publicJwks() {
-        var jwk = new RSAKey.Builder(keys.publicKey()).keyID(properties.getKeyId())
-                .algorithm(JWSAlgorithm.RS256).keyUse(KeyUse.SIGNATURE).build();
-        return Map.of("keys", List.of(jwk.toPublicJWK().toJSONObject()));
-    }
-
-    private String path(UUID sessionId) {
-        return "live/" + Objects.requireNonNull(sessionId);
-    }
-
-    private MediaToken issue(String subject, Duration ttl, Map<String, String> permission) {
-        Instant issued = clock.instant().truncatedTo(ChronoUnit.SECONDS);
-        Instant expires = issued.plus(ttl);
-        var claims = new JWTClaimsSet.Builder().issuer(properties.getIssuer()).audience(properties.getAudience())
-                .subject(subject).issueTime(Date.from(issued)).expirationTime(Date.from(expires))
-                .jwtID(UUID.randomUUID().toString()).claim("mediamtx_permissions", List.of(permission)).build();
-        var token = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).type(JOSEObjectType.JWT)
-                .keyID(properties.getKeyId()).build(), claims);
-        try {
-            token.sign(new RSASSASigner(keys.privateKey()));
-            return new MediaToken(token.serialize(), expires);
-        } catch (JOSEException exception) {
-            throw new IllegalStateException("Unable to sign media JWT");
-        }
-    }
+    /**
+     * Returns the public JSON Web Key Set used to verify issued tokens.
+     *
+     * <p>The set exposes only the public parameters of the active RS256 signing key.</p>
+     *
+     * @return a JWKS document containing the public signing key
+     */
+    Map<String, Object> publicJwks();
 }
