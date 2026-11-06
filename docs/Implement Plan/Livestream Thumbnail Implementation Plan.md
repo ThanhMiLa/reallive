@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5 đã triển khai và đang hoàn thiện nghiệm thu; OBS thật do người dùng thực hiện sau; Step 6 đã triển khai và đang chờ nghiệm thu R2 thật; Step 7–8 chưa triển khai.
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–6 đã triển khai và đã kiểm chứng chụp/upload thực tế khi nghiệm thu Step 7; Step 7 (THM-701–THM-705) đã được người dùng nghiệm thu ngày 2026-11-06 với livestream, R2 và DB thật; integration pipeline tự động còn hoãn theo yêu cầu; Step 8 chưa triển khai.
 
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
@@ -297,7 +297,7 @@ Cập nhật triển khai Step 5:
 - JWT không còn trong argv FFmpeg: truyền thông tin nguồn/header qua ffconcat pipe FD 3, có test kiểm tra process list và HLS Bearer.
 - Bổ sung test cấu hình cho bốn biến giới hạn, portrait, concurrency, JPEG lỗi, filesystem lỗi, FFmpeg nonzero exit; Docker FFmpeg 5.1.9 capture portrait có Bearer và SIGKILL container đang xử lý đã được kiểm chứng.
 - Kiểm tra sau sửa: lint/build đạt; 19 unit test, 28 HTTP contract test, 19 integration test và 2 Docker test đạt. Nguồn HLS mất kết nối giữa segment được kiểm thử tự động.
-- Nghiệm thu OBS thật do người dùng thực hiện sau. Không đánh dấu Step 5 hoàn tất trước bằng chứng này; nguồn test tự động là FFmpeg lavfi và HTTP HLS, không thay thế OBS.
+- Người dùng đã livestream và nghiệm thu chụp/upload ảnh thật khi chốt Step 7 ngày 2026-11-06. Nguồn test tự động vẫn là FFmpeg lavfi và HTTP HLS; bằng chứng môi trường thật được ghi riêng ở Step 7.
 
 ### Step 6 — Upload JPEG lên R2
 
@@ -325,7 +325,7 @@ Cập nhật triển khai Step 6:
 
 - Đã triển khai storage adapter dùng S3 SDK, capture-upload service, CLI độc lập, timeout/abort và dọn file tạm; consumer production vẫn tắt.
 - Lint, build, 21 unit test, 28 HTTP test và 27 integration test đạt. Kiểm thử S3 tương thích dùng LocalStack thay MinIO do image MinIO không truy cập được từ registry trong môi trường triển khai. LocalStack không phải bằng chứng R2 thật.
-- Chờ người dùng cấu hình R2 và nghiệm thu upload/tải lại ảnh thật trước khi đánh dấu Step 6 hoàn tất.
+- Đã xác nhận object JPEG trên R2 thật khớp URL/key trong DB khi người dùng nghiệm thu Step 7 ngày 2026-11-06; LocalStack chỉ là bằng chứng kiểm thử S3 tương thích, không thay cho kiểm chứng R2 thật.
 
 ### Step 7 — Callback và cập nhật thumbnail nguyên tử
 
@@ -349,6 +349,15 @@ Quy tắc lỗi:
 - Kiểm tra ảnh tại backend gồm object key đúng session/job và JPEG metadata hợp lệ; thời điểm cập nhật do backend tự đặt khi áp dụng thành công, không gọi R2 trong transaction cập nhật.
 
 Điều kiện hoàn tất: Các thứ tự đến khác nhau của callback, ACK và scheduler không ghi đè ảnh mới bằng kết quả cũ.
+
+Bằng chứng triển khai và nghiệm thu Step 7 (2026-11-06):
+
+- Đã nối callback và processor Worker, thêm endpoint/token nội bộ và transaction cập nhật tại Stream Service, cùng regression route Gateway. Consumer Worker mặc định tắt; dev profile của Stream Service mặc định bật dispatch/callback theo cấu hình người dùng, có thể tắt riêng qua biến môi trường. File .env.example giữ các cờ tắt để bật có chủ đích.
+- Đã sửa mapping JDBC trực tiếp cho hai mốc thumbnail và đổi truy vấn đến hạn sang JPQL để dùng đúng kiểu tham số; regression kiểm tra giá trị UTC trong DB và truy vấn dưới cả UTC/Asia/Ho_Chi_Minh. Connection pool PostgreSQL của test giới hạn tối đa 5, minimum idle 0 để các Spring context không làm cạn kết nối.
+- `./mvnw verify` mặc định tại Stream Service đạt 262 test, 0 failure, 0 error, 0 skip và BUILD SUCCESS sau các sửa lỗi; không cần truyền timezone hoặc cấu hình pool qua CLI.
+- Callback client abort request trong finally, kể cả response lỗi hoặc sai content type chưa đọc hết body; có regression cho HTTP 503 treo body, sai content type treo body và timeout khi đọc JSON dở dang. Worker qua lint/build, 50 unit test và 28 HTTP test. Các integration hiện có đã qua ở lần review trước; chưa bổ sung integration pipeline theo yêu cầu người dùng.
+- Gateway verify đạt 88 test chạy thành công và 1 test Redis tùy chọn bị bỏ qua. Integration pipeline tự động từ Redis qua processor thật đến callback và các case cạnh tranh/shutdown còn thiếu được hoãn theo quyết định của người dùng; không ghi nhận chúng là đã chạy.
+- Người dùng đã livestream và nghiệm thu ảnh trên R2 thật. Đối chiếu DB xác nhận đúng object key/URL, job SUCCEEDED và thumbnail_updated_at sau thời điểm upload: R2 22:15:44, DB 22:15:44.804616 (UTC+7). Khi session ENDED, không tạo ảnh mới. Người dùng chốt Step 7; đây là nghiệm thu thủ công, không thay thế integration test tự động.
 
 ### Step 8 — Dọn rác, vận hành và nghiệm thu
 

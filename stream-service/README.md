@@ -144,3 +144,13 @@ The OBS method is deliberately opt-in and is skipped by this command. [Phase 3 T
 - Synchronous End API:
   - `POST /stream/api/streams/{sessionId}/end` requires authenticated channel owner.
   - Deletes media path and kicks source before committing `ENDED/CLOSED`. Idempotent if already ended. Failures rollback DB and return 503.
+
+## Livestream thumbnail callbacks
+
+`POST /stream/internal/api/thumbnail-results` accepts thumbnail results directly from Media Worker, outside Gateway routes. Enable it independently with `STREAM_THUMBNAIL_CALLBACK_ENABLED=true`; set `STREAM_SERVICE_INTERNAL_TOKEN` to the Worker's callback secret, `R2_PUBLIC_BASE_URL` to the thumbnail bucket's public URL and optionally `STREAM_THUMBNAIL_MAX_JPEG_BYTES` (default 5242880). Account cookies do not authenticate this endpoint.
+
+The backend locks the session row, checks the current waiting job ID, deadline and LIVE state, then atomically stores the URL/object key, UTC `thumbnail_updated_at` and SUCCEEDED status. Job ID and deadline are retained. Responses are plain `{"outcome":"APPLIED"}` or `{"outcome":"IGNORED"}`. No R2 request is made inside the transaction.
+
+`STREAM_THUMBNAIL_ENABLED` controls dispatch separately. The dev profile defaults dispatch and callback to enabled; `.env.example` explicitly disables both for deliberate startup. Worker processing remains disabled by default. Configure the callback endpoint before enabling Worker processing and dispatch. Callback failures are not retried; the existing scheduler expires waiting jobs and permits another capture.
+
+Manual livestream/R2/DB acceptance was confirmed on 2026-11-06. Automated full-pipeline integration and remaining concurrency/shutdown scenarios are deferred by the user; they are not reported as passing.

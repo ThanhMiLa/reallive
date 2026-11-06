@@ -1,6 +1,6 @@
 # Livestream Thumbnail Worker Contract
 
-Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Worker tiếp nhận job qua BullMQ/Redis và đã có capture JPEG độc lập bằng FFmpeg; upload R2 thuộc Step 6, callback tại Stream Service thuộc Step 7. Consumer production vẫn tắt.
+Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Worker tiếp nhận job qua BullMQ/Redis, trích JPEG bằng FFmpeg, upload R2 và callback để backend cập nhật DB. Consumer mặc định tắt, bật có chủ đích khi đủ cấu hình.
 
 - Base URL của Worker trong môi trường nội bộ: `http://media-worker:8090` (cấu hình khi triển khai; không public qua Gateway).
 - Mọi API nội bộ dùng header `X-Internal-Token`; giá trị lấy từ biến môi trường, không dùng account cookie, không dùng JWT người dùng.
@@ -82,7 +82,7 @@ Worker trả `202 Accepted` sau khi thêm job vào BullMQ hoặc xác nhận job
 
 ### 1.4. Trạng thái Worker hiện tại
 
-Khi Redis sẵn sàng, Worker trả `202` sau khi lưu hoặc xác nhận job tồn tại. Nếu Redis không khả dụng hoặc kết quả tiếp nhận không xác định, API trả `503 QUEUE_UNAVAILABLE`. Consumer mặc định tắt cho đến khi pipeline upload/callback ở Step 6–7 sẵn sàng; `202` không đồng nghĩa đã tạo thumbnail. Readiness phản ánh khả năng tiếp nhận của Redis.
+Khi Redis sẵn sàng, Worker trả `202` sau khi lưu hoặc xác nhận job tồn tại. Nếu Redis không khả dụng hoặc kết quả tiếp nhận không xác định, API trả `503 QUEUE_UNAVAILABLE`. Consumer mặc định tắt và cần bật khi đủ cấu hình R2/callback; pipeline Step 6–7 đã triển khai. `202` không đồng nghĩa đã tạo thumbnail. Readiness phản ánh khả năng tiếp nhận của Redis.
 
 ## 2. Callback tới Stream Service
 
@@ -138,7 +138,7 @@ HTTP/1.1 200 OK
 - `401`: thiếu hoặc sai internal token.
 - `503`: dependency tạm thời không khả dụng. Worker ghi log, kết thúc job và không retry callback.
 
-Callback chỉ được định nghĩa trong Step 1; Stream Service chưa mở endpoint này.
+Endpoint đã được triển khai trong Step 7, bật bằng STREAM_THUMBNAIL_CALLBACK_ENABLED tại Stream Service và không public qua Gateway. STREAM_SERVICE_INTERNAL_TOKEN phải khớp Worker; backend tự dựng URL bằng R2_PUBLIC_BASE_URL của bucket thumbnail.
 
 ## 3. Error contract dùng chung
 
