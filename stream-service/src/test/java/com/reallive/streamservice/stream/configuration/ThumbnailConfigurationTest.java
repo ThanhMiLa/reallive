@@ -46,4 +46,42 @@ class ThumbnailConfigurationTest {
             assertThat(context.getBeansOfType(TaskScheduler.class)).hasSize(2);
         });
     }
+
+    @Test
+    void callbackEnabledRejectsMissingCredentialsAtStartup() {
+        runner.withPropertyValues("stream.thumbnail.callback-enabled=true").run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasStackTraceContaining("Invalid thumbnail callback configuration");
+        });
+    }
+
+    @Test
+    void callbackEnabledRejectsAnUnsafePublicBaseUrl() {
+        runner.withPropertyValues(
+                "stream.thumbnail.callback-enabled=true",
+                "stream.thumbnail.callback-internal-token=test-internal-token-0123456789abcdef",
+                "stream.thumbnail.public-base-url=https://thumbnails.example.com/?token=secret"
+        ).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalStateException.class)
+                    .hasStackTraceContaining("Invalid thumbnail callback configuration");
+        });
+    }
+
+    @Test
+    void callbackEnabledWithValidConfigurationDoesNotRequireTheScheduler() {
+        runner.withPropertyValues(
+                "stream.thumbnail.enabled=false",
+                "stream.thumbnail.callback-enabled=true",
+                "stream.thumbnail.callback-internal-token=test-internal-token-0123456789abcdef",
+                "stream.thumbnail.public-base-url=https://thumbnails.example.com/base/",
+                "stream.thumbnail.max-jpeg-bytes=5242880"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean("thumbnailTaskScheduler");
+        });
+    }
 }

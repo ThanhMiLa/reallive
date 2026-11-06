@@ -22,5 +22,8 @@ public class ThumbnailConfiguration {
         if (properties.isEnabled()) {
             properties.validate(mediaProperties);
         }
+        if (properties.isCallbackEnabled()) {
+            properties.validateCallback();
+        }
     }
 }

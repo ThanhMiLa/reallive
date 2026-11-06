@@ -50,6 +50,8 @@ public abstract class PostgresIntegrationTestSupport {
         registry.add("spring.datasource.password", () -> POSTGRES == null
                 ? System.getProperty("stream.test.database-password", "stream_password") : POSTGRES.getPassword());
         registry.add("spring.datasource.hikari.schema", () -> schema);
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "5");
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "0");
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("spring.flyway.schemas", () -> schema);
         registry.add("spring.flyway.default-schema", () -> schema);

@@ -20,7 +20,8 @@ public enum ErrorCode {
     STREAMER_NOT_ELIGIBLE(1011, "Streamer is not eligible to publish", HttpStatus.FORBIDDEN),
     STREAM_CHANNEL_NOT_ELIGIBLE(1012, "Channel is not eligible to publish", HttpStatus.FORBIDDEN),
     STREAM_CATEGORY_INVALID(1013, "Stream category is invalid or inactive", HttpStatus.BAD_REQUEST),
-    MEDIA_SERVER_UNAVAILABLE(1014, "Media server temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    MEDIA_SERVER_UNAVAILABLE(1014, "Media server temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
+    THUMBNAIL_RESULT_INVALID(1015, "Invalid thumbnail result", HttpStatus.BAD_REQUEST);
 
     private final int code;
     private final String message;
