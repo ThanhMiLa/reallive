@@ -219,6 +219,41 @@ describe('loadWorkerConfig', () => {
     );
   });
 
+  it('keeps the consumer disabled without R2 or callback configuration', () => {
+    const config = loadWorkerConfig(baseEnv());
+
+    expect(config.queue.processorEnabled).toBe(false);
+    expect(config.storage).toEqual({ region: 'auto' });
+    expect(config.callback).toEqual({
+      baseUrl: 'http://stream-service:8082',
+    });
+  });
+
+  it('requires complete R2 and callback configuration when the consumer is enabled', () => {
+    const issues = issuesFrom({
+      ...baseEnv(),
+      MEDIA_WORKER_PROCESSOR_ENABLED: 'true',
+    });
+
+    expect(issues).toContain(
+      'MEDIA_WORKER_R2_ENDPOINT, MEDIA_WORKER_R2_BUCKET, MEDIA_WORKER_R2_ACCESS_KEY_ID and MEDIA_WORKER_R2_SECRET_ACCESS_KEY are required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
+    );
+    expect(issues).toContain(
+      'STREAM_SERVICE_INTERNAL_TOKEN is required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
+    );
+  });
+
+  it('rejects a callback token shorter than 32 characters even when the consumer is disabled', () => {
+    expect(
+      issuesFrom({
+        ...baseEnv(),
+        STREAM_SERVICE_INTERNAL_TOKEN: 'too-short',
+      }),
+    ).toContain(
+      'STREAM_SERVICE_INTERNAL_TOKEN must be at least 32 characters',
+    );
+  });
+
   it('does not include secret values in configuration errors', () => {
     const secret = 'super-secret-internal-token-0123456789';
     const error = (() => {

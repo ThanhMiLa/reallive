@@ -1,11 +1,11 @@
 import type { ThumbnailJobInput } from '../common/contracts/thumbnail-contract';
 
 /**
- * Pipeline entry point implemented in Steps 6–7. A processor receives one queued
- * job, checks token/deadline, extracts a JPEG, uploads it and sends a callback.
+ * Pipeline entry point for one queued job. A processor checks the job lifetime,
+ * extracts a JPEG, uploads it and sends exactly one callback.
  */
 export const THUMBNAIL_PROCESSOR = Symbol('THUMBNAIL_PROCESSOR');
 
 export interface ThumbnailProcessor {
-  process(job: ThumbnailJobInput): Promise<void>;
+  process(job: ThumbnailJobInput, signal?: AbortSignal): Promise<void>;
 }

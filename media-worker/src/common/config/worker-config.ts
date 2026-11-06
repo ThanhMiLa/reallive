@@ -443,6 +443,18 @@ export function loadWorkerConfig(
       'MEDIA_WORKER_R2_ENDPOINT, MEDIA_WORKER_R2_BUCKET, MEDIA_WORKER_R2_ACCESS_KEY_ID and MEDIA_WORKER_R2_SECRET_ACCESS_KEY must be configured together',
     );
   }
+  if (enabledValue === 'true') {
+    if (configuredR2Values < r2Values.length) {
+      reader.issues.push(
+        'MEDIA_WORKER_R2_ENDPOINT, MEDIA_WORKER_R2_BUCKET, MEDIA_WORKER_R2_ACCESS_KEY_ID and MEDIA_WORKER_R2_SECRET_ACCESS_KEY are required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
+      );
+    }
+    if (!streamServiceInternalToken) {
+      reader.issues.push(
+        'STREAM_SERVICE_INTERNAL_TOKEN is required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
+      );
+    }
+  }
 
   const jobDeadlineMs = jobDeadlineSeconds * 1_000;
   const retentionMs = jobRetentionSeconds * 1_000;

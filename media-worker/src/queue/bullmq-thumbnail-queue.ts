@@ -40,6 +40,7 @@ export class BullmqThumbnailQueue
   private readonly logger = new Logger(BullmqThumbnailQueue.name);
   private readonly producer: Redis;
   private readonly queue: Queue<ThumbnailJobInput>;
+  private readonly active = new Set<AbortController>();
   private worker?: Worker<ThumbnailJobInput>;
   private stopping = false;
   private serial: Promise<void> = Promise.resolve();
@@ -75,7 +76,7 @@ export class BullmqThumbnailQueue
   onModuleInit(): void {
     if (!this.config.queue.processorEnabled) {
       this.logger.log(
-        'Thumbnail consumer disabled; pipeline is not yet available',
+        'Thumbnail consumer disabled',
       );
       return;
     }
@@ -87,14 +88,19 @@ export class BullmqThumbnailQueue
     this.worker = new Worker<ThumbnailJobInput>(
       QUEUE_NAME,
       async (job) => {
+        if (this.stopping) throw new Error('THUMBNAIL_PIPELINE_FAILED');
         if (Date.parse(job.data.readExpiresAt) <= Date.now())
           throw new Error('READ_TOKEN_EXPIRED');
         if (Date.parse(job.data.jobDeadlineAt) <= Date.now())
           throw new Error('JOB_DEADLINE_EXPIRED');
+        const abort = new AbortController();
+        this.active.add(abort);
         try {
-          await this.processor!.process(job.data);
+          await this.processor!.process(job.data, abort.signal);
         } catch {
           throw new Error('THUMBNAIL_PIPELINE_FAILED');
+        } finally {
+          this.active.delete(abort);
         }
       },
       {
@@ -204,9 +210,11 @@ export class BullmqThumbnailQueue
 
   async onApplicationShutdown(): Promise<void> {
     this.stopping = true;
+    const closingWorker = this.worker?.close();
+    for (const abort of this.active) abort.abort();
     const shutdown = async () => {
       await this.serial;
-      await this.worker?.close();
+      await closingWorker;
       await this.queue.close();
       this.producer.disconnect();
     };
