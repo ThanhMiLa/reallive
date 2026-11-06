@@ -23,7 +23,8 @@
     "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-integration.json",
     "thumbnail:capture": "node dist/ffmpeg/capture-cli.js",
     "pretest:integration": "npm run build",
-    "test:ffmpeg:docker": "docker build -t reallive-media-worker-capture-test . && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-integration.json --testRegex=ffmpeg-capture.docker-spec.ts$ --runInBand"
+    "test:ffmpeg:docker": "docker build -t reallive-media-worker-capture-test . && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-integration.json --testRegex=ffmpeg-capture.docker-spec.ts$ --runInBand",
+    "thumbnail:capture-upload": "node dist/processor/capture-upload-cli.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1163.0",
