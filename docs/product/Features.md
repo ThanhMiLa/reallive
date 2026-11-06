@@ -21,18 +21,19 @@
 - Remove Channel Moderator
 
 ## III - Stream Setup
-- Create / Update Stream Session
-- Manage Stream Key
+- Create / Update Stream Session  ✅
+- Manage Stream Key  ✅
 
 ## IV - Go Live / Live Stream
-- Start Stream
-- Validate Stream Key
-- Change Status to LIVE
-- Watch Stream
+- Start Stream  ✅
+- Validate Stream Key  ✅
+- Change Status to LIVE  ✅
+- Watch Stream 
 - Viewer Count
-- End Stream
-- Handle Unexpected Disconnect
+- End Stream  ✅
+- Handle Unexpected Disconnect  ✅
 - Notify Email Followers When Stream Starts
+- Set thumbnail  ✅
 
 ## V - Chat Realtime
 - Send Message
