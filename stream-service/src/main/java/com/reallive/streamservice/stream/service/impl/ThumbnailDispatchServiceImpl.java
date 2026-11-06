@@ -126,7 +126,7 @@ public class ThumbnailDispatchServiceImpl implements ThumbnailDispatchService {
 
     private List<ThumbnailDispatchJob> createDueJobs(LocalDateTime now, int limit) {
         LocalDateTime cutoff = now.minus(properties.getInterval());
-        List<UUID> candidates = sessions.findDueThumbnailSessionIds(cutoff, limit);
+        List<UUID> candidates = sessions.findDueThumbnailSessionIds(cutoff, PageRequest.of(0, limit));
         return collectJobs(candidates, sessionId -> createDueJob(sessionId, now, cutoff));
     }
 

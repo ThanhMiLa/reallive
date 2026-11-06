@@ -22,6 +22,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.domain.Persistable;
 
 import java.time.LocalDateTime;
@@ -104,7 +106,9 @@ public class StreamSessionEntity extends BaseEntity implements Persistable<UUID>
     @Column(name = "thumbnail_object_key", length = 500)
     String thumbnailObjectKey;
 
+    /** Stores the backend's UTC wall-clock value without legacy Timestamp timezone conversion. */
     @Column(name = "thumbnail_updated_at")
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     LocalDateTime thumbnailUpdatedAt;
 
     @Column(name = "thumbnail_job_id")
@@ -115,6 +119,7 @@ public class StreamSessionEntity extends BaseEntity implements Persistable<UUID>
     ThumbnailJobStatus thumbnailJobStatus;
 
     @Column(name = "thumbnail_job_deadline_at")
+    @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     LocalDateTime thumbnailJobDeadlineAt;
 
     @Transient

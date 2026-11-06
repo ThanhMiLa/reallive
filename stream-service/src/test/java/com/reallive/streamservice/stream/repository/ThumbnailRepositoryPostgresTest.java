@@ -81,7 +81,7 @@ class ThumbnailRepositoryPostgresTest extends PostgresIntegrationTestSupport {
         StreamSessionEntity ended = save(StreamSessionStatus.ENDED, MediaPathState.CLOSED,
                 null, null, null, null);
 
-        List<UUID> due = sessions.findDueThumbnailSessionIds(CUTOFF, 10);
+        List<UUID> due = sessions.findDueThumbnailSessionIds(CUTOFF, PageRequest.of(0, 10));
 
         assertEquals(List.of(neverHadImage.getId(), olderImage.getId(), exactlyAtCutoff.getId()), due);
         assertFalse(due.contains(recentImage.getId()));
@@ -90,7 +90,7 @@ class ThumbnailRepositoryPostgresTest extends PostgresIntegrationTestSupport {
         assertFalse(due.contains(ready.getId()));
         assertFalse(due.contains(reconnecting.getId()));
         assertFalse(due.contains(ended.getId()));
-        assertEquals(List.of(neverHadImage.getId()), sessions.findDueThumbnailSessionIds(CUTOFF, 1));
+        assertEquals(List.of(neverHadImage.getId()), sessions.findDueThumbnailSessionIds(CUTOFF, PageRequest.of(0, 1)));
     }
 
     @Test

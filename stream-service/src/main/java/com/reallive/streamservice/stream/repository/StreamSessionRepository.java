@@ -93,16 +93,15 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
             """)
     List<UUID> findPendingThumbnailDispatchIds(@Param("now") LocalDateTime now, Pageable pageable);
 
-    @Query(value = """
-            SELECT id
-            FROM stream_sessions
-            WHERE status = 'LIVE'
-              AND (thumbnail_job_status IS NULL OR thumbnail_job_status NOT IN ('PENDING_DISPATCH', 'ACCEPTED'))
-              AND (thumbnail_updated_at IS NULL OR thumbnail_updated_at <= :cutoff)
-            ORDER BY thumbnail_updated_at ASC NULLS FIRST, id ASC
-            LIMIT :limit
-            """, nativeQuery = true)
-    List<UUID> findDueThumbnailSessionIds(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
+    @Query("""
+            SELECT s.id
+            FROM StreamSessionEntity s
+            WHERE s.status = 'LIVE'
+              AND (s.thumbnailJobStatus IS NULL OR s.thumbnailJobStatus NOT IN ('PENDING_DISPATCH', 'ACCEPTED'))
+              AND (s.thumbnailUpdatedAt IS NULL OR s.thumbnailUpdatedAt <= :cutoff)
+            ORDER BY s.thumbnailUpdatedAt ASC NULLS FIRST, s.id ASC
+            """)
+    List<UUID> findDueThumbnailSessionIds(@Param("cutoff") LocalDateTime cutoff, Pageable pageable);
 
     Page<StreamSessionEntity> findByVisibilityAndStatusOrderByStartedAtDescIdAsc(
             StreamVisibility visibility,
