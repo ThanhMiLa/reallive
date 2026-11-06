@@ -88,6 +88,10 @@ export class BullmqThumbnailQueue
     this.worker = new Worker<ThumbnailJobInput>(
       QUEUE_NAME,
       async (job) => {
+        const startedAt = Date.now();
+        this.logger.log(
+          `Thumbnail job ${job.id} started; queueWaitMs=${Math.max(0, startedAt - job.timestamp)}`,
+        );
         if (this.stopping) throw new Error('THUMBNAIL_PIPELINE_FAILED');
         if (Date.parse(job.data.readExpiresAt) <= Date.now())
           throw new Error('READ_TOKEN_EXPIRED');
@@ -100,6 +104,9 @@ export class BullmqThumbnailQueue
         } catch {
           throw new Error('THUMBNAIL_PIPELINE_FAILED');
         } finally {
+          this.logger.log(
+            `Thumbnail job ${job.id} finished; processingMs=${Date.now() - startedAt}`,
+          );
           this.active.delete(abort);
         }
       },

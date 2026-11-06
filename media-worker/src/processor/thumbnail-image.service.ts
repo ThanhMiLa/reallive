@@ -17,12 +17,15 @@ export class ThumbnailImageService {
     job: ThumbnailJobInput,
     signal?: AbortSignal,
   ): Promise<StoredThumbnail> {
+    const captureStarted = Date.now();
     const image = await this.capture.capture(job, signal);
+    this.logger.log(`Thumbnail job ${job.jobId} captured; captureMs=${Date.now() - captureStarted}`);
     try {
       if (signal?.aborted) throw new Error('UPLOAD_ABORTED');
       const remaining = Date.parse(job.jobDeadlineAt) - Date.now();
       if (remaining <= 0) throw new Error('UPLOAD_TIMEOUT');
-      return await this.storage.upload({
+      const uploadStarted = Date.now();
+      const stored = await this.storage.upload({
         sessionId: job.sessionId,
         jobId: job.jobId,
         filePath: image.filePath,
@@ -32,6 +35,8 @@ export class ThumbnailImageService {
         timeoutMs: remaining,
         signal,
       });
+      this.logger.log(`Thumbnail job ${job.jobId} uploaded; uploadMs=${Date.now() - uploadStarted}`);
+      return stored;
     } finally {
       try {
         await this.capture.release(image);
