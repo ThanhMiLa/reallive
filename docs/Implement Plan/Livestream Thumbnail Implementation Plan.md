@@ -289,6 +289,12 @@ Consumer production tiếp tục tắt. Chưa đánh dấu job hoàn tất chỉ
 
 Điều kiện hoàn tất: Với stream OBS thật, FFmpeg đọc HLS bằng Read JWT và tạo JPEG hợp lệ trong thư mục tạm. MediaMTX mất kết nối, FFmpeg lỗi/timeout hoặc filesystem lỗi được kiểm chứng; không upload R2 hoặc callback trong bước này.
 
+Cập nhật triển khai Step 5:
+
+- Đã bổ sung FFmpeg runner, service tạo thư mục tạm riêng, kiểm tra JPEG bằng FFprobe và decode, công cụ CLI độc lập cùng các cấu hình giới hạn. Consumer production vẫn tắt.
+- Đã kiểm thử HLS giả lập có Bearer bằng FFmpeg thật trên host, ảnh 640 × 360, job hết hạn/URL sai và timeout với nguồn không phản hồi; test queue Step 4 vẫn chạy.
+- Chưa nghiệm thu OBS → MediaMTX thật, Docker FFmpeg, SIGKILL/crash container và toàn bộ test biên (ảnh dọc, file hỏng, I/O, shutdown, concurrency). Chưa đánh dấu Step 5 hoàn tất.
+
 ### Step 6 — Upload JPEG lên R2
 
 Vai trò: Thực hiện phần upload và dọn file tạm ở bước 8 của workflow.

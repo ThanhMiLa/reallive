@@ -214,3 +214,16 @@ Việc thêm Worker vào `docker-compose.yml` và cấu hình kết nối nội 
 - **Step 5:** triển khai FFmpeg runner, JPEG validation và upload R2.
 - **Step 6:** callback một lần tới Stream Service và cập nhật thumbnail nguyên tử.
 - **Step 7:** cleanup, Compose/config môi trường, metrics và nghiệm thu end-to-end.
+
+
+## Chạy thử trích JPEG (Step 5)
+
+Sau `npm run build`, truyền một `ThumbnailJobInput` JSON qua stdin; file đầu vào phải là file private và không commit vì chứa Read JWT:
+
+```sh
+npm run thumbnail:capture -- --keep-output < /path/to/private-job.json
+```
+
+JSON cần các trường `jobId`, `sessionId`, `playbackUrl`, `readToken`, `readExpiresAt`, `jobDeadlineAt`. URL phải khớp `MEDIA_WORKER_MEDIAMTX_BASE_URL` và `/live/{sessionId}/index.m3u8`. Kết quả gồm đường dẫn JPEG và metadata; không truyền token qua argument. Bỏ `--keep-output` để tự dọn JPEG sau khi kiểm tra. Đường dẫn khi `kept=false` chỉ là metadata và file đã được xóa.
+
+FFmpeg và FFprobe phải có trên PATH hoặc được cấu hình qua `.env`. `MEDIA_WORKER_FFMPEG_THREADS`, `MEDIA_WORKER_MAX_JPEG_BYTES`, `MEDIA_WORKER_PROCESS_OUTPUT_BYTES`, `MEDIA_WORKER_TERMINATION_GRACE_MS` cấu hình giới hạn xử lý. Consumer production vẫn tắt; kết quả capture chưa được upload hoặc callback.

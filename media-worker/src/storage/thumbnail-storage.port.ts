@@ -16,7 +16,7 @@ export interface StoredThumbnail {
 }
 
 /**
- * R2/S3 upload adapter implemented in Step 5. Object key is immutable:
+ * R2/S3 upload adapter implemented in Step 6. Object key is immutable:
  * livestream-thumbnails/{sessionId}/{jobId}.jpg.
  */
 export interface ThumbnailStorage {
