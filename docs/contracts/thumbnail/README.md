@@ -1,6 +1,6 @@
 # Livestream Thumbnail Worker Contract
 
-Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Worker tiếp nhận job qua BullMQ/Redis; FFmpeg, upload R2 và callback tại Stream Service thuộc các step tiếp theo.
+Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Worker tiếp nhận job qua BullMQ/Redis và đã có capture JPEG độc lập bằng FFmpeg; upload R2 thuộc Step 6, callback tại Stream Service thuộc Step 7. Consumer production vẫn tắt.
 
 - Base URL của Worker trong môi trường nội bộ: `http://media-worker:8090` (cấu hình khi triển khai; không public qua Gateway).
 - Mọi API nội bộ dùng header `X-Internal-Token`; giá trị lấy từ biến môi trường, không dùng account cookie, không dùng JWT người dùng.
@@ -82,7 +82,7 @@ Worker trả `202 Accepted` sau khi thêm job vào BullMQ hoặc xác nhận job
 
 ### 1.4. Trạng thái Worker hiện tại
 
-Khi Redis sẵn sàng, Worker trả `202` sau khi lưu hoặc xác nhận job tồn tại. Nếu Redis không khả dụng hoặc kết quả tiếp nhận không xác định, API trả `503 QUEUE_UNAVAILABLE`. Consumer mặc định tắt cho đến khi pipeline Step 5 sẵn sàng; `202` không đồng nghĩa đã tạo thumbnail. Readiness phản ánh khả năng tiếp nhận của Redis.
+Khi Redis sẵn sàng, Worker trả `202` sau khi lưu hoặc xác nhận job tồn tại. Nếu Redis không khả dụng hoặc kết quả tiếp nhận không xác định, API trả `503 QUEUE_UNAVAILABLE`. Consumer mặc định tắt cho đến khi pipeline upload/callback ở Step 6–7 sẵn sàng; `202` không đồng nghĩa đã tạo thumbnail. Readiness phản ánh khả năng tiếp nhận của Redis.
 
 ## 2. Callback tới Stream Service
 

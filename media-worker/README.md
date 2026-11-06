@@ -1,6 +1,6 @@
 # Media Worker
 
-Ứng dụng NestJS + TypeScript nhận thumbnail job từ Stream Service và lưu vào BullMQ/Redis. Consumer được thiết lập nhưng mặc định tắt; pipeline FFmpeg, upload Cloudflare R2 và callback sẽ được triển khai ở các bước tiếp theo.
+Ứng dụng NestJS + TypeScript nhận thumbnail job từ Stream Service và lưu vào BullMQ/Redis. Consumer được thiết lập nhưng mặc định tắt; đã có công cụ trích JPEG bằng FFmpeg độc lập. Upload Cloudflare R2 và callback thuộc các bước tiếp theo.
 
 Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../docs/contracts/thumbnail/README.md).
 
@@ -19,17 +19,16 @@ Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../do
 
 Chưa có:
 
-- Pipeline tạo ảnh và xử lý kết quả thực tế.
-- Chạy FFmpeg, tạo JPEG, upload R2 hoặc gửi callback.
+- Pipeline consumer production hoàn chỉnh; upload R2 hoặc gửi callback.
 - Callback endpoint tại Stream Service, cleanup và frontend.
 
-`src/processor`, `src/ffmpeg`, `src/storage`, `src/callback` chứa port/interface cho các step sau. Không có implementation giả báo xử lý thành công.
+`src/ffmpeg` có implementation trích và kiểm tra JPEG. Các port processor/storage/callback chưa có pipeline production hoàn chỉnh. Không có implementation giả báo xử lý thành công.
 
 ## Hành vi API
 
 Request hợp lệ được thêm vào BullMQ; API trả `202` với `acceptedJobIds` và `rejectedJobs`. ID đã tồn tại được xác nhận kể cả khi queue đầy. Nếu Redis lỗi hoặc kết quả enqueue không xác định, API trả `503 QUEUE_UNAVAILABLE`; client gửi lại cùng ID.
 
-`202` chỉ xác nhận tiếp nhận, chưa có nghĩa ảnh đã được tạo. Consumer mặc định tắt; không bật scheduler gửi job liên tục cho đến khi pipeline Step 5 sẵn sàng. Bật consumer khi chưa đăng ký pipeline sẽ làm ứng dụng từ chối khởi động. Readiness kiểm tra Redis và khả năng tiếp nhận; liveness không phụ thuộc Redis.
+`202` chỉ xác nhận tiếp nhận, chưa có nghĩa ảnh đã được tạo. Consumer mặc định tắt; không bật scheduler gửi job liên tục cho đến khi pipeline Step 6–7 sẵn sàng. Bật consumer khi chưa đăng ký pipeline sẽ làm ứng dụng từ chối khởi động. Readiness kiểm tra Redis và khả năng tiếp nhận; liveness không phụ thuộc Redis.
 
 Các lỗi chính:
 
@@ -58,10 +57,10 @@ media-worker/
 │   │   └── http/              # JSON body limit, validation pipe
 │   ├── thumbnail-jobs/        # Batch API, DTO, source URL validation
 │   ├── queue/                 # BullMQ/Redis queue + queue port
-│   ├── processor/             # Processor port (Step 5)
-│   ├── ffmpeg/                # FFmpeg port (Step 5)
-│   ├── storage/               # R2 storage port (Step 5)
-│   ├── callback/              # Callback client port (Step 6)
+│   ├── processor/             # Processor port (Step 6–7)
+│   ├── ffmpeg/                # FFmpeg runner, capture service, CLI (Step 5)
+│   ├── storage/               # R2 storage port (Step 6)
+│   ├── callback/              # Callback client port (Step 7)
 │   ├── health/                # Liveness/readiness
 │   ├── app.module.ts
 │   ├── app.setup.ts
@@ -131,8 +130,8 @@ Mọi giá trị đọc từ biến môi trường và được validate trướ
 | `MEDIA_WORKER_JOB_DEADLINE_SECONDS` | `240` | Phải lớn hơn tổng timeout FFmpeg + upload + callback |
 | `MEDIA_WORKER_READ_TOKEN_TTL_SECONDS` | `300` | Phải ≥ deadline |
 | `MEDIA_WORKER_FFMPEG_TIMEOUT_MS` | `20000` | Step 5 |
-| `MEDIA_WORKER_UPLOAD_TIMEOUT_MS` | `10000` | Step 5 |
-| `MEDIA_WORKER_CALLBACK_TIMEOUT_MS` | `5000` | Step 6 |
+| `MEDIA_WORKER_UPLOAD_TIMEOUT_MS` | `10000` | Step 6 |
+| `MEDIA_WORKER_CALLBACK_TIMEOUT_MS` | `5000` | Step 7 |
 | `MEDIA_WORKER_PROCESSOR_ENABLED` | `false` | Chỉ bật khi đã đăng ký pipeline thật |
 | `MEDIA_WORKER_QUEUE_CONCURRENCY` | `2` | Số job chạy đồng thời mỗi consumer |
 | `MEDIA_WORKER_REDIS_CONNECT_TIMEOUT_MS` | `1000` | Redis producer connect timeout |
@@ -147,15 +146,15 @@ Mọi giá trị đọc từ biến môi trường và được validate trướ
 | `MEDIA_WORKER_TEMP_DIR` | `/tmp/media-worker` | Phải là đường dẫn tuyệt đối |
 | `MEDIA_WORKER_FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Step 5 |
 | `MEDIA_WORKER_THUMBNAIL_WIDTH` / `HEIGHT` | `640` / `360` | JPEG output dự kiến |
-| `MEDIA_WORKER_CLEANUP_INTERVAL_SECONDS` | `3600` | Step 7 |
-| `MEDIA_WORKER_CLEANUP_MIN_AGE_SECONDS` | `86400` | Step 7 |
-| `MEDIA_WORKER_R2_ENDPOINT` | rỗng | Step 5; đặt cùng lúc với bucket/access key/secret |
+| `MEDIA_WORKER_CLEANUP_INTERVAL_SECONDS` | `3600` | Step 8 |
+| `MEDIA_WORKER_CLEANUP_MIN_AGE_SECONDS` | `86400` | Step 8 |
+| `MEDIA_WORKER_R2_ENDPOINT` | rỗng | Step 6; đặt cùng lúc với bucket/access key/secret |
 | `MEDIA_WORKER_R2_REGION` | `auto` | |
-| `MEDIA_WORKER_R2_BUCKET` | rỗng | Step 5 |
-| `MEDIA_WORKER_R2_ACCESS_KEY_ID` | rỗng | Step 5 |
-| `MEDIA_WORKER_R2_SECRET_ACCESS_KEY` | rỗng | Step 5 |
-| `STREAM_SERVICE_BASE_URL` | `http://stream-service:8082` | Step 6; origin không path |
-| `STREAM_SERVICE_INTERNAL_TOKEN` | rỗng | Step 6; nếu đặt phải ≥ 32 ký tự |
+| `MEDIA_WORKER_R2_BUCKET` | rỗng | Step 6 |
+| `MEDIA_WORKER_R2_ACCESS_KEY_ID` | rỗng | Step 6 |
+| `MEDIA_WORKER_R2_SECRET_ACCESS_KEY` | rỗng | Step 6 |
+| `STREAM_SERVICE_BASE_URL` | `http://stream-service:8082` | Step 7; origin không path |
+| `STREAM_SERVICE_INTERNAL_TOKEN` | rỗng | Step 7; nếu đặt phải ≥ 32 ký tự |
 
 Khoảng cập nhật thumbnail `X` (dev 60 giây, production 300 giây) thuộc cấu hình Stream Service, không phải Worker.
 
@@ -198,7 +197,7 @@ docker run --rm --entrypoint ffmpeg reallive-media-worker -version
 
 Image dùng multi-stage build, cài FFmpeg và chạy bằng user `mediaworker` (UID/GID 10001). Healthcheck của image chỉ gọi liveness; readiness được kiểm tra riêng theo kết nối Redis. Chạy container với một MediaMTX reachable và token thật qua biến môi trường; không bake secret vào image.
 
-Việc thêm Worker vào `docker-compose.yml` và cấu hình kết nối nội bộ thuộc Step 7.
+Việc thêm Worker vào `docker-compose.yml` và cấu hình kết nối nội bộ thuộc Step 8.
 
 ## Bảo mật
 
@@ -211,9 +210,10 @@ Việc thêm Worker vào `docker-compose.yml` và cấu hình kết nối nội 
 
 ## Bước tiếp theo
 
-- **Step 5:** triển khai FFmpeg runner, JPEG validation và upload R2.
-- **Step 6:** callback một lần tới Stream Service và cập nhật thumbnail nguyên tử.
-- **Step 7:** cleanup, Compose/config môi trường, metrics và nghiệm thu end-to-end.
+- **Step 5:** FFmpeg/JPEG đã triển khai; còn nghiệm thu OBS do người dùng thực hiện.
+- **Step 6:** upload JPEG lên R2.
+- **Step 7:** callback một lần tới Stream Service và cập nhật thumbnail nguyên tử.
+- **Step 8:** cleanup, Compose/config môi trường, metrics và nghiệm thu end-to-end.
 
 
 ## Chạy thử trích JPEG (Step 5)
@@ -227,3 +227,11 @@ npm run thumbnail:capture -- --keep-output < /path/to/private-job.json
 JSON cần các trường `jobId`, `sessionId`, `playbackUrl`, `readToken`, `readExpiresAt`, `jobDeadlineAt`. URL phải khớp `MEDIA_WORKER_MEDIAMTX_BASE_URL` và `/live/{sessionId}/index.m3u8`. Kết quả gồm đường dẫn JPEG và metadata; không truyền token qua argument. Bỏ `--keep-output` để tự dọn JPEG sau khi kiểm tra. Đường dẫn khi `kept=false` chỉ là metadata và file đã được xóa.
 
 FFmpeg và FFprobe phải có trên PATH hoặc được cấu hình qua `.env`. `MEDIA_WORKER_FFMPEG_THREADS`, `MEDIA_WORKER_MAX_JPEG_BYTES`, `MEDIA_WORKER_PROCESS_OUTPUT_BYTES`, `MEDIA_WORKER_TERMINATION_GRACE_MS` cấu hình giới hạn xử lý. Consumer production vẫn tắt; kết quả capture chưa được upload hoặc callback.
+
+### Shutdown và bảo mật capture
+
+CLI bắt SIGTERM/SIGINT, abort capture, chờ FFmpeg đóng và service dọn file trước khi đóng Nest context; exit code tương ứng 143/130. SIGKILL không chạy cleanup: kill toàn container sẽ dừng tiến trình, file trên volume được Step 8 dọn sau. Không dùng riêng SIGKILL Node trên host để thay cho shutdown có kiểm soát.
+
+Bearer token được truyền bằng nội dung ffconcat qua pipe FD 3; command line FFmpeg chỉ chứa `pipe:3`, không chứa JWT. Pipe chỉ chứa dữ liệu trong bộ nhớ, không ghi token ra file tạm; không log command/input/stderr thô. Điều này giảm lộ qua process arguments, không bảo vệ trước tài khoản root/debugger có quyền đọc bộ nhớ.
+
+Chạy `npm run test:ffmpeg:docker` để build image và kiểm tra FFmpeg bundled với HLS có Bearer, portrait và SIGKILL container khi capture đang chạy. Integration test thông thường tự build trước để test CLI sử dụng đúng code hiện tại. Chưa nghiệm thu OBS thật; việc này do người dùng thực hiện.

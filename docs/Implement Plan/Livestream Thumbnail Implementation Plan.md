@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–8 chưa triển khai.
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5 đã triển khai và đang hoàn thiện nghiệm thu; OBS thật do người dùng thực hiện sau; Step 6–8 chưa triển khai.
 
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
@@ -293,7 +293,11 @@ Cập nhật triển khai Step 5:
 
 - Đã bổ sung FFmpeg runner, service tạo thư mục tạm riêng, kiểm tra JPEG bằng FFprobe và decode, công cụ CLI độc lập cùng các cấu hình giới hạn. Consumer production vẫn tắt.
 - Đã kiểm thử HLS giả lập có Bearer bằng FFmpeg thật trên host, ảnh 640 × 360, job hết hạn/URL sai và timeout với nguồn không phản hồi; test queue Step 4 vẫn chạy.
-- Chưa nghiệm thu OBS → MediaMTX thật, Docker FFmpeg, SIGKILL/crash container và toàn bộ test biên (ảnh dọc, file hỏng, I/O, shutdown, concurrency). Chưa đánh dấu Step 5 hoàn tất.
+- Đã sửa CLI SIGTERM/SIGINT: abort capture, chờ tiến trình và cleanup trước khi thoát; test process thật xác nhận không còn FFmpeg con hoặc thư mục job.
+- JWT không còn trong argv FFmpeg: truyền thông tin nguồn/header qua ffconcat pipe FD 3, có test kiểm tra process list và HLS Bearer.
+- Bổ sung test cấu hình cho bốn biến giới hạn, portrait, concurrency, JPEG lỗi, filesystem lỗi, FFmpeg nonzero exit; Docker FFmpeg 5.1.9 capture portrait có Bearer và SIGKILL container đang xử lý đã được kiểm chứng.
+- Kiểm tra sau sửa: lint/build đạt; 19 unit test, 28 HTTP contract test, 19 integration test và 2 Docker test đạt. Nguồn HLS mất kết nối giữa segment được kiểm thử tự động.
+- Nghiệm thu OBS thật do người dùng thực hiện sau. Không đánh dấu Step 5 hoàn tất trước bằng chứng này; nguồn test tự động là FFmpeg lavfi và HTTP HLS, không thay thế OBS.
 
 ### Step 6 — Upload JPEG lên R2
 
