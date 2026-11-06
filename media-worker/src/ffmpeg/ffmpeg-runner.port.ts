@@ -5,6 +5,7 @@ export interface ExtractThumbnailRequest {
   width: number;
   height: number;
   timeoutMs: number;
+  signal?: AbortSignal;
 }
 
 export interface ExtractedThumbnail {
@@ -12,7 +13,10 @@ export interface ExtractedThumbnail {
   width: number;
   height: number;
   sizeBytes: number;
+  contentType: 'image/jpeg';
 }
+
+export const FFMPEG_RUNNER = Symbol('FFMPEG_RUNNER');
 
 /**
  * FFmpeg adapter implemented in Step 5 with spawn() and an argument array.

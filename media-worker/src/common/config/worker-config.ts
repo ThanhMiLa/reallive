@@ -26,6 +26,10 @@ export interface WorkerConfig {
     tempDir: string;
     ffmpegPath: string;
     ffprobePath: string;
+    ffmpegThreads: number;
+    maxJpegBytes: number;
+    processOutputBytes: number;
+    terminationGraceMs: number;
   };
   timeouts: {
     ffmpegMs: number;
@@ -89,6 +93,10 @@ export const WORKER_ENV_KEYS = [
   'MEDIA_WORKER_TEMP_DIR',
   'MEDIA_WORKER_FFMPEG_PATH',
   'MEDIA_WORKER_FFPROBE_PATH',
+  'MEDIA_WORKER_FFMPEG_THREADS',
+  'MEDIA_WORKER_MAX_JPEG_BYTES',
+  'MEDIA_WORKER_PROCESS_OUTPUT_BYTES',
+  'MEDIA_WORKER_TERMINATION_GRACE_MS',
   'MEDIA_WORKER_THUMBNAIL_WIDTH',
   'MEDIA_WORKER_THUMBNAIL_HEIGHT',
   'MEDIA_WORKER_CLEANUP_INTERVAL_SECONDS',
@@ -318,6 +326,24 @@ export function loadWorkerConfig(
     defaultValue: DEFAULTS.ffprobePath,
   }) as string;
 
+  const ffmpegThreads = reader.integer('MEDIA_WORKER_FFMPEG_THREADS', {
+    defaultValue: 1,
+    min: 1,
+    max: 64,
+  }) as number;
+  const maxJpegBytes = reader.integer('MEDIA_WORKER_MAX_JPEG_BYTES', {
+    defaultValue: 5242880,
+    min: 1024,
+  }) as number;
+  const processOutputBytes = reader.integer(
+    'MEDIA_WORKER_PROCESS_OUTPUT_BYTES',
+    { defaultValue: 65536, min: 1024 },
+  ) as number;
+  const terminationGraceMs = reader.integer(
+    'MEDIA_WORKER_TERMINATION_GRACE_MS',
+    { defaultValue: 1000, min: 1 },
+  ) as number;
+
   const queueConcurrency = reader.integer('MEDIA_WORKER_QUEUE_CONCURRENCY', {
     defaultValue: DEFAULTS.queueConcurrency,
     min: 1,
@@ -458,6 +484,10 @@ export function loadWorkerConfig(
       tempDir,
       ffmpegPath,
       ffprobePath,
+      ffmpegThreads,
+      maxJpegBytes,
+      processOutputBytes,
+      terminationGraceMs,
     },
     timeouts: {
       ffmpegMs: ffmpegTimeoutMs,
