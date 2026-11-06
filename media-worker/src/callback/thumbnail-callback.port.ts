@@ -3,10 +3,20 @@ import type {
   ThumbnailResult,
 } from '../common/contracts/thumbnail-contract';
 
+export const THUMBNAIL_CALLBACK = Symbol('THUMBNAIL_CALLBACK');
+
+export interface ThumbnailCallbackOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
 /**
- * One-shot callback client implemented in Step 6. It must not retry after a
- * timeout or non-2xx response.
+ * Sends one thumbnail result to Stream Service. The client performs exactly one
+ * HTTP attempt; callers must not retry after a timeout or transport failure.
  */
 export interface ThumbnailCallbackClient {
-  send(result: ThumbnailResult): Promise<ThumbnailCallbackResponse>;
+  send(
+    result: ThumbnailResult,
+    options?: ThumbnailCallbackOptions,
+  ): Promise<ThumbnailCallbackResponse>;
 }
