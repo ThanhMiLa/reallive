@@ -1,6 +1,6 @@
 # Media Worker
 
-Ứng dụng NestJS + TypeScript nhận thumbnail job từ Stream Service và lưu vào BullMQ/Redis. Consumer được thiết lập nhưng mặc định tắt; đã có công cụ trích JPEG bằng FFmpeg độc lập. Upload Cloudflare R2 và callback thuộc các bước tiếp theo.
+Ứng dụng NestJS + TypeScript nhận thumbnail job từ Stream Service và lưu vào BullMQ/Redis. Consumer được thiết lập nhưng mặc định tắt; đã có công cụ trích JPEG và upload R2 độc lập. Callback thuộc Step 7.
 
 Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../docs/contracts/thumbnail/README.md).
 
@@ -19,7 +19,7 @@ Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../do
 
 Chưa có:
 
-- Pipeline consumer production hoàn chỉnh; upload R2 hoặc gửi callback.
+- Pipeline consumer production hoàn chỉnh và callback về Stream Service.
 - Callback endpoint tại Stream Service, cleanup và frontend.
 
 `src/ffmpeg` có implementation trích và kiểm tra JPEG. Các port processor/storage/callback chưa có pipeline production hoàn chỉnh. Không có implementation giả báo xử lý thành công.
@@ -59,7 +59,7 @@ media-worker/
 │   ├── queue/                 # BullMQ/Redis queue + queue port
 │   ├── processor/             # Processor port (Step 6–7)
 │   ├── ffmpeg/                # FFmpeg runner, capture service, CLI (Step 5)
-│   ├── storage/               # R2 storage port (Step 6)
+│   ├── storage/               # R2 storage adapter (Step 6)
 │   ├── callback/              # Callback client port (Step 7)
 │   ├── health/                # Liveness/readiness
 │   ├── app.module.ts
@@ -211,7 +211,7 @@ Việc thêm Worker vào `docker-compose.yml` và cấu hình kết nối nội 
 ## Bước tiếp theo
 
 - **Step 5:** FFmpeg/JPEG đã triển khai; còn nghiệm thu OBS do người dùng thực hiện.
-- **Step 6:** upload JPEG lên R2.
+- **Step 6:** upload JPEG đã triển khai; chờ nghiệm thu R2 thật.
 - **Step 7:** callback một lần tới Stream Service và cập nhật thumbnail nguyên tử.
 - **Step 8:** cleanup, Compose/config môi trường, metrics và nghiệm thu end-to-end.
 
@@ -235,3 +235,17 @@ CLI bắt SIGTERM/SIGINT, abort capture, chờ FFmpeg đóng và service dọn f
 Bearer token được truyền bằng nội dung ffconcat qua pipe FD 3; command line FFmpeg chỉ chứa `pipe:3`, không chứa JWT. Pipe chỉ chứa dữ liệu trong bộ nhớ, không ghi token ra file tạm; không log command/input/stderr thô. Điều này giảm lộ qua process arguments, không bảo vệ trước tài khoản root/debugger có quyền đọc bộ nhớ.
 
 Chạy `npm run test:ffmpeg:docker` để build image và kiểm tra FFmpeg bundled với HLS có Bearer, portrait và SIGKILL container khi capture đang chạy. Integration test thông thường tự build trước để test CLI sử dụng đúng code hiện tại. Chưa nghiệm thu OBS thật; việc này do người dùng thực hiện.
+
+
+## Chạy thử capture và upload R2 (Step 6)
+
+Cấu hình các biến `MEDIA_WORKER_R2_ENDPOINT`, `MEDIA_WORKER_R2_BUCKET`, `MEDIA_WORKER_R2_ACCESS_KEY_ID`, `MEDIA_WORKER_R2_SECRET_ACCESS_KEY` trong `.env`; region mặc định là `auto`. Dùng credential và bucket thử nghiệm, không commit secret hoặc job JSON.
+
+```sh
+npm run build
+npm run thumbnail:capture-upload < /path/to/private-job.json
+```
+
+CLI đọc job qua stdin, tạo JPEG, upload R2 và dọn file tạm. Kết quả JSON có object key và metadata. Object được giữ lại để tự kiểm tra; CLI không callback, không cập nhật DB. Timeout dùng `MEDIA_WORKER_UPLOAD_TIMEOUT_MS`; upload không tự retry. Khi timeout kết quả upload có thể chưa xác định, object phát sinh được cleanup Step 8 xử lý.
+
+`npm run test:integration` cần Docker và image `localstack/localstack:3.8.1` để kiểm thử S3 tương thích. LocalStack không phải Cloudflare R2; cần kiểm tra upload và tải lại ảnh trên R2 thật trước khi nghiệm thu Step 6. Consumer production vẫn tắt đến khi callback Step 7 sẵn sàng.

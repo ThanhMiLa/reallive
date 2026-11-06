@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5 đã triển khai và đang hoàn thiện nghiệm thu; OBS thật do người dùng thực hiện sau; Step 6–8 chưa triển khai.
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5 đã triển khai và đang hoàn thiện nghiệm thu; OBS thật do người dùng thực hiện sau; Step 6 đã triển khai và đang chờ nghiệm thu R2 thật; Step 7–8 chưa triển khai.
 
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
@@ -320,6 +320,12 @@ Worker giữ R2 credential và upload JPEG; Stream Service không nhận binary 
 Consumer production tiếp tục tắt cho đến khi callback Step 7 được triển khai và pipeline hoàn chỉnh sẵn sàng.
 
 Điều kiện hoàn tất: Với JPEG từ Step 5, Worker upload thành công và có thể tải lại đúng ảnh từ R2; khi upload lỗi hoặc timeout không báo thành công hay callback. File tạm được dọn sau khi sử dụng, còn lỗi dọn file được ghi nhận để cleanup xử lý sau.
+
+Cập nhật triển khai Step 6:
+
+- Đã triển khai storage adapter dùng S3 SDK, capture-upload service, CLI độc lập, timeout/abort và dọn file tạm; consumer production vẫn tắt.
+- Lint, build, 21 unit test, 28 HTTP test và 27 integration test đạt. Kiểm thử S3 tương thích dùng LocalStack thay MinIO do image MinIO không truy cập được từ registry trong môi trường triển khai. LocalStack không phải bằng chứng R2 thật.
+- Chờ người dùng cấu hình R2 và nghiệm thu upload/tải lại ảnh thật trước khi đánh dấu Step 6 hoàn tất.
 
 ### Step 7 — Callback và cập nhật thumbnail nguyên tử
 
