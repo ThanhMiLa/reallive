@@ -238,3 +238,33 @@ describe('loadWorkerConfig', () => {
     expect(error?.message).not.toContain(secret);
   });
 });
+
+describe('capture resource limits', () => {
+  it.each([
+    ['MEDIA_WORKER_FFMPEG_THREADS', 'ffmpegThreads', 1, '0', '2'],
+    ['MEDIA_WORKER_MAX_JPEG_BYTES', 'maxJpegBytes', 5242880, '1023', '1048576'],
+    [
+      'MEDIA_WORKER_PROCESS_OUTPUT_BYTES',
+      'processOutputBytes',
+      65536,
+      '1023',
+      '4096',
+    ],
+    [
+      'MEDIA_WORKER_TERMINATION_GRACE_MS',
+      'terminationGraceMs',
+      1000,
+      '0',
+      '200',
+    ],
+  ])('validates %s', (key, field, defaultValue, invalid, valid) => {
+    expect(loadWorkerConfig(baseEnv()).job).toHaveProperty(field, defaultValue);
+    expect(issuesFrom({ ...baseEnv(), [key]: invalid })).toEqual(
+      expect.arrayContaining([expect.stringContaining(key)]),
+    );
+    expect(loadWorkerConfig({ ...baseEnv(), [key]: valid }).job).toHaveProperty(
+      field,
+      Number(valid),
+    );
+  });
+});

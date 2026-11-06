@@ -21,7 +21,9 @@
     "test:cov": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
     "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-integration.json",
-    "thumbnail:capture": "node dist/ffmpeg/capture-cli.js"
+    "thumbnail:capture": "node dist/ffmpeg/capture-cli.js",
+    "pretest:integration": "npm run build",
+    "test:ffmpeg:docker": "docker build -t reallive-media-worker-capture-test . && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-integration.json --testRegex=ffmpeg-capture.docker-spec.ts$ --runInBand"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.2",

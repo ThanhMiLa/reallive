@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve, dirname, basename } from 'node:path';
 import {
@@ -18,6 +18,7 @@ export interface CapturedThumbnail extends ExtractedThumbnail {
 }
 @Injectable()
 export class ThumbnailCaptureService {
+  private readonly logger = new Logger(ThumbnailCaptureService.name);
   constructor(
     @Inject(WORKER_CONFIG) private readonly config: WorkerConfig,
     @Inject(FFMPEG_RUNNER) private readonly runner: FfmpegRunner,
@@ -63,10 +64,11 @@ export class ThumbnailCaptureService {
         ),
         signal,
       });
+      if (signal?.aborted) throw new Error('CAPTURE_ABORTED');
       return { ...image, directory };
     } catch (error) {
-      await rm(directory, { recursive: true, force: true }).catch(
-        () => undefined,
+      await rm(directory, { recursive: true, force: true }).catch(() =>
+        this.logger.warn(`Temporary cleanup failed for job ${job.jobId}`),
       );
       throw error;
     }

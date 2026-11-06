@@ -24,6 +24,7 @@ export class FfmpegRunnerImpl implements FfmpegRunner, OnApplicationShutdown {
       throw new Error('CAPTURE_ABORTED');
     if (!request.readToken || /[\r\n]/.test(request.readToken))
       throw new Error('INVALID_READ_TOKEN');
+    if (/[\r\n]/.test(request.playbackUrl)) throw new Error('INVALID_JOB');
     const abort = new AbortController();
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => {
@@ -48,12 +49,14 @@ export class FfmpegRunnerImpl implements FfmpegRunner, OnApplicationShutdown {
           String(this.config.job.ffmpegThreads),
           '-filter_threads',
           String(this.config.job.ffmpegThreads),
-          '-headers',
-          `Authorization: Bearer ${request.readToken}\r\n`,
-          '-live_start_index',
-          '-1',
+          '-protocol_whitelist',
+          'pipe,http,https,tcp,tls,crypto',
+          '-f',
+          'concat',
+          '-safe',
+          '0',
           '-i',
-          request.playbackUrl,
+          'pipe:3',
           '-map',
           '0:v:0',
           '-an',
@@ -72,6 +75,7 @@ export class FfmpegRunnerImpl implements FfmpegRunner, OnApplicationShutdown {
         ],
         remaining(),
         abort.signal,
+        `ffconcat version 1.0\nfile '${request.playbackUrl.replaceAll("'", "'\\''")}'\noption headers 'Authorization: Bearer ${request.readToken.replaceAll("'", "'\\''")}'\noption live_start_index -1\n`,
       );
       const stat = await lstat(request.outputPath);
       if (
@@ -167,6 +171,7 @@ export class FfmpegRunnerImpl implements FfmpegRunner, OnApplicationShutdown {
     args: string[],
     timeout: number,
     signal: AbortSignal,
+    privateInput?: string,
   ): Promise<string> {
     if (timeout <= 0) return Promise.reject(new Error('CAPTURE_TIMEOUT'));
     if (signal.aborted) return Promise.reject(new Error('CAPTURE_ABORTED'));
@@ -175,11 +180,16 @@ export class FfmpegRunnerImpl implements FfmpegRunner, OnApplicationShutdown {
       try {
         child = spawn(program, args, {
           shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
         });
       } catch {
         reject(new Error('PROCESS_START_FAILED'));
         return;
+      }
+      if (privateInput) {
+        const input = child.stdio[3] as import('node:stream').Writable;
+        input.on('error', () => undefined);
+        input.end(privateInput);
       }
       let output = '';
       let bytes = 0;
