@@ -1,7 +1,7 @@
 # Kế hoạch triển khai Livestream Thumbnail
 
 File đích: docs/Implement Plan/Livestream Thumbnail Implementation Plan.md  
-Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–6 đã triển khai và đã kiểm chứng chụp/upload thực tế khi nghiệm thu Step 7; Step 7 (THM-701–THM-705) đã được người dùng nghiệm thu ngày 2026-11-06 với livestream, R2 và DB thật; integration pipeline tự động còn hoãn theo yêu cầu; Step 8 chưa triển khai.
+Trạng thái: Step 1 (THM-101–THM-104) hoàn tất ngày 2026-11-04; Step 2 (THM-201–THM-204) hoàn tất ngày 2026-11-05; Step 3 (THM-301–THM-306) hoàn tất ngày 2026-11-05; Step 4 (THM-401–THM-405) đã triển khai và kiểm chứng tích hợp trực tiếp Stream Service → Media Worker → Redis/PostgreSQL; kiểm chứng crash/shutdown khi pipeline đang chạy chuyển sang Step 5; Step 5–6 đã triển khai và đã kiểm chứng chụp/upload thực tế khi nghiệm thu Step 7; Step 7 (THM-701–THM-705) đã được người dùng nghiệm thu ngày 2026-11-06 với livestream, R2 và DB thật; integration pipeline tự động còn hoãn theo yêu cầu; người dùng chốt phạm vi thumbnail hiện tại với Step 8 triển khai một phần.
 
 Nguồn: docs/architecture/Livestream Thumbnail Architecture and Flow.md.
 
@@ -138,7 +138,7 @@ Hai API dùng token nội bộ từ biến môi trường, không dùng account 
 | Timeout callback | 5 giây |
 | JPEG | Khung 640 × 360, giữ tỉ lệ bằng padding |
 | Giữ job BullMQ đã kết thúc | Tối thiểu 24 giờ |
-| Quét dọn rác | Mỗi giờ; chỉ xét dữ liệu cũ trên 24 giờ |
+| Quét file tạm (chưa triển khai) | Dự kiến mỗi giờ; chỉ xét file cũ trên 24 giờ không thuộc job đang chạy |
 
 Tất cả các giá trị trên phải cấu hình được qua biến môi trường. Validate quan hệ giữa deadline, timeout và thời gian giữ job khi khởi động.
 
@@ -359,26 +359,27 @@ Bằng chứng triển khai và nghiệm thu Step 7 (2026-11-06):
 - Gateway verify đạt 88 test chạy thành công và 1 test Redis tùy chọn bị bỏ qua. Integration pipeline tự động từ Redis qua processor thật đến callback và các case cạnh tranh/shutdown còn thiếu được hoãn theo quyết định của người dùng; không ghi nhận chúng là đã chạy.
 - Người dùng đã livestream và nghiệm thu ảnh trên R2 thật. Đối chiếu DB xác nhận đúng object key/URL, job SUCCEEDED và thumbnail_updated_at sau thời điểm upload: R2 22:15:44, DB 22:15:44.804616 (UTC+7). Khi session ENDED, không tạo ảnh mới. Người dùng chốt Step 7; đây là nghiệm thu thủ công, không thay thế integration test tự động.
 
-### Step 8 — Dọn rác, vận hành và nghiệm thu
+### Step 8 — Dọn file tạm, vận hành và nghiệm thu
 
-Vai trò: Hoàn thiện phần vận hành và kiểm chứng pipeline tạo ảnh, upload và cập nhật thumbnail vào DB.
+Vai trò: Dọn file tạm an toàn, bổ sung khả năng theo dõi vận hành và hoàn thiện hướng dẫn chạy thủ công cùng bằng chứng nghiệm thu.
 
 Phụ thuộc: Step 1–7.
 
-| Task | Công việc |
+Trạng thái: Người dùng chốt đóng phạm vi thumbnail hiện tại ngày 2026-11-06. Step 8 chỉ triển khai một phần; các mục chưa làm được ghi rõ bên dưới.
+
+| Task | Công việc và trạng thái |
 |---|---|
-| THM-801 | Dọn thư mục tạm quá hạn tại Worker; chỉ xóa file không thuộc job đang chạy |
-| THM-802 | Worker quét object thumbnail cũ trên 24 giờ; hỏi Stream Service theo batch object key nào còn được tham chiếu trước khi xóa |
-| THM-803 | Thêm API nội bộ kiểm tra object reference; nếu backend lỗi hoặc response không đầy đủ thì bỏ qua việc xóa |
-| THM-804 | Bổ sung Docker Compose/config mẫu, kết nối Worker → MediaMTX và Worker → Stream Service; giữ cổng nội bộ khỏi Gateway |
-| THM-805 | Thêm log/metrics cho dispatch, queue wait, processing, callback, deadline và cleanup; che JWT, secret và credential |
-| THM-806 | Viết hướng dẫn chạy, test plan và bảng nghiệm thu các rủi ro trong tài liệu kiến trúc; kiểm chứng R2 và DB trực tiếp, regression cho API hiện có |
+| THM-801 | Chưa triển khai job dọn file/thư mục tạm quá hạn an toàn giữa các process. Worker vẫn xóa file trong luồng bình thường sau upload/lỗi. |
+| THM-802 | Triển khai một phần: log thời gian chờ queue, chụp ảnh, upload và xử lý job; log callback sẵn có. Chưa triển khai metrics tổng hợp và toàn bộ log cleanup/deadline. |
+| THM-803 | Có hướng dẫn chạy thủ công và bằng chứng livestream → R2 → DB ở Step 7; chưa hoàn tất tổng hợp test plan/regression và kiểm thử cleanup. |
 
-Dọn object theo prefix thumbnail riêng, có phân trang và giới hạn mỗi lượt. Giữ mọi object còn được tham chiếu, kể cả thumbnail của session đã ENDED. Không xóa ảnh khi callback timeout vì backend có thể đã lưu thành công.
+Quy tắc dự kiến nếu tiếp tục triển khai dọn file tạm:
 
-Endpoint kiểm tra reference chỉ phục vụ cleanup, không được gọi trước mỗi job thumbnail.
+- Mặc định quét mỗi giờ, chỉ xét file/thư mục cũ trên 24 giờ trong thư mục tạm riêng của Worker; các mốc cấu hình qua biến môi trường.
+- Giữ file của job đang chạy; giới hạn khối lượng xử lý mỗi lượt và phạm vi đường dẫn được phép dọn.
+- Lỗi filesystem được ghi log để xử lý ở lượt sau, không làm gián đoạn pipeline tạo ảnh.
 
-Điều kiện hoàn tất: Có thể khởi động môi trường bằng cấu hình mẫu; các object/file bỏ lại được dọn an toàn; với OBS stream thật, object JPEG tồn tại trên R2 và đúng session trong DB có thumbnail mới, thumbnail_updated_at cùng trạng thái SUCCEEDED. Kiểm tra bằng R2/HTTP tải ảnh và truy vấn DB, không phụ thuộc API danh sách hoặc frontend.
+Phần chưa triển khai ở trên không được đánh dấu đã hoàn thành. Bằng chứng Step 7 xác nhận pipeline tạo ảnh, upload và callback cập nhật DB đúng; integration toàn pipeline tự động tiếp tục được hoãn theo yêu cầu người dùng.
 
 ## 4. Kiểm thử và tiêu chí nghiệm thu
 
@@ -395,7 +396,7 @@ Viết test cùng từng task; Step 8 tổng hợp kết quả.
 | File và R2 | JPEG hợp lệ; ổ đĩa lỗi/đầy; upload timeout; dọn file lỗi nhưng callback vẫn chạy |
 | Callback | Đến trước ACK; trùng ID đã SUCCEEDED; sai ID; quá deadline; RECONNECTING/ENDED; backend commit rồi mất response; chỉ callback được áp dụng thành công mới cập nhật thumbnail_updated_at |
 | R2 và DB | Object JPEG tải được; URL/key trong DB trỏ đúng ảnh; thumbnail_updated_at và SUCCEEDED chỉ đổi khi callback được áp dụng thành công |
-| Cleanup | Không xóa ảnh đang tham chiếu; callback timeout vẫn giữ ảnh; backend không truy cập được thì không xóa |
+| Dọn file tạm | Chỉ dọn dữ liệu quá hạn trong thư mục được phép; giữ file của job đang chạy; lỗi I/O không chặn pipeline và được xử lý ở lượt sau |
 | Regression | Create/update/End, reconnect, metadata, playback-access và Stream Manager tiếp tục hoạt động |
 
 Công cụ kiểm thử:
