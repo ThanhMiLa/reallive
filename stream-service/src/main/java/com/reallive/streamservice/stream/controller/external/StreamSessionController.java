@@ -5,10 +5,12 @@ import com.reallive.streamservice.common.util.AuthenticationUserId;
 import com.reallive.streamservice.stream.dto.request.CreateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
+import com.reallive.streamservice.stream.dto.response.StreamDetailsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
+import com.reallive.streamservice.stream.service.StreamDetailsService;
 import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
@@ -41,6 +43,7 @@ public class StreamSessionController {
     StreamSessionService streamSessionService;
     StreamSessionClosureService streamSessionClosureService;
     StreamPlaybackService streamPlaybackService;
+    StreamDetailsService streamDetailsService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('STREAM_CREATE') and hasAuthority('STREAM_PUBLISH')")
@@ -63,6 +66,12 @@ public class StreamSessionController {
     public ResponseEntity<ApiResponse<StreamMetadataResponse>> getStreamMetadata(@PathVariable UUID sessionId) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
                 streamSessionService.metadata(sessionId), 200, "Stream metadata retrieved"));
+    }
+
+    @GetMapping("/{sessionId}/details")
+    public ResponseEntity<ApiResponse<StreamDetailsResponse>> getStreamDetails(@PathVariable UUID sessionId) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(buildApiResponse(
+                streamDetailsService.details(sessionId), 200, "Stream details retrieved"));
     }
 
     @PostMapping("/{sessionId}/playback-access")

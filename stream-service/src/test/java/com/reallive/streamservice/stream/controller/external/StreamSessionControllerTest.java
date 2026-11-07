@@ -10,12 +10,14 @@ import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
 import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
+import com.reallive.streamservice.stream.dto.response.StreamDetailsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.service.StreamDetailsService;
 import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
@@ -53,6 +55,7 @@ class StreamSessionControllerTest {
     @MockitoBean private StreamSessionService service;
     @MockitoBean private StreamSessionClosureService closureService;
     @MockitoBean private StreamPlaybackService playbackService;
+    @MockitoBean private StreamDetailsService detailsService;
     @MockitoBean private CustomJwtDecoder decoder;
     @MockitoBean private RedisAuthoritiesReader authorities;
     private final UUID owner = UUID.randomUUID();
@@ -68,8 +71,9 @@ class StreamSessionControllerTest {
         mvc.perform(post("/api/streams/" + session + "/publish-credentials")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/streams/" + session + "/end")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams/" + session)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/streams/" + session + "/details")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/streams/" + session + "/playback-access")).andExpect(status().isUnauthorized());
-        verifyNoInteractions(service, closureService, playbackService);
+        verifyNoInteractions(service, closureService, playbackService, detailsService);
     }
 
     @ParameterizedTest
@@ -103,9 +107,12 @@ class StreamSessionControllerTest {
     void viewerEndpointsNeedNoApplicationPermissions() throws Exception {
         mvc.perform(get("/api/streams/" + session).with(ownerWithPermissions()))
                 .andExpect(status().isOk());
+        mvc.perform(get("/api/streams/" + session + "/details").with(ownerWithPermissions()))
+                .andExpect(status().isOk());
         mvc.perform(post("/api/streams/" + session + "/playback-access").with(ownerWithPermissions()))
                 .andExpect(status().isOk());
         verify(service).metadata(session);
+        verify(detailsService).details(session);
         verify(playbackService).access(session, owner);
         verifyNoInteractions(closureService);
     }
@@ -271,12 +278,51 @@ class StreamSessionControllerTest {
     }
 
     @Test
+    void streamDetailsReturnsChannelAndCategorySummariesWithNoStoreAndMapsErrors() throws Exception {
+        var channelId = UUID.randomUUID();
+        var categoryId = UUID.randomUUID();
+        var details = new StreamDetailsResponse(
+                session,
+                channelId,
+                categoryId,
+                new StreamDetailsResponse.ChannelSummary(channelId, "Queenofdarknesstv", "https://cdn.example.com/avatar.jpg"),
+                new StreamDetailsResponse.CategorySummary(categoryId, "IRL")
+        );
+        when(detailsService.details(session)).thenReturn(details);
+
+        mvc.perform(get("/api/streams/" + session + "/details").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.result.id").value(session.toString()))
+                .andExpect(jsonPath("$.result.channelId").value(channelId.toString()))
+                .andExpect(jsonPath("$.result.categoryId").value(categoryId.toString()))
+                .andExpect(jsonPath("$.result.channel.id").value(channelId.toString()))
+                .andExpect(jsonPath("$.result.channel.name").value("Queenofdarknesstv"))
+                .andExpect(jsonPath("$.result.channel.avatarUrl").value("https://cdn.example.com/avatar.jpg"))
+                .andExpect(jsonPath("$.result.category.id").value(categoryId.toString()))
+                .andExpect(jsonPath("$.result.category.name").value("IRL"));
+
+        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_FOUND, ErrorCode.ACCESS_DENIED,
+                ErrorCode.STREAM_DATA_UNAVAILABLE)) {
+            doThrow(new AppException(error)).when(detailsService).details(session);
+            mvc.perform(get("/api/streams/" + session + "/details").with(jwt()))
+                    .andExpect(status().is(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.code").value(error.getCode()));
+        }
+    }
+
+    @Test
     void invalidSessionIdentifiersAreRejectedBeforeCallingViewerServices() throws Exception {
         mvc.perform(get("/api/streams/not-a-uuid").with(jwt()))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
+        mvc.perform(get("/api/streams/not-a-uuid/details").with(jwt()))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
         mvc.perform(post("/api/streams/not-a-uuid/playback-access").with(jwt()))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
-        verifyNoInteractions(service, playbackService);
+        verifyNoInteractions(service, playbackService, detailsService);
     }
 
     private String createBody() {
