@@ -7,18 +7,54 @@ import type { StreamMetadata } from '@/types/stream.types'
 interface Props {
   sessionId: string
   refreshMetadata: () => Promise<StreamMetadata | null>
+  mode?: 'preview' | 'viewer'
+  onAccessError?: (error: unknown) => void
 }
 
 const mediaBase = import.meta.env.VITE_STREAM_HLS_BASE_URL || 'http://localhost:8898'
 
-export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
+const COPY = {
+  preview: {
+    ariaLabel: 'Stream preview',
+    opening: 'Opening preview…',
+    retry: 'Retry preview',
+    unsupported: 'Preview is not supported in this browser. Try Chrome or Edge on desktop.',
+    mismatch: 'The preview URL does not match the configured media server.',
+    pressPlay: 'Press play to start the preview.',
+    decodeError: 'The preview cannot decode this video.',
+    unavailable: 'Preview unavailable. Check your connection and try again.',
+    openFailed: 'Could not open the preview. Check your connection and try again.',
+  },
+  viewer: {
+    ariaLabel: 'Live stream player',
+    opening: 'Loading live stream…',
+    retry: 'Retry stream',
+    unsupported:
+      'Live stream playback is not supported in this browser. Try Chrome or Edge on desktop.',
+    mismatch: 'The stream URL does not match the configured media server.',
+    pressPlay: 'Press play to watch the live stream.',
+    decodeError: 'The player cannot decode this video.',
+    unavailable: 'Stream playback unavailable. Check your connection and try again.',
+    openFailed: 'Could not open the live stream. Check your connection and try again.',
+  },
+} as const
+
+export function StreamPlayer({
+  sessionId,
+  refreshMetadata,
+  mode = 'preview',
+  onAccessError,
+}: Props) {
+  const copy = COPY[mode]
   const videoRef = useRef<HTMLVideoElement>(null)
   const refreshRef = useRef(refreshMetadata)
+  const onAccessErrorRef = useRef(onAccessError)
   useLayoutEffect(() => {
     refreshRef.current = refreshMetadata
-  }, [refreshMetadata])
+    onAccessErrorRef.current = onAccessError
+  }, [refreshMetadata, onAccessError])
   const [attempt, setAttempt] = useState(0)
-  const [message, setMessage] = useState('Opening preview…')
+  const [message, setMessage] = useState<string>(copy.opening)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -40,7 +76,7 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
     const open = async (checkStatus: boolean) => {
       try {
         if (!Hls.isSupported()) {
-          fail('Preview is not supported in this browser. Try Chrome or Edge on desktop.')
+          fail(copy.unsupported)
           return
         }
         if (checkStatus) {
@@ -63,7 +99,7 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
           manifest.username ||
           manifest.password
         ) {
-          fail('The preview URL does not match the configured media server.')
+          fail(copy.mismatch)
           return
         }
         // MediaMTX's HLS handshake redirects to cookieCheck=1. Requests omit cookies,
@@ -109,7 +145,7 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
           setFailed(false)
           setMessage('')
           void video.play().catch(() => {
-            if (alive) setMessage('Press play to start the preview.')
+            if (alive) setMessage(copy.pressPlay)
           })
         })
         instance.on(Hls.Events.ERROR, (_event, data) => {
@@ -126,20 +162,21 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
             instance.destroy()
             fail(
               data.type === Hls.ErrorTypes.MEDIA_ERROR
-                ? 'The preview cannot decode this video.'
-                : 'Preview unavailable. Check your connection and try again.',
+                ? copy.decodeError
+                : copy.unavailable,
             )
           }
         })
         instance.loadSource(manifest.href)
         instance.attachMedia(video)
       } catch (error) {
-        if (!alive) return
+        if (!alive || abort.signal.aborted) return
+        onAccessErrorRef.current?.(error)
         if (isAxiosError(error) && error.response?.status === 409) {
           await refreshRef.current().catch(() => null)
           fail('Stream status changed. Waiting for an update.')
         } else {
-          fail('Could not open the preview. Check your connection and try again.')
+          fail(copy.openFailed)
         }
       }
     }
@@ -151,7 +188,7 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
       video.removeAttribute('src')
       video.load()
     }
-  }, [sessionId, attempt])
+  }, [sessionId, attempt, copy])
 
   return (
     <div className="relative aspect-video bg-black">
@@ -161,7 +198,12 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
         controls
         muted
         playsInline
-        aria-label="Stream preview"
+        aria-label={copy.ariaLabel}
+        onPlay={() => {
+          if (!failed && message === copy.pressPlay) {
+            setMessage('')
+          }
+        }}
       />
       {message && (
         <div
@@ -175,11 +217,11 @@ export function StreamPlayer({ sessionId, refreshMetadata }: Props) {
               className="ml-3 text-[#ff5366] underline focus-visible:outline-2"
               onClick={() => {
                 setFailed(false)
-                setMessage('Opening preview…')
+                setMessage(copy.opening)
                 setAttempt((value) => value + 1)
               }}
             >
-              Retry preview
+              {copy.retry}
             </button>
           )}
         </div>

@@ -25,6 +25,7 @@ import { CategoryDetailPage } from '@/pages/browse/CategoryDetailPage'
 import { BrowseLivestreamsTab } from '@/pages/browse/tabs/BrowseLivestreamsTab'
 import { BrowseCategoriesTab } from '@/pages/browse/tabs/BrowseCategoriesTab'
 import { BrowseChannelsTab } from '@/pages/browse/tabs/BrowseChannelsTab'
+import { WatchStreamPage } from '@/pages/watch/WatchStreamPage'
 import { AuthModal } from '@/components/auth/AuthModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { queryClient } from '@/lib/query-client'
@@ -60,6 +61,7 @@ export function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<HomePage />} />
         <Route path="/register" element={<HomePage />} />
+        <Route path="/watch/:sessionId" element={<WatchStreamPage />} />
         <Route path="/browse/categories/:categoryId" element={<CategoryDetailPage />} />
         <Route path="/browse" element={<BrowsePage />}>
           <Route index element={<Navigate to="livestreams" replace />} />

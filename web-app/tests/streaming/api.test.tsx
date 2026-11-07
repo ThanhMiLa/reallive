@@ -27,6 +27,7 @@ it('binds the owner and playback API contract through the account client', async
   await streamApi.update(id, { title: 'Changed' })
   await streamApi.credentials(id)
   await streamApi.metadata(id)
+  await streamApi.details(id)
   await streamApi.access(id)
   await streamApi.end(id)
   expect(requests.map((request: AxiosRequestConfig) => [request.method, request.url])).toEqual([
@@ -35,6 +36,7 @@ it('binds the owner and playback API contract through the account client', async
     ['patch', `/stream/api/streams/${id}`],
     ['post', `/stream/api/streams/${id}/publish-credentials`],
     ['get', `/stream/api/streams/${id}`],
+    ['get', `/stream/api/streams/${id}/details`],
     ['post', `/stream/api/streams/${id}/playback-access`],
     ['post', `/stream/api/streams/${id}/end`],
   ])
@@ -42,7 +44,7 @@ it('binds the owner and playback API contract through the account client', async
   expect(requests[0].signal).toBe(controller.signal)
   expect(JSON.parse(requests[1].data)).toEqual(payload)
   expect(JSON.parse(requests[2].data)).toEqual({ title: 'Changed' })
-  expect(requests[5].data).toBeUndefined()
+  expect(requests[6].data).toBeUndefined()
 })
 
 it('calls GET /stream/api/streams with pagination, optional categoryId, and no sort parameter', async () => {

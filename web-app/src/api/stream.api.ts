@@ -10,6 +10,7 @@ import type {
   StreamListParams,
   StreamMetadata,
   StreamSession,
+  StreamViewerDetails,
 } from '@/types/stream.types'
 
 const base = '/stream/api/streams'
@@ -43,6 +44,9 @@ export const streamApi = {
       .result,
   metadata: async (id: string, signal?: AbortSignal) =>
     (await apiClient.get<ApiResponse<StreamMetadata>>(path(id), { signal })).data.result,
+  details: async (id: string, signal?: AbortSignal) =>
+    (await apiClient.get<ApiResponse<StreamViewerDetails>>(`${path(id)}/details`, { signal })).data
+      .result,
   create: async (payload: CreateStreamRequest, signal?: AbortSignal) =>
     (await apiClient.post<ApiResponse<CreateStreamResponse>>(base, payload, { signal })).data
       .result,

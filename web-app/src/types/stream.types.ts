@@ -86,3 +86,23 @@ export interface StreamListParams {
   categoryIds?: string[] | null
 }
 
+export interface StreamDetailsChannelSummary {
+  id: string
+  name: string
+  avatarUrl: string | null
+}
+
+export interface StreamDetailsCategorySummary {
+  id: string
+  name: string
+}
+
+export interface StreamViewerDetails {
+  id: string
+  channelId: string
+  categoryId: string
+  channel: StreamDetailsChannelSummary | null
+  category: StreamDetailsCategorySummary | null
+}
+
+
