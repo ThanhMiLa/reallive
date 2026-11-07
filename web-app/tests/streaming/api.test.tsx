@@ -44,3 +44,64 @@ it('binds the owner and playback API contract through the account client', async
   expect(JSON.parse(requests[2].data)).toEqual({ title: 'Changed' })
   expect(requests[5].data).toBeUndefined()
 })
+
+it('calls GET /stream/api/streams with pagination, optional categoryId, and no sort parameter', async () => {
+  const requests: InternalAxiosRequestConfig[] = []
+  const pageResult = {
+    content: [],
+    page: 0,
+    size: 20,
+    totalElements: 0,
+    totalPages: 0,
+  }
+  apiClient.defaults.adapter = async (config): Promise<AxiosResponse> => {
+    requests.push(config)
+    return {
+      data: { result: pageResult },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }
+  }
+
+  const controller = new AbortController()
+  const categoryId = '00000000-0000-4000-8000-000000000010'
+
+  const res1 = await streamApi.list(undefined, controller.signal)
+  const res2 = await streamApi.list({ page: 2, size: 40, categoryId: '   ' })
+  const res3 = await streamApi.list({ page: 0, size: 20, categoryId })
+  const res4 = await streamApi.list({
+    page: 0,
+    size: 20,
+    categoryIds: [categoryId, '00000000-0000-4000-8000-000000000020'],
+  })
+
+  expect(res1).toEqual(pageResult)
+  expect(res2).toEqual(pageResult)
+  expect(res3).toEqual(pageResult)
+  expect(res4).toEqual(pageResult)
+
+  expect(requests).toHaveLength(4)
+  expect(requests[0].method).toBe('get')
+  expect(requests[0].url).toBe('/stream/api/streams')
+  expect(requests[0].params).toEqual({ page: 0, size: 20 })
+  expect(requests[0].params).not.toHaveProperty('categoryId')
+  expect(requests[0].params).not.toHaveProperty('sort')
+  expect(requests[0].signal).toBe(controller.signal)
+  expect(requests[0].withCredentials).toBe(true)
+
+  expect(requests[1].params).toEqual({ page: 2, size: 40 })
+  expect(requests[1].params).not.toHaveProperty('categoryId')
+
+  expect(requests[2].params).toEqual({ page: 0, size: 20, categoryId })
+  expect(requests[2].params).not.toHaveProperty('sort')
+
+  expect(requests[3].params).toEqual({
+    page: 0,
+    size: 20,
+    categoryIds: [categoryId, '00000000-0000-4000-8000-000000000020'],
+  })
+  expect(requests[3].params).not.toHaveProperty('sort')
+})
+

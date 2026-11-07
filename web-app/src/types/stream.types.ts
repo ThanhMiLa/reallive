@@ -44,3 +44,45 @@ export interface CreateStreamResponse {
   session: StreamSession
   publishCredentials: PublishCredentials
 }
+
+export interface StreamChannelSummary {
+  id: string
+  name: string
+  slug: string
+  avatarUrl: string | null
+}
+
+export interface StreamCategorySummary {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface LiveStreamItem {
+  id: string
+  title: string
+  status: StreamStatus | string
+  startedAt: string | null
+  thumbnailUrl: string | null
+  thumbnailUpdatedAt: string | null
+  channelId: string
+  categoryId: string
+  channel: StreamChannelSummary | null
+  category: StreamCategorySummary | null
+}
+
+export interface StreamDiscoveryResponse {
+  content: LiveStreamItem[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+export interface StreamListParams {
+  page?: number
+  size?: number
+  categoryId?: string | null
+  categoryIds?: string[] | null
+}
+
