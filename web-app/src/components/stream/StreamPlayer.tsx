@@ -121,6 +121,8 @@ export function StreamPlayer({
         const instance = new Hls({
           loader: FetchLoader,
           lowLatencyMode: false,
+          liveSyncDuration: 7,
+          liveMaxLatencyDuration: 12,
           manifestLoadPolicy: { default: policy },
           playlistLoadPolicy: { default: policy },
           fragLoadPolicy: { default: policy },
