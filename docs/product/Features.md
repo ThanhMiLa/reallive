@@ -28,8 +28,8 @@
 - Start Stream  ✅
 - Validate Stream Key  ✅
 - Change Status to LIVE  ✅
-- Watch Stream 
-- Viewer Count
+- Watch Stream  ✅
+- Viewer Count  ✅
 - End Stream  ✅
 - Handle Unexpected Disconnect  ✅
 - Notify Email Followers When Stream Starts
