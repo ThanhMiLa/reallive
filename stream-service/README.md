@@ -154,3 +154,15 @@ The backend locks the session row, checks the current waiting job ID, deadline a
 `STREAM_THUMBNAIL_ENABLED` controls dispatch separately. The dev profile defaults dispatch and callback to enabled; `.env.example` explicitly disables both for deliberate startup. Worker processing remains disabled by default. Configure the callback endpoint before enabling Worker processing and dispatch. Callback failures are not retried; the existing scheduler expires waiting jobs and permits another capture.
 
 Manual livestream/R2/DB acceptance was confirmed on 2026-11-06. Automated full-pipeline integration and remaining concurrency/shutdown scenarios are deferred by the user; they are not reported as passing.
+
+### List live streams
+
+`GET /stream/api/streams?page=0&size=20&categoryId=<uuid>` requires authentication.
+`categoryId` is optional and filters the category of the stream session. The endpoint
+returns only `LIVE` sessions. `page` is zero-based; `size` defaults to 20 and is
+limited to 100. The response uses the standard `ApiResponse` envelope with `content`,
+`page`, `size`, `totalElements`, and `totalPages` in `result`. Each item contains the
+session ID, title, status, UTC start time, thumbnail URL and update time, channel and
+category IDs, and available channel/category summaries. Thumbnail and summary fields
+can be null. No ordering is guaranteed; pages can change as live sessions change.
+A Channel Service failure returns `503`.

@@ -307,6 +307,30 @@ class StreamRepositoryPostgresTest extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void discoveryFiltersStatusAndSessionCategoryWithoutVisibilityRestriction() {
+        UUID category = UUID.randomUUID();
+        var live = discoverySession(category, StreamSessionStatus.LIVE, StreamVisibility.PRIVATE);
+        var ready = discoverySession(category, StreamSessionStatus.READY, StreamVisibility.PUBLIC);
+        var other = discoverySession(UUID.randomUUID(), StreamSessionStatus.LIVE, StreamVisibility.PUBLIC);
+        sessionRepository.saveAll(List.of(live, ready, other));
+
+        var page = sessionRepository.findByStatusAndCategoryId(StreamSessionStatus.LIVE, category, PageRequest.of(0, 1));
+        assertEquals(1, page.getTotalElements());
+        assertEquals(live.getId(), page.getContent().getFirst().getId());
+        assertTrue(sessionRepository.findByStatusAndCategoryId(StreamSessionStatus.LIVE, category, PageRequest.of(1, 1)).isEmpty());
+    }
+
+    private StreamSessionEntity discoverySession(UUID category, StreamSessionStatus status, StreamVisibility visibility) {
+        return StreamSessionEntity.builder().channelId(UUID.randomUUID()).streamerId(UUID.randomUUID())
+                .ownerUserId(UUID.randomUUID()).categoryId(category).title("Discovery")
+                .visibility(visibility).status(status).playbackPath("/live/" + UUID.randomUUID())
+                .creationRequestId(UUID.randomUUID()).mediaPathState(MediaPathState.OPEN)
+                .mediaSourceId(status == StreamSessionStatus.LIVE ? UUID.randomUUID() : null)
+                .mediaSourceType(status == StreamSessionStatus.LIVE ? MediaSourceType.RTMP_CONN : null)
+                .startedAt(status == StreamSessionStatus.LIVE ? LocalDateTime.now(ZoneOffset.UTC) : null).build();
+    }
+
+    @Test
     void persistsImmutableHistoryWithEventDeduplication() {
         UUID ownerId = UUID.randomUUID();
         UUID channelId = UUID.randomUUID();

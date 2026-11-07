@@ -18,6 +18,9 @@ public interface ChannelApiClient {
     @PostMapping("/internal/api/categories/validate")
     ApiResponse<Boolean> validateCategories(@RequestBody CategoryIds request);
 
+    @PostMapping("/internal/api/channels/livestream-summaries")
+    ApiResponse<LivestreamSummaries> getLivestreamSummaries(@RequestBody LivestreamSummaries.Request request);
+
     record CategoryIds(
             Set<UUID> categoryIds
     ) {}

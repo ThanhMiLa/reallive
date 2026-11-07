@@ -103,6 +103,10 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
             """)
     List<UUID> findDueThumbnailSessionIds(@Param("cutoff") LocalDateTime cutoff, Pageable pageable);
 
+    Page<StreamSessionEntity> findByStatus(StreamSessionStatus status, Pageable pageable);
+
+    Page<StreamSessionEntity> findByStatusAndCategoryId(StreamSessionStatus status, UUID categoryId, Pageable pageable);
+
     Page<StreamSessionEntity> findByVisibilityAndStatusOrderByStartedAtDescIdAsc(
             StreamVisibility visibility,
             StreamSessionStatus status,

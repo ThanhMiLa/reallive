@@ -37,7 +37,8 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS_POST = {
             "/internal/api/channels",
-            "/internal/api/categories/validate"
+            "/internal/api/categories/validate",
+            "/internal/api/channels/livestream-summaries"
     };
 
     private static final String[] PUBLIC_ENDPOINTS_PATCH = {

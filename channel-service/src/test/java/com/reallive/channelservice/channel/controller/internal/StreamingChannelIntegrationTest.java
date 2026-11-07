@@ -52,6 +52,22 @@ class StreamingChannelIntegrationTest {
     }
 
     @Test
+    void returnsLivestreamSummariesForBannedChannelAndMissingIds() throws Exception {
+        var banned = channel(ChannelStatus.BANNED, UUID.randomUUID(), false);
+        var deleted = channel(ChannelStatus.ACTIVE, UUID.randomUUID(), true);
+        String body = "{\"channelIds\":[\"" + banned.getId() + "\",\"" + deleted.getId()
+                + "\"],\"categoryIds\":[]}";
+        mvc.perform(post("/channel/internal/api/channels/livestream-summaries").contextPath("/channel")
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.channels.length()").value(1))
+                .andExpect(jsonPath("$.result.channels[0].id").value(banned.getId().toString()))
+                .andExpect(jsonPath("$.result.categories.length()").value(0));
+        mvc.perform(post("/channel/internal/api/channels/livestream-summaries").contextPath("/channel")
+                        .contentType("application/json").content("{\"channelIds\":[null],\"categoryIds\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void keepsUnmappedMethodsOnStreamingContextProtected() throws Exception {
         mvc.perform(post("/channel/internal/api/channels/by-streamer/{id}/streaming-context", UUID.randomUUID()).contextPath("/channel"))
                 .andExpect(status().isUnauthorized());

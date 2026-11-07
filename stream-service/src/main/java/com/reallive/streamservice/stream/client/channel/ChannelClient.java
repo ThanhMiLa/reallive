@@ -28,6 +28,23 @@ public class ChannelClient {
         return result;
     }
 
+    public LivestreamSummaries getLivestreamSummaries(Set<UUID> channelIds, Set<UUID> categoryIds) {
+        try {
+            var result = ClientResponses.read(() -> api.getLivestreamSummaries(
+                    new LivestreamSummaries.Request(channelIds, categoryIds)), ErrorCode.STREAM_DATA_UNAVAILABLE, Set.of());
+            if (result.channels() == null || result.categories() == null
+                    || result.channels().stream().anyMatch(c -> c == null || c.id() == null || c.name() == null || c.slug() == null || !channelIds.contains(c.id()))
+                    || result.categories().stream().anyMatch(c -> c == null || c.id() == null || c.name() == null || c.slug() == null || !categoryIds.contains(c.id()))
+                    || result.channels().stream().map(LivestreamSummaries.ChannelSummary::id).distinct().count() != result.channels().size()
+                    || result.categories().stream().map(LivestreamSummaries.CategorySummary::id).distinct().count() != result.categories().size()) {
+                throw new AppException(ErrorCode.STREAM_DATA_UNAVAILABLE);
+            }
+            return result;
+        } catch (RuntimeException exception) {
+            throw new AppException(ErrorCode.STREAM_DATA_UNAVAILABLE);
+        }
+    }
+
     public void requireCategory(UUID categoryId) {
         boolean valid = ClientResponses.read(() -> api.validateCategories(new ChannelApiClient.CategoryIds(Set.of(categoryId))),
                 ErrorCode.STREAM_CATEGORY_INVALID, Set.of(400, 404));
