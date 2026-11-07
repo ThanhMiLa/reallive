@@ -71,7 +71,7 @@
 - Generate Thumbnail
 
 ## IX - Discovery / Search
-- Live Stream List
+- Live Stream List ✅
 - Channel List ✅
 - Category List ✅
 - Following Feed
