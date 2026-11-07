@@ -252,8 +252,8 @@ export function CategoryDetailPage() {
 
         {/* Bottom Section: Livestreams of this Category */}
         {isStreamsLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5">
-            {Array.from({ length: 10 }).map((_, idx) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 min-[1600px]:grid-cols-5 min-[2200px]:grid-cols-6 gap-4 sm:gap-5">
+            {Array.from({ length: 12 }).map((_, idx) => (
               <div key={idx} className="flex flex-col animate-pulse">
                 <div className="w-full aspect-video rounded-xl bg-[#101014] border border-[#1f1f26]" />
                 <div className="flex items-start gap-3 mt-3">
@@ -303,7 +303,7 @@ export function CategoryDetailPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 min-[1600px]:grid-cols-5 min-[2200px]:grid-cols-6 gap-4 sm:gap-5">
               {streams.map((stream) => (
                 <StreamCard key={stream.id} stream={stream} />
               ))}
