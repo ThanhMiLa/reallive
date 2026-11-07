@@ -21,6 +21,7 @@ import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { MyChannelPage } from '@/pages/dashboard/MyChannelPage'
 import { HomePage } from '@/pages/HomePage'
 import { BrowsePage } from '@/pages/browse/BrowsePage'
+import { CategoryDetailPage } from '@/pages/browse/CategoryDetailPage'
 import { BrowseLivestreamsTab } from '@/pages/browse/tabs/BrowseLivestreamsTab'
 import { BrowseCategoriesTab } from '@/pages/browse/tabs/BrowseCategoriesTab'
 import { BrowseChannelsTab } from '@/pages/browse/tabs/BrowseChannelsTab'
@@ -59,6 +60,7 @@ export function AppRoutes() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<HomePage />} />
         <Route path="/register" element={<HomePage />} />
+        <Route path="/browse/categories/:categoryId" element={<CategoryDetailPage />} />
         <Route path="/browse" element={<BrowsePage />}>
           <Route index element={<Navigate to="livestreams" replace />} />
           <Route path="livestreams" element={<BrowseLivestreamsTab />} />

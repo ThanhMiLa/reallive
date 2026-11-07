@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Gamepad2, AlertCircle, RefreshCw } from 'lucide-react'
 import { channelApi } from '@/api/channel.api'
@@ -44,7 +45,13 @@ const FALLBACK_GRADIENTS = [
   },
 ]
 
-function CategoryCard({ category }: { category: CategoryItem }) {
+function CategoryCard({
+  category,
+  onSelect,
+}: {
+  category: CategoryItem
+  onSelect: (category: CategoryItem) => void
+}) {
   const [imgError, setImgError] = useState(false)
   const hasThumbnail = Boolean(
     category.thumbnailUrl && category.thumbnailUrl.trim() !== '' && !imgError,
@@ -61,8 +68,17 @@ function CategoryCard({ category }: { category: CategoryItem }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       title={category.name}
-      className="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1"
+      onClick={() => onSelect(category)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(category)
+        }
+      }}
+      className="group flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff2b42] rounded-xl"
     >
       {/* Category Thumbnail / Poster */}
       <div className="relative w-full aspect-[3/4] rounded-xl overflow-hidden bg-[#101014] border border-[#1f1f26] shadow-md group-hover:border-[#ff2b42]/50 group-hover:shadow-[0_0_20px_rgba(255,43,66,0.2)] transition-all duration-300">
@@ -106,6 +122,7 @@ function CategoryCard({ category }: { category: CategoryItem }) {
 }
 
 export function BrowseCategoriesTab() {
+  const navigate = useNavigate()
   const {
     data: categories = [],
     isLoading,
@@ -114,8 +131,14 @@ export function BrowseCategoriesTab() {
     isFetching,
   } = useQuery({
     queryKey: ['categories'],
-    queryFn: () => channelApi.getCategories(),
+    queryFn: ({ signal }) => channelApi.getCategories(signal),
   })
+
+  const handleSelectCategory = (category: CategoryItem) => {
+    navigate(`/browse/categories/${encodeURIComponent(category.id)}`, {
+      state: { category },
+    })
+  }
 
   return (
     <div className="pb-12">
@@ -167,7 +190,11 @@ export function BrowseCategoriesTab() {
         /* Categories Grid */
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4 sm:gap-5">
           {categories.map((category) => (
-            <CategoryCard key={category.id} category={category} />
+            <CategoryCard
+              key={category.id}
+              category={category}
+              onSelect={handleSelectCategory}
+            />
           ))}
         </div>
       )}
