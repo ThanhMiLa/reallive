@@ -46,8 +46,7 @@ export function StreamCard({ stream }: { stream: LiveStreamItem }) {
 
           {/* Live indicator badge */}
           <div className="absolute top-2 left-2 z-10">
-            <span className="inline-flex items-center gap-1.5 bg-black/80 backdrop-blur-sm text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="inline-flex items-center bg-[#e91916] text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
               LIVE
             </span>
           </div>

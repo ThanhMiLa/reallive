@@ -37,7 +37,7 @@ function ChannelAvatar({
       <div
         className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full p-0.5 ${
           isLive
-            ? 'bg-gradient-to-tr from-emerald-500 to-emerald-400'
+            ? 'bg-[#e91916]'
             : 'bg-[#1f1f26]'
         }`}
       >
@@ -56,7 +56,7 @@ function ChannelAvatar({
       </div>
 
       {isLive && (
-        <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-black text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded shadow">
+        <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-[#e91916] text-white text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded shadow">
           LIVE
         </span>
       )}
