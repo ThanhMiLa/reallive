@@ -5,6 +5,7 @@ name: reallive
 
 services:
   media-server:
+    container_name: media-server
     image: reallive-media-server:1.21.2
     build:
       context: .
@@ -199,6 +200,7 @@ services:
       - data
 
   kafka:
+    container_name: kafka
     image: apache/kafka:4.2.1
     hostname: kafka
     restart: unless-stopped
