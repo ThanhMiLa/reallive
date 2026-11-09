@@ -20,7 +20,7 @@ Contract dùng chung và fixtures nằm tại [`docs/contracts/thumbnail`](../do
 
 Chưa có:
 
-- Cleanup, Compose integration, metrics vận hành và frontend.
+- Cleanup, metrics vận hành và frontend.
 
 `src/processor` nối capture/upload với callback thật. Callback gửi đúng một lần, có timeout và hỗ trợ hủy request; không retry khi backend lỗi hoặc không nhận được response.
 
@@ -84,7 +84,7 @@ npm run start:dev
 Sửa `MEDIA_WORKER_INTERNAL_TOKEN` trong `.env` thành giá trị ngẫu nhiên tối thiểu 32 ký tự. Không commit `.env`.
 
 - Worker chạy trên host: giữ `MEDIA_WORKER_MEDIAMTX_BASE_URL=http://localhost:8898` (port HLS đang map từ container `media-server`).
-- Worker chạy trong Compose network: đổi thành `http://media-server:8888`; Redis là `redis:6379`, Stream Service là `http://stream-service:8082`.
+- Worker chạy bằng Compose ở root: Compose đặt MediaMTX thành `http://media-server:8888`, Redis thành `redis:6379` và callback tới Stream Service trên host tại `http://host.docker.internal:8082`.
 
 Kiểm tra API trong terminal khác, tại thư mục `media-worker/`. Fixture dùng chung giữ URL nội bộ `media-server:8888`; lệnh dưới đọc `.env` để lấy token và đổi URL trong bộ nhớ cho khớp MediaMTX base URL của môi trường local, không sửa file fixture:
 
@@ -181,24 +181,47 @@ Test hiện có:
 
 ## Docker
 
-Build từ thư mục `media-worker` (không cần build context của toàn repo):
+### Docker Compose
+
+Chạy các lệnh sau từ root repo. Nếu chưa có cấu hình Worker, tạo từ template rồi thay `MEDIA_WORKER_INTERNAL_TOKEN` bằng token thật, tối thiểu 32 ký tự:
+
+```sh
+cp media-worker/.env.example media-worker/.env
+```
+
+Giữ nguyên file `.env` nếu đã cấu hình. Compose đọc token, cấu hình R2, queue và cờ consumer từ `media-worker/.env`; mật khẩu Redis lấy từ `.env` ở root để khớp service `redis`. Compose ghi đè địa chỉ kết nối, cổng HTTP, đường dẫn FFmpeg/file tạm và thời gian shutdown cho container. Cờ `MEDIA_WORKER_PROCESSOR_ENABLED` mặc định `false` trong template; chỉ bật khi đã có đủ credential R2 và callback.
+
+Stream Service hiện chạy trên host. Trong môi trường chạy Stream Service, đặt:
+
+```dotenv
+MEDIA_WORKER_BASE_URL=http://localhost:8090
+STREAM_MEDIA_INTERNAL_HLS_BASE_URL=http://media-server:8888
+```
+
+`MEDIA_WORKER_INTERNAL_TOKEN` và `STREAM_SERVICE_INTERNAL_TOKEN` của backend phải khớp Worker. Khởi động lại backend sau khi đổi env. `STREAM_MEDIA_INTERNAL_HLS_BASE_URL` dùng để tạo URL gửi cho Worker, nên phải khớp origin MediaMTX trong container; URL HLS public cho player vẫn là `http://localhost:8898`.
+
+Nếu Worker đang chạy bằng `npm run start:dev` trên host, dừng tiến trình đó trước để giải phóng cổng `8090` và tránh chạy đồng thời hai consumer.
+
+```sh
+docker compose config --quiet
+docker compose up -d --build --wait media-worker
+docker compose ps media-worker
+curl -fsS http://127.0.0.1:8090/health/ready
+```
+
+Container tên `media-worker`, image `reallive-media-worker:0.1.0`. Compose đợi Redis và MediaMTX healthy trước khi chạy Worker; healthcheck Worker gọi readiness và kiểm tra được kết nối Redis. Worker tham gia network `default` để đọc MediaMTX và `data` để dùng Redis. Callback gọi trực tiếp host qua `host.docker.internal`, không qua Gateway. Compose cho phép shutdown trong 60 giây, dài hơn timeout Worker 45 giây. File JPEG tạm nằm trong filesystem container, không lưu vào volume lâu dài.
+
+### Build image riêng
+
+Build từ root repo với context chỉ gồm `media-worker`:
 
 ```sh
 docker build -t reallive-media-worker ./media-worker
-
-docker run --rm -p 127.0.0.1:8090:8090 \
-  --env-file media-worker/.env \
-  -e MEDIA_WORKER_INTERNAL_TOKEN=replace-with-a-random-internal-token-at-least-32-chars \
-  -e MEDIA_WORKER_MEDIAMTX_BASE_URL=http://media-server:8888 \
-  -e MEDIA_WORKER_TEMP_DIR=/var/lib/media-worker/tmp \
-  reallive-media-worker
 
 docker run --rm --entrypoint ffmpeg reallive-media-worker -version
 ```
 
 Image dùng multi-stage build, cài FFmpeg và chạy bằng user `mediaworker` (UID/GID 10001). Healthcheck của image chỉ gọi liveness; readiness được kiểm tra riêng theo kết nối Redis. Chạy container với một MediaMTX reachable và token thật qua biến môi trường; không bake secret vào image.
-
-Đợt Step 8 hiện tại tiếp tục dùng cách khởi chạy thủ công.
 
 ## Bảo mật
 
@@ -251,7 +274,7 @@ CLI đọc job qua stdin, tạo JPEG, upload R2 và dọn file tạm. Kết qu�
 
 ## Chạy pipeline callback trên máy local
 
-Trong Worker, đặt `STREAM_SERVICE_BASE_URL=http://localhost:8082` (origin không có `/stream`) và `STREAM_SERVICE_INTERNAL_TOKEN` khớp backend. Khi chạy trong Docker network, dùng `http://stream-service:8082`. Đổi `.env` cần khởi động lại Worker.
+Trong Worker trên host, đặt `STREAM_SERVICE_BASE_URL=http://localhost:8082` (origin không có `/stream`) và `STREAM_SERVICE_INTERNAL_TOKEN` khớp backend. Compose ở root ghi đè URL thành `http://host.docker.internal:8082` để gọi backend trên host. Đổi `.env` cần khởi động lại Worker; với Compose, chạy lại `docker compose up -d media-worker` để nạp env mới.
 
 Backend nhận `POST /stream/internal/api/thumbnail-results` ngoài Gateway; bật bằng `STREAM_THUMBNAIL_CALLBACK_ENABLED=true` và cấu hình `R2_PUBLIC_BASE_URL` của đúng bucket thumbnail. Worker không cần public R2 base URL.
 

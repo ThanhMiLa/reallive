@@ -1,5 +1,6 @@
 # Requires Docker Compose 2.23.1+ for inline MongoDB initialization.
-# Copy .env.example to .env, set passwords, then run: docker compose up -d --wait
+# Copy .env.example to .env and media-worker/.env.example to media-worker/.env.
+# Set passwords/internal tokens, then run: docker compose up -d --wait
 # Media Server uses the direct Stream Service JWKS/callback; see media-server/README.md.
 name: reallive
 
@@ -33,6 +34,51 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+
+  media-worker:
+    container_name: media-worker
+    image: reallive-media-worker:0.1.0
+    build:
+      context: ./media-worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 60s
+    env_file:
+      - ./media-worker/.env
+    environment:
+      NODE_ENV: production
+      PORT: "8090"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      MEDIA_WORKER_MEDIAMTX_BASE_URL: http://media-server:8888
+      MEDIA_WORKER_TEMP_DIR: /var/lib/media-worker/tmp
+      MEDIA_WORKER_FFMPEG_PATH: ffmpeg
+      MEDIA_WORKER_FFPROBE_PATH: ffprobe
+      MEDIA_WORKER_SHUTDOWN_TIMEOUT_MS: "45000"
+      STREAM_SERVICE_BASE_URL: http://host.docker.internal:8082
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "127.0.0.1:8090:8090"
+    depends_on:
+      redis:
+        condition: service_healthy
+      media-server:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - 'fetch("http://127.0.0.1:8090/health/ready").then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));'
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - default
+      - data
 
   postgres-user:
     container_name: postgres-user
