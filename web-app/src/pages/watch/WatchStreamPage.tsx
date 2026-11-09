@@ -339,6 +339,12 @@ export function WatchStreamPage() {
                 <StreamPlayer
                   key={sessionId}
                   sessionId={sessionId}
+                  sessionClock={{
+                    startedAt: session!.startedAt,
+                    serverTime: session!.serverTime,
+                    endedAt: session!.endedAt,
+                    receivedAt: metadata.dataUpdatedAt,
+                  }}
                   mode="viewer"
                   refreshMetadata={refreshMetadata}
                   onAccessError={handleAccessError}

@@ -3,9 +3,13 @@ import Hls, { FetchLoader } from 'hls.js'
 import { isAxiosError } from 'axios'
 import { streamApi } from '@/api/stream.api'
 import type { StreamMetadata } from '@/types/stream.types'
+import { StreamControls } from './StreamControls'
+import { useSessionElapsed } from './useSessionElapsed'
+import type { SessionClock } from './useSessionElapsed'
 
 interface Props {
   sessionId: string
+  sessionClock: SessionClock
   refreshMetadata: () => Promise<StreamMetadata | null>
   mode?: 'preview' | 'viewer'
   onAccessError?: (error: unknown) => void
@@ -41,12 +45,24 @@ const COPY = {
 
 export function StreamPlayer({
   sessionId,
+  sessionClock,
   refreshMetadata,
   mode = 'preview',
   onAccessError,
 }: Props) {
+  const elapsed = useSessionElapsed(sessionClock)
+  const duration = elapsed == null ? '--:--:--' : [Math.floor(elapsed / 3600), Math.floor(elapsed / 60) % 60, Math.floor(elapsed) % 60].map((part) => String(part).padStart(2, '0')).join(':')
   const copy = COPY[mode]
   const videoRef = useRef<HTMLVideoElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const hlsRef = useRef<Hls | null>(null)
+  const [activeHls, setActiveHls] = useState<Hls | null>(null)
+  const [notice, setNotice] = useState('')
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(''), 4000)
+    return () => clearTimeout(timer)
+  }, [notice])
   const refreshRef = useRef(refreshMetadata)
   const onAccessErrorRef = useRef(onAccessError)
   useLayoutEffect(() => {
@@ -121,8 +137,8 @@ export function StreamPlayer({
         const instance = new Hls({
           loader: FetchLoader,
           lowLatencyMode: false,
-          liveSyncDuration: 7,
-          liveMaxLatencyDuration: 12,
+          liveSyncDuration: 1,
+          liveMaxLatencyDuration: 4,
           manifestLoadPolicy: { default: policy },
           playlistLoadPolicy: { default: policy },
           fragLoadPolicy: { default: policy },
@@ -142,6 +158,8 @@ export function StreamPlayer({
           },
         })
         hls = instance
+        hlsRef.current = instance
+        setActiveHls(instance)
         instance.on(Hls.Events.MANIFEST_PARSED, () => {
           if (!alive) return
           setFailed(false)
@@ -156,12 +174,16 @@ export function StreamPlayer({
           if ((status === 401 || status === 403) && !renewed) {
             renewed = true
             instance.destroy()
+            hlsRef.current = null
+            setActiveHls(null)
             void open(true)
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !decodeRecovered) {
             decodeRecovered = true
             instance.recoverMediaError()
           } else {
             instance.destroy()
+            hlsRef.current = null
+            setActiveHls(null)
             fail(
               data.type === Hls.ErrorTypes.MEDIA_ERROR
                 ? copy.decodeError
@@ -187,17 +209,18 @@ export function StreamPlayer({
       alive = false
       abort.abort()
       hls?.destroy()
+      hlsRef.current = null
+      setActiveHls(null)
       video.removeAttribute('src')
       video.load()
     }
   }, [sessionId, attempt, copy])
 
   return (
-    <div className="relative aspect-video bg-black">
+    <div ref={containerRef} className="relative aspect-video bg-black">
       <video
         ref={videoRef}
         className="h-full w-full"
-        controls
         muted
         playsInline
         aria-label={copy.ariaLabel}
@@ -207,6 +230,8 @@ export function StreamPlayer({
           }
         }}
       />
+      <StreamControls videoRef={videoRef} containerRef={containerRef} hls={activeHls} failed={failed} onNotice={setNotice} duration={duration} />
+      {notice && <div role="status" className="absolute left-4 top-4 rounded bg-black/85 p-3 text-sm text-white">{notice}</div>}
       {message && (
         <div
           role="status"

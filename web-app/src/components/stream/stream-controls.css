@@ -1,0 +1,26 @@
+.stream-controls {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 24px 16px 10px;
+  color: white;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .9));
+  font-family: Inter, sans-serif;
+  font-variant-numeric: tabular-nums;
+  transition: opacity .2s;
+}
+.stream-controls-hidden { opacity: 0; pointer-events: none; }
+.stream-control-row { display: flex; align-items: center; gap: 10px; }
+.stream-control-button { display: grid; place-items: center; width: 34px; height: 34px; flex: none; cursor: pointer; }
+.stream-control-button svg { width: 19px; height: 19px; }
+.stream-control-button:focus-visible, .stream-live:focus-visible, .stream-controls input:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+.stream-volume { width: 72px; accent-color: #ff2b42; }
+.stream-control-spacer { flex: 1; }
+.stream-live { display: flex; align-items: center; gap: 5px; color: #9ca3af; font-size: 12px; font-weight: 700; cursor: pointer; }
+.stream-live span { width: 8px; height: 8px; border-radius: 50%; background: #777; }
+.stream-live-active { color: white; }
+.stream-live-active span { background: #ff2b42; box-shadow: 0 0 8px #ff2b42; }
+.stream-live:disabled { opacity: .45; cursor: default; }
+@media (max-width: 480px) { .stream-controls { padding: 20px 10px 6px; } .stream-control-row { gap: 4px; } .stream-volume { width: 45px; } }
+@media (prefers-reduced-motion: reduce) { .stream-controls { transition: none; } }
+
+.stream-session-duration { flex: none; padding: 4px 8px; border-radius: 4px; background: #dc2626; color: #fff; font-size: 12px; font-weight: 600; line-height: 20px; font-variant-numeric: tabular-nums; white-space: nowrap; }

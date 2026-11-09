@@ -206,7 +206,17 @@ function Dashboard({ userId }: { userId: string }) {
                     </div>
                   }
                 >
-                  <StreamPlayer key={id} sessionId={id} refreshMetadata={refreshMetadata} />
+                  <StreamPlayer
+                    key={id}
+                    sessionId={id}
+                    sessionClock={{
+                      startedAt: session!.startedAt,
+                      serverTime: session!.serverTime,
+                      endedAt: session!.endedAt,
+                      receivedAt: metadata.dataUpdatedAt || current.dataUpdatedAt,
+                    }}
+                    refreshMetadata={refreshMetadata}
+                  />
                 </Suspense>
               ) : (
                 <div
