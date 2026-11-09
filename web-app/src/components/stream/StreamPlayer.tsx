@@ -76,6 +76,13 @@ export function StreamPlayer({
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+    video.volume = 1
+    video.muted = false
+  }, [sessionId])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
     const abort = new AbortController()
     let alive = true
     let hls: Hls | undefined
@@ -221,7 +228,6 @@ export function StreamPlayer({
       <video
         ref={videoRef}
         className="h-full w-full"
-        muted
         playsInline
         aria-label={copy.ariaLabel}
         onPlay={() => {

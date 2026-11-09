@@ -20,7 +20,7 @@ export function StreamControls({ videoRef, containerRef, hls, failed, onNotice, 
   const [time, setTime] = useState(0)
   const [paused, setPaused] = useState(true)
   const [waiting, setWaiting] = useState(false)
-  const [muted, setMuted] = useState(true)
+  const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(1)
   const [fullscreen, setFullscreen] = useState(false)
   const [visible, setVisible] = useState(true)
