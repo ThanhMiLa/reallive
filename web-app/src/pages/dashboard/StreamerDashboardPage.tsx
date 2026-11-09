@@ -119,13 +119,6 @@ function Dashboard({ userId }: { userId: string }) {
   const countdown = session?.reconnectDeadlineAt
     ? formatDuration((Date.parse(session.reconnectDeadlineAt) - serverNow) / 1000).slice(3)
     : null
-  const duration = session?.startedAt
-    ? formatDuration(
-        ((session.endedAt ? Date.parse(session.endedAt) : serverNow) -
-          Date.parse(session.startedAt)) /
-          1000,
-      )
-    : null
   return (
     <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
@@ -177,23 +170,6 @@ function Dashboard({ userId }: { userId: string }) {
         <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <div className="min-w-0 space-y-6 transform-gpu">
             <section className="overflow-hidden rounded-2xl border border-brand-border bg-brand-card">
-              <div className="flex items-center justify-between border-b border-brand-border px-5 py-3.5">
-                <span
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
-                    status === 'LIVE'
-                      ? 'border-red-500/30 bg-red-500/10 text-red-400'
-                      : status === 'RECONNECTING' || status === 'READY'
-                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                        : 'border-brand-border text-gray-400'
-                  }`}
-                >
-                  {status === 'LIVE' && (
-                    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                  )}
-                  {status ? status.charAt(0) + status.slice(1).toLowerCase() : 'No active session'}
-                  {duration && <span className="font-normal text-gray-300">{duration}</span>}
-                </span>
-              </div>
               {authExpired || sessionNotFound ? (
                 <div className="flex aspect-video items-center justify-center p-6 text-center text-gray-400">
                   {authExpired ? 'Log in to resume the preview.' : 'Stream session is unavailable.'}
