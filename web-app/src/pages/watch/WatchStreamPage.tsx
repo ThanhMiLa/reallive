@@ -68,7 +68,7 @@ function ChatPlaceholderPanel() {
   return (
     <aside
       aria-label="Stream chat"
-      className="w-full xl:w-[340px] 2xl:w-[360px] flex-shrink-0 border-t xl:border-t-0 xl:border-l border-[#1f1f26] bg-[#08080a] flex flex-col h-[400px] xl:h-auto"
+      className="w-full xl:w-[340px] 2xl:w-[360px] flex-shrink-0 border-t xl:border-t-0 xl:border-l border-[#1f1f26] bg-[#08080a] flex min-h-0 flex-col h-[400px] xl:h-full"
     >
       {/* Chat Header */}
       <div className="h-12 px-4 border-b border-[#1f1f26] flex items-center justify-between flex-shrink-0">
@@ -79,7 +79,7 @@ function ChatPlaceholderPanel() {
       </div>
 
       {/* Chat Messages Placeholder */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center text-center">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col items-center justify-center text-center">
         <div className="w-10 h-10 rounded-full bg-[#121218] border border-[#1f1f26] flex items-center justify-center mb-3">
           <MessageSquare className="w-4 h-4 text-gray-500" />
         </div>
@@ -137,7 +137,7 @@ export function WatchStreamPage() {
 
   if (isCheckingAuth) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 sm:p-8 flex items-center justify-center select-none">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8 flex items-center justify-center select-none">
         <div role="status" className="flex flex-col items-center gap-3 text-center">
           <RefreshCw className="w-7 h-7 animate-spin text-[#ff2b42]" />
           <p className="text-sm text-gray-400">Checking your session…</p>
@@ -148,7 +148,7 @@ export function WatchStreamPage() {
 
   if (!isValidUuid) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 sm:p-8 flex items-center justify-center select-none">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8 flex items-center justify-center select-none">
         <div
           role="alert"
           className="max-w-md w-full rounded-2xl border border-[#1f1f26] bg-[#08080a] p-8 text-center"
@@ -173,7 +173,7 @@ export function WatchStreamPage() {
 
   if (!isAuthenticated || blockingStatus === 401) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 sm:p-8 flex items-center justify-center select-none">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8 flex items-center justify-center select-none">
         <div className="max-w-md w-full rounded-2xl border border-[#1f1f26] bg-[#08080a] p-8 text-center">
           <Lock className="w-10 h-10 text-[#ff2b42] mx-auto mb-3" />
           <h1 className="text-lg font-bold text-white font-outfit">
@@ -192,7 +192,7 @@ export function WatchStreamPage() {
 
   if (blockingStatus === 403) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 sm:p-8 flex items-center justify-center select-none">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8 flex items-center justify-center select-none">
         <div
           role="alert"
           className="max-w-md w-full rounded-2xl border border-[#1f1f26] bg-[#08080a] p-8 text-center"
@@ -222,7 +222,7 @@ export function WatchStreamPage() {
 
   if (blockingStatus === 404) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 sm:p-8 flex items-center justify-center select-none">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8 flex items-center justify-center select-none">
         <div
           role="alert"
           className="max-w-md w-full rounded-2xl border border-[#1f1f26] bg-[#08080a] p-8 text-center"
@@ -252,12 +252,12 @@ export function WatchStreamPage() {
 
   if (metadata.isPending && !session) {
     return (
-      <main className="flex-1 overflow-y-auto select-none">
-        <div className="flex flex-col xl:flex-row min-h-full">
+      <main className="watch-stream-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain xl:overflow-hidden select-none">
+        <div className="flex min-h-full flex-col xl:h-full xl:min-h-0 xl:flex-row">
           <div
             role="status"
             aria-label="Loading stream"
-            className="flex-1 min-w-0 p-4 sm:p-6 space-y-4"
+            className="watch-stream-scroll min-h-0 min-w-0 flex-1 p-4 sm:p-6 space-y-4 xl:overflow-y-auto xl:overscroll-contain"
           >
             <div className="w-full aspect-video rounded-xl bg-[#101014] border border-[#1f1f26] animate-pulse" />
             <div className="flex items-start gap-4 pt-1">
@@ -277,7 +277,7 @@ export function WatchStreamPage() {
 
   if (metadata.isError && !session) {
     return (
-      <main className="flex-1 overflow-y-auto p-6 sm:p-8 flex items-center justify-center select-none">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8 flex items-center justify-center select-none">
         <div
           role="alert"
           className="max-w-md w-full rounded-2xl border border-[#1f1f26] bg-[#08080a] p-8 text-center"
@@ -305,10 +305,10 @@ export function WatchStreamPage() {
   const showDetailsSkeleton = details.isPending && !channel && !details.isError
 
   return (
-    <main className="flex-1 overflow-y-auto select-none bg-[#000000]">
-      <div className="flex flex-col xl:flex-row min-h-full">
+    <main className="watch-stream-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain xl:overflow-hidden select-none bg-[#000000]">
+      <div className="flex min-h-full flex-col xl:h-full xl:min-h-0 xl:flex-row">
         {/* Main Video + Stream Info Column */}
-        <div className="flex-1 min-w-0 p-4 sm:p-6 space-y-4">
+        <div className="watch-stream-scroll min-h-0 min-w-0 flex-1 p-4 sm:p-6 space-y-4 xl:overflow-y-auto xl:overscroll-contain">
           {/* Non-fatal status polling error alert (keeps video playing) */}
           {statusRefreshError && (
             <div

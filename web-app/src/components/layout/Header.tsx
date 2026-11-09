@@ -60,7 +60,7 @@ export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean 
   }
 
   return (
-    <header className="h-[62px] bg-[#08080a] border-b border-[#1f1f26] flex items-center justify-between px-4 sticky top-0 z-40 select-none">
+    <header className="h-[62px] shrink-0 bg-[#08080a] border-b border-[#1f1f26] flex items-center justify-between px-4 sticky top-0 z-40 select-none">
       {/* Left: 3-bar Hamburger Menu & Brand Name (Text Only) */}
       <div className="flex items-center gap-3">
         {/* Toggle the sidebar */}

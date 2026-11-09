@@ -32,13 +32,13 @@ import { queryClient } from '@/lib/query-client'
 
 function SiteLayout() {
   return (
-    <>
+    <div className="flex h-dvh flex-none flex-col overflow-hidden">
       <Header />
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <Sidebar />
         <Outlet />
       </div>
-    </>
+    </div>
   )
 }
 

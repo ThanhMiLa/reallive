@@ -63,11 +63,11 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`bg-[#08080a] border-r border-[#1f1f26] flex flex-col justify-between select-none flex-shrink-0 z-30 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] ${
+      className={`bg-[#08080a] border-r border-[#1f1f26] flex min-h-0 flex-col justify-between select-none flex-shrink-0 z-30 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] ${
         isSidebarCollapsed ? 'w-16 hidden sm:flex' : 'w-64 hidden lg:flex'
       }`}
     >
-      <div className="overflow-y-auto overflow-x-hidden px-2.5 py-3 space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2.5 py-3 space-y-6">
         {/* Primary Navigation: Home, Browse, Following */}
         <nav className="space-y-1">
           {/* Active Tab: Home */}
@@ -285,25 +285,8 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Left Sidebar Footer Status */}
-      <div className="px-2.5 py-3 border-t border-[#1f1f26] bg-[#050507] flex items-center justify-between overflow-hidden whitespace-nowrap">
-        <div className="flex items-center px-3.5 min-w-0">
-          <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">
-            <span
-              title="Live Network Online"
-              className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"
-            />
-          </span>
-          <span
-            className={`text-xs font-medium text-gray-300 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              isSidebarCollapsed
-                ? 'ml-0 max-w-0 -translate-x-1 opacity-0'
-                : 'ml-2.5 max-w-[150px] translate-x-0 opacity-100'
-            }`}
-          >
-            Live Network Online
-          </span>
-        </div>
+      {/* Sidebar settings */}
+      <div className="shrink-0 px-2.5 py-3 border-t border-[#1f1f26] bg-[#050507] flex items-center justify-end overflow-hidden whitespace-nowrap">
         <div
           className={`overflow-hidden transition-[max-width,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isSidebarCollapsed

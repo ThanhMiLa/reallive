@@ -63,3 +63,11 @@ body {
 .neon-border-cyan {
   border-color: rgba(255, 43, 66, 0.4);
 }
+
+.watch-stream-scroll {
+  scrollbar-width: none;
+}
+
+.watch-stream-scroll::-webkit-scrollbar {
+  display: none;
+}
