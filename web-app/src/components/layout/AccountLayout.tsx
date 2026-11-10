@@ -1,69 +1,115 @@
-import { ArrowLeft, Gamepad2, Radio, UserRound } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, ChevronLeft, Gamepad2, Radio, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
+import realLiveLogo from '@/assets/RealLive-logo.svg'
+import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
+
+const navigationItems = [
+  { to: '/profile', label: 'Profile', icon: UserRound, end: true },
+  { to: '/category-preferences', label: 'Category Interests', icon: Gamepad2 },
+  { to: '/become-streamer', label: 'Become a streamer', icon: Radio },
+]
 
 export function AccountLayout() {
   const { user, isAuthenticated } = useAuthStore()
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('reallive_account_sidebar_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleCollapsed = () => {
+    const next = !isCollapsed
+    setIsCollapsed(next)
+    try {
+      localStorage.setItem('reallive_account_sidebar_collapsed', String(next))
+    } catch {
+      // Keep the sidebar usable when browser storage is unavailable.
+    }
+  }
+
+  const labelClassName = `overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+    isCollapsed
+      ? 'ml-3 max-w-[170px] translate-x-0 opacity-100 md:ml-0 md:max-w-0 md:-translate-x-1 md:opacity-0'
+      : 'ml-3 max-w-[170px] translate-x-0 opacity-100'
+  }`
 
   return (
     <div className="flex h-dvh flex-none flex-col overflow-hidden md:flex-row">
-      <aside className="flex shrink-0 flex-col border-b border-[#1f1f26] bg-[#08080a] md:h-full md:w-64 md:border-r md:border-b-0">
-        <div className="px-5 pt-6 pb-5 md:px-6 md:pt-8">
+      <aside
+        className={`relative flex shrink-0 flex-col border-b border-[#1f1f26] bg-[#08080a] md:h-full md:border-r md:border-b-0 md:transition-[width] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:will-change-[width] motion-reduce:transition-none ${
+          isCollapsed ? 'md:w-20' : 'md:w-64'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isCollapsed}
+          aria-controls="account-navigation"
+          className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-30 h-6 w-6 items-center justify-center rounded-full border border-[#2a2a35] bg-[#121216] text-gray-400 hover:text-white hover:bg-[#1a1a24] hover:border-[#3a3a48] shadow-md transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#ff2b42] cursor-pointer"
+        >
+          <ChevronLeft className={`h-3.5 w-3.5 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${isCollapsed ? 'rotate-180' : 'rotate-0'}`} />
+        </button>
+
+        <div className={`pt-6 pb-5 md:pt-8 transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${isCollapsed ? 'px-5' : 'px-5 md:px-6'}`}>
           <Link
             to="/"
             aria-label="RealLive - Home"
-            className="inline-block rounded text-3xl font-black tracking-tight text-white font-outfit focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+            className={`relative inline-flex h-10 w-[160px] items-center overflow-hidden rounded transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${isCollapsed ? 'md:w-10' : ''}`}
           >
-            Real<span className="text-[#ff2b42]">Live</span>
+            <img
+              src={realLiveLogo}
+              alt=""
+              aria-hidden="true"
+              width={805.14}
+              height={157.8}
+              className={`block h-auto w-[160px] max-w-none shrink-0 origin-left transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${isCollapsed ? 'md:scale-95 md:opacity-0' : 'scale-100 opacity-100'}`}
+            />
+            <img
+              src={realLiveCompactLogo}
+              alt=""
+              aria-hidden="true"
+              width={512}
+              height={512}
+              className={`absolute left-0 top-0 block h-auto w-10 max-w-none shrink-0 opacity-0 transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${isCollapsed ? 'md:opacity-100' : ''}`}
+            />
           </Link>
         </div>
 
-        <nav aria-label="Account navigation" className="space-y-1 px-3 pb-4 md:flex-1">
-          <NavLink
-            to="/profile"
-            end
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
-                isActive
-                  ? 'border-[#ff2b42] bg-[#121216] font-semibold text-[#ff2b42]'
-                  : 'border-transparent text-gray-400 hover:bg-[#121216] hover:text-white'
-              }`
-            }
-          >
-            <UserRound className="h-4 w-4 shrink-0" />
-            Profile
-          </NavLink>
-          <NavLink
-            to="/category-preferences"
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
-                isActive
-                  ? 'border-[#ff2b42] bg-[#121216] font-semibold text-[#ff2b42]'
-                  : 'border-transparent text-gray-400 hover:bg-[#121216] hover:text-white'
-              }`
-            }
-          >
-            <Gamepad2 className="h-4 w-4 shrink-0" />
-            Category Interests
-          </NavLink>
-          <NavLink
-            to="/become-streamer"
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
-                isActive
-                  ? 'border-[#ff2b42] bg-[#121216] font-semibold text-[#ff2b42]'
-                  : 'border-transparent text-gray-400 hover:bg-[#121216] hover:text-white'
-              }`
-            }
-          >
-            <Radio className="h-4 w-4 shrink-0" />
-            Become a streamer
-          </NavLink>
+        <nav id="account-navigation" aria-label="Account navigation" className="space-y-1.5 px-3 pb-4 md:flex-1">
+          {navigationItems.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              aria-label={label}
+              title={isCollapsed ? label : undefined}
+              className={({ isActive }) =>
+                `relative flex h-11 items-center rounded-lg px-3 text-sm overflow-hidden whitespace-nowrap focus-visible:outline-2 focus-visible:outline-[#ff2b42] transition-colors duration-200 ${
+                  isActive
+                    ? 'bg-[#121216] font-semibold text-[#ff2b42]'
+                    : 'text-gray-400 hover:bg-[#121216] hover:text-white'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#ff2b42] transition-opacity duration-200 ${isActive ? 'opacity-100' : 'opacity-0'}`} />
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span className={labelClassName}>{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
         </nav>
 
-        <div className="space-y-4 border-t border-[#1f1f26] p-5 md:p-6">
+        <div className="space-y-3 border-t border-[#1f1f26] px-4 py-4 md:py-5">
           {isAuthenticated && user && (
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center overflow-hidden" title={isCollapsed ? user.displayName || user.email : undefined}>
               <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#1f1f26] bg-[#18181f]">
                 {user.avatarUrl ? (
                   <img src={user.avatarUrl} alt="Profile picture" className="h-full w-full object-cover" />
@@ -71,7 +117,7 @@ export function AccountLayout() {
                   <UserRound className="h-4 w-4 text-gray-400" />
                 )}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className={`min-w-0 flex-1 ${labelClassName}`}>
                 <p className="truncate text-sm font-semibold text-white">{user.displayName}</p>
                 <p className="truncate text-xs text-gray-400">{user.email}</p>
               </div>
@@ -79,10 +125,12 @@ export function AccountLayout() {
           )}
           <Link
             to="/"
-            className="flex items-center gap-2 rounded text-sm text-gray-400 hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+            aria-label="Back to home"
+            title={isCollapsed ? 'Back to home' : undefined}
+            className="flex h-9 items-center rounded px-2 text-sm text-gray-400 hover:text-white overflow-hidden whitespace-nowrap transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Back to home
+            <ArrowLeft className="h-5 w-5 shrink-0" />
+            <span className={labelClassName}>Back to home</span>
           </Link>
         </div>
       </aside>
