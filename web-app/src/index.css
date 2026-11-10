@@ -17,7 +17,10 @@
   --color-brand-card: #101014;
   --color-brand-hover: #18181f;
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-outfit: 'Outfit', 'Inter', sans-serif;
+  /* Roobert requires a licensed webfont; use a local installation or fall back to Inter. */
+  --font-roobert: 'Roobert', 'Inter', sans-serif;
+  /* Preserve existing heading utilities while switching their typeface. */
+  --font-outfit: var(--font-roobert);
 }
 
 :root {

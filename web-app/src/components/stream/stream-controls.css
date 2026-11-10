@@ -4,7 +4,7 @@
   padding: 24px 16px 10px;
   color: white;
   background: linear-gradient(transparent, rgba(0, 0, 0, .9));
-  font-family: Inter, sans-serif;
+  font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   transition: opacity .2s;
 }
