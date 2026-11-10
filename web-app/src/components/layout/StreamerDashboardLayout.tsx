@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { ArrowLeft, ChevronLeft, LayoutDashboard, Tv, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
+import realLiveLogo from '@/assets/RealLive-logo.svg'
+import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
 
 export function StreamerDashboardLayout() {
   const { user, isAuthenticated } = useAuthStore()
@@ -29,7 +31,7 @@ export function StreamerDashboardLayout() {
     <div className="flex h-dvh flex-none flex-col overflow-hidden md:flex-row bg-[#000000] text-gray-100">
       <aside
         className={`relative flex shrink-0 flex-col border-b border-[#1f1f26] bg-[#08080a] md:h-full md:border-r md:border-b-0 md:transition-[width] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] md:will-change-[width] ${
-          isCollapsed ? 'md:w-[68px]' : 'md:w-64'
+          isCollapsed ? 'md:w-20' : 'md:w-64'
         }`}
       >
         <button
@@ -53,24 +55,30 @@ export function StreamerDashboardLayout() {
           <Link
             to="/"
             aria-label="RealLive - Home"
-            className="inline-flex items-baseline rounded text-[26px] leading-none font-black tracking-tight text-white font-outfit focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+            className={`relative inline-flex h-10 w-[160px] items-center overflow-hidden rounded transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
+              isCollapsed ? 'md:w-10' : ''
+            }`}
           >
-            <span>R</span>
-            <span
-              className={`inline-block overflow-hidden transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                isCollapsed ? 'max-w-0 opacity-0' : 'max-w-[3rem] opacity-100'
+            <img
+              src={realLiveLogo}
+              alt=""
+              aria-hidden="true"
+              width={805.14}
+              height={157.8}
+              className={`block h-auto w-[160px] max-w-none shrink-0 origin-left transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                isCollapsed ? 'md:scale-95 md:opacity-0' : 'scale-100 opacity-100'
               }`}
-            >
-              eal
-            </span>
-            <span className="text-[#ff2b42]">L</span>
-            <span
-              className={`inline-block overflow-hidden text-[#ff2b42] transition-[max-width,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                isCollapsed ? 'max-w-0 opacity-0' : 'max-w-[3rem] opacity-100'
+            />
+            <img
+              src={realLiveCompactLogo}
+              alt=""
+              aria-hidden="true"
+              width={512}
+              height={512}
+              className={`absolute left-0 top-0 block h-auto w-10 max-w-none shrink-0 opacity-0 transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                isCollapsed ? 'md:opacity-100' : ''
               }`}
-            >
-              ive
-            </span>
+            />
           </Link>
         </div>
 

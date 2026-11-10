@@ -5,6 +5,7 @@ import { LoginForm } from './LoginForm'
 import { RegisterForm } from './RegisterForm'
 import { GoogleIcon } from '@/components/ui/GoogleIcon'
 import { useAuthStore } from '@/stores/auth.store'
+import realLiveLogo from '@/assets/RealLive-logo.svg'
 
 export function AuthModal() {
   const { isAuthModalOpen, authModalTab, closeAuthModal, setAuthModalTab } =
@@ -68,9 +69,8 @@ export function AuthModal() {
           <div className="flex items-center gap-2 group mb-2">
             <span
               id="auth-modal-title"
-              className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#ff2b42] bg-clip-text text-transparent font-outfit"
             >
-              Real<span className="text-[#ff2b42]">Live</span>
+              <img src={realLiveLogo} alt="RealLive" width={805.14} height={157.8} className="block h-auto w-[160px]" />
             </span>
           </div>
           <p className="text-xs text-gray-400">

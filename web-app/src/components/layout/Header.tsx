@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
 import { hasStreamerRole } from '@/lib/utils'
+import realLiveLogo from '@/assets/RealLive-logo.svg'
 
 export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean } = {}) {
   const { user, isAuthenticated, isLoading, openAuthModal, logout } = useAuthStore()
@@ -61,7 +62,7 @@ export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean 
 
   return (
     <header className="h-[62px] shrink-0 bg-[#08080a] border-b border-[#1f1f26] flex items-center justify-between px-4 sticky top-0 z-40 select-none">
-      {/* Left: 3-bar Hamburger Menu & Brand Name (Text Only) */}
+      {/* Left: navigation toggle and brand logo */}
       <div className="flex items-center gap-3">
         {/* Toggle the sidebar */}
         <button
@@ -74,10 +75,8 @@ export function Header({ defaultMenuOpen = false }: { defaultMenuOpen?: boolean 
         </button>
 
         {/* RealLive wordmark */}
-        <a href="/" className="flex items-center group">
-          <span className="text-[34px] sm:text-[43px] font-black tracking-tight leading-none bg-gradient-to-r from-white via-slate-100 to-[#ff2b42] bg-clip-text text-transparent font-outfit">
-            Real<span className="text-[#ff2b42]">Live</span>
-          </span>
+        <a href="/" aria-label="RealLive - Home" className="flex shrink-0 items-center rounded focus-visible:outline-2 focus-visible:outline-[#ff2b42]">
+          <img src={realLiveLogo} alt="RealLive" width={805.14} height={157.8} className="block h-auto w-[140px] sm:w-[180px]" />
         </a>
       </div>
 

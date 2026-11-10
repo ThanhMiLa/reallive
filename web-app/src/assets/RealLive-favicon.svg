@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="RealLive RL favicon">
+  <title>RealLive</title>
+  <rect width="512" height="512" rx="88" fill="#101018"/>
+  <!-- Large, simplified monogram with an open counter for 16–32 px tabs. -->
+  <g transform="translate(-16 -130) scale(1 1.4)">
+    <path fill="#FF2849" d="M349 132H411C420 132 424 137 421 147L376 347H477C487 347 492 355 489 365L476 405C474 413 467 417 457 417H307C295 417 291 411 294 399L337 145C339 137 341 132 349 132Z"/>
+    <path fill="#F9FAFC" fill-rule="evenodd" d="M113 132H243C319 132 349 173 337 234C327 283 293 310 256 320L310 399C315 407 311 417 301 417H253C245 417 241 414 237 408L185 327H153L138 405C137 413 131 417 124 417H67C58 417 53 411 56 402L99 145C101 137 105 132 113 132ZM168 187L155 264H217C254 264 278 250 283 224C289 198 273 187 237 187H168Z"/>
+  </g>
+</svg>
