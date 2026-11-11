@@ -77,7 +77,7 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
             || Files.exists(Path.of("media-server/mediamtx.yml"))
             ? Path.of(".").toAbsolutePath() : Path.of("..").toAbsolutePath();
     @Container
-    private static final GenericContainer<?> MEDIA = new GenericContainer<>(DockerImageName.parse("reallive-media-server:1.21.2"))
+    private static final GenericContainer<?> MEDIA = new GenericContainer<>(DockerImageName.parse(System.getProperty("stream.media.test-image", "reallive-media-server:1.21.2")))
             .withCopyToContainer(Transferable.of(mediaConfiguration()), "/mediamtx.yml")
             .withExtraHost("host.docker.internal", "host-gateway")
             .withEnv("MTX_AUTHJWTJWKS", "http://host.docker.internal:" + STREAM_PORT + "/stream/api/media/jwks")

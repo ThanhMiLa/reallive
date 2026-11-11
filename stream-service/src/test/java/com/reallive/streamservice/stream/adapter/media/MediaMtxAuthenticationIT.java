@@ -79,7 +79,7 @@ class MediaMtxAuthenticationIT {
                 : repository.resolve("media-server/mediamtx.yml");
         String config = Files.readString(configPath)
                 .replaceAll("(?m)^\\s*runOn(?:Online|Offline):[^\\n]*\\n", "");
-        try (var media = new GenericContainer<>(DockerImageName.parse("reallive-media-server:1.21.2"))
+        try (var media = new GenericContainer<>(DockerImageName.parse(System.getProperty("stream.media.test-image", "reallive-media-server:1.21.2")))
                 .withCopyToContainer(Transferable.of(config), "/mediamtx.yml")
                 .withExtraHost("host.docker.internal", "host-gateway")
                 .withEnv("MTX_AUTHJWTJWKS", "http://host.docker.internal:" + streamPort + "/stream/api/media/jwks")
