@@ -9,6 +9,7 @@ import com.reallive.streamservice.stream.mapper.StreamSessionMapper;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionDomainService;
+import com.reallive.streamservice.stream.service.StreamViewerPresenceService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -34,6 +35,7 @@ public class StreamSessionClosureServiceImpl implements StreamSessionClosureServ
     StreamSessionMapper mapper;
     PlatformTransactionManager transactionManager;
     Clock streamClock;
+    StreamViewerPresenceService viewerPresence;
 
     @Override
     public StreamSessionResponse end(UUID sessionId, UUID ownerUserId, String reason) {
@@ -46,6 +48,7 @@ public class StreamSessionClosureServiceImpl implements StreamSessionClosureServ
             if (session.getStatus() == StreamSessionStatus.ENDED) {
                 return mapper.toOwnerResponse(session, streamClock.instant());
             }
+            if (viewerPresence != null) viewerPresence.closeAfterCommit(sessionId);
             closeMedia(sessionId);
             return mapper.toOwnerResponse(domain.endSession(sessionId, ownerUserId, reason), streamClock.instant());
         });
@@ -66,6 +69,7 @@ public class StreamSessionClosureServiceImpl implements StreamSessionClosureServ
             if (session.getReconnectDeadlineAt() == null || now.isBefore(session.getReconnectDeadlineAt())) {
                 return false;
             }
+            if (viewerPresence != null) viewerPresence.closeAfterCommit(sessionId);
             closeMedia(sessionId);
             return domain.expireReconnectIfDue(sessionId).isPresent();
         }));
