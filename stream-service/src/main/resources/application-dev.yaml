@@ -120,6 +120,6 @@ stream:
     worker-read-timeout: ${STREAM_THUMBNAIL_WORKER_READ_TIMEOUT:5s}
 
   ccu:
-    enabled: ${STREAM_CCU_ENABLED:false}
+    enabled: ${STREAM_CCU_ENABLED:true}
     callback-token: ${STREAM_CCU_CALLBACK_TOKEN:}
     control-token-directory: ${STREAM_CCU_CONTROL_TOKEN_DIRECTORY:}
