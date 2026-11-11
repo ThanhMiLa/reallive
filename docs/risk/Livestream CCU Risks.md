@@ -1,35 +1,9 @@
-## 1. CCU không phản ánh chính xác người thực sự đang xem video
-
-CCU hiện đếm số tài khoản còn reader HLS trong từng stream session. Reader tồn tại không chứng minh người dùng đang nhìn hoặc phát video; player có thể tiếp tục request khi video pause hoặc trang nằm dưới tab khác.
-
-Dedupe theo `userId` giúp một tài khoản mở nhiều tab hoặc thiết bị chỉ được tính một lần, nhưng chưa ngăn việc sử dụng nhiều tài khoản để tạo view ảo.
-
-## 2. CCU giảm về 0 trong RECONNECTING dù người xem vẫn ở trang chờ
-
-Frontend hiện dừng player khi stream session chuyển sang `RECONNECTING`. Các reader không còn request HLS sẽ hết timeout, khiến CCU có thể giảm về 0 trước khi hết thời gian reconnect mặc định 60 giây, dù người dùng vẫn mở trang chờ.
-
-Cần chốt định nghĩa nghiệp vụ giữa người đang nhận stream và người vẫn ở trang chờ. Presence của trang chưa được theo dõi riêng trong cơ chế hiện tại.
-
-## 3. Độ trễ cập nhật CCU khi người xem rời đi hoặc mất mạng
-
-MediaMTX v1.21.2 thường cần khoảng 30–40 giây kể từ request HLS cuối để đóng reader vì inactivity và phát `runOnUnread`. Sau đó còn độ trễ callback và polling metadata của UI, hiện khoảng 3 giây khi tab hiển thị.
-
-Trong thời gian chờ, CCU vẫn tính tài khoản còn reader. F5 chỉ đọc lại dữ liệu Redis; scheduler đối soát cũng chưa thể loại reader nếu MediaMTX vẫn ghi nhận reader đó tồn tại.
-
-## 4. Đối soát định kỳ có thể làm UI tạm mất số đếm
-
-`CcuReconciliationScheduler` đặt presence thành `RECOVERING` ở mỗi lượt đối soát. Trong trạng thái này, API trả `currentViewerCount = null` và UI hiển thị `—`, nên số đếm có thể chớp sang trạng thái không khả dụng ngay cả khi đối soát định kỳ bình thường.
-
-Nếu đối soát thất bại sau khi chuyển trạng thái, presence tiếp tục không khả dụng cho đến khi một lượt phục hồi hoàn tất thành công.
-
-## 5. Tải polling và đối soát tăng theo quy mô
-
-Polling metadata mỗi 3 giây khiến 3.000 client đang polling tạo khoảng 1.000 request metadata mỗi giây. Mỗi request còn có chi phí đọc metadata và CCU ở backend.
-
-SQL của scheduler đã được batch, nhưng số thao tác Redis và request Control API vẫn tăng theo số reader. Các reader không xuất hiện trong danh sách MediaMTX còn cần được xác nhận bằng GET trả HTTP 404 trước khi xóa. Budget đối soát hiện là 20 giây mỗi lượt; khi khối lượng lớn, lượt đối soát có thể không hoàn tất và kéo dài trạng thái `RECOVERING`.
-
-## 6. Sai lệch presence nếu callback hoặc quá trình phục hồi gặp sự cố
-
-Callback có thể bị mất, gửi trùng hoặc đến sai thứ tự; Redis có thể mất dữ liệu và MediaMTX có thể restart. Nếu không phục hồi thành công, CCU có thể giữ viewer đã rời hoặc thiếu viewer đang hoạt động.
-
-Hiện đã có Lua atomic, xử lý sự kiện trùng/đảo thứ tự và scheduler đối soát để giảm các rủi ro này. Cần duy trì kiểm thử phục hồi và cảnh báo khi callback hoặc đối soát thất bại liên tục, dựa trên metrics lỗi và thời điểm đối soát thành công gần nhất. API và UI phải phân biệt `0` là không có viewer với `null` là chưa có số đếm đáng tin cậy.
+# Rủi ro về tính toán (CCU) trong Livestream
+| Rủi ro | Mô tả |
+| --- | --- |
+| 1. CCU không phản ánh chính xác người thực sự đang xem video | CCU hiện đếm số tài khoản còn reader HLS trong từng stream session. Reader tồn tại không chứng minh người dùng đang nhìn hoặc phát video; player có thể tiếp tục request khi video pause hoặc trang nằm dưới tab khác.<br><br>Dedupe theo `userId` giúp một tài khoản mở nhiều tab hoặc thiết bị chỉ được tính một lần, nhưng chưa ngăn việc sử dụng nhiều tài khoản để tạo view ảo. |
+| 2. CCU giảm về 0 trong RECONNECTING dù người xem vẫn ở trang chờ | Frontend hiện dừng player khi stream session chuyển sang `RECONNECTING`. Các reader không còn request HLS sẽ hết timeout, khiến CCU có thể giảm về 0 trước khi hết thời gian reconnect mặc định 60 giây, dù người dùng vẫn mở trang chờ.<br><br>Cần chốt định nghĩa nghiệp vụ giữa người đang nhận stream và người vẫn ở trang chờ. Presence của trang chưa được theo dõi riêng trong cơ chế hiện tại. |
+| 3. Độ trễ cập nhật CCU khi người xem rời đi hoặc mất mạng | MediaMTX v1.21.2 thường cần khoảng 30–40 giây kể từ request HLS cuối để đóng reader vì inactivity và phát `runOnUnread`. Sau đó còn độ trễ callback và polling metadata của UI, hiện khoảng 3 giây khi tab hiển thị.<br><br>Trong thời gian chờ, CCU vẫn tính tài khoản còn reader. F5 chỉ đọc lại dữ liệu Redis; scheduler đối soát cũng chưa thể loại reader nếu MediaMTX vẫn ghi nhận reader đó tồn tại. |
+| 4. Đối soát định kỳ có thể làm UI tạm mất số đếm | `CcuReconciliationScheduler` đặt presence thành `RECOVERING` ở mỗi lượt đối soát. Trong trạng thái này, API trả `currentViewerCount = null` và UI hiển thị `—`, nên số đếm có thể chớp sang trạng thái không khả dụng ngay cả khi đối soát định kỳ bình thường.<br><br>Nếu đối soát thất bại sau khi chuyển trạng thái, presence tiếp tục không khả dụng cho đến khi một lượt phục hồi hoàn tất thành công. |
+| 5. Tải polling và đối soát tăng theo quy mô | Polling metadata mỗi 3 giây khiến 3.000 client đang polling tạo khoảng 1.000 request metadata mỗi giây. Mỗi request còn có chi phí đọc metadata và CCU ở backend.<br><br>SQL của scheduler đã được batch, nhưng số thao tác Redis và request Control API vẫn tăng theo số reader. Các reader không xuất hiện trong danh sách MediaMTX còn cần được xác nhận bằng GET trả HTTP 404 trước khi xóa. Budget đối soát hiện là 20 giây mỗi lượt; khi khối lượng lớn, lượt đối soát có thể không hoàn tất và kéo dài trạng thái `RECOVERING`. |
+| 6. Sai lệch presence nếu callback hoặc quá trình phục hồi gặp sự cố | Callback có thể bị mất, gửi trùng hoặc đến sai thứ tự; Redis có thể mất dữ liệu và MediaMTX có thể restart. Nếu không phục hồi thành công, CCU có thể giữ viewer đã rời hoặc thiếu viewer đang hoạt động.<br><br>Hiện đã có Lua atomic, xử lý sự kiện trùng/đảo thứ tự và scheduler đối soát để giảm các rủi ro này. Cần duy trì kiểm thử phục hồi và cảnh báo khi callback hoặc đối soát thất bại liên tục, dựa trên metrics lỗi và thời điểm đối soát thành công gần nhất. API và UI phải phân biệt `0` là không có viewer với `null` là chưa có số đếm đáng tin cậy. |
