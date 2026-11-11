@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { useAuthStore } from '@/stores/auth.store'
+import type { StreamMetadata, StreamSession } from '@/types/stream.types'
 
 type HlsStub = {
   source: string
@@ -56,7 +57,7 @@ vi.mock('hls.js', () => {
 
 const categoryId = '00000000-0000-4000-8000-000000000001'
 const sessionId = '462c912c-ee66-4477-9852-bed13d377297'
-const ready = {
+const ready: StreamSession = {
   id: sessionId,
   channelId: 'channel',
   title: 'Morning',
@@ -143,6 +144,57 @@ afterEach(() => {
 })
 
 describe('Stream Manager', () => {
+  it('seeds owner metadata with an unknown count then updates viewers without restarting the preview', async () => {
+    const live = { ...ready, status: 'LIVE', startedAt: '2026-10-30T00:00:00Z' }
+    const pendingMetadata = deferred<StreamMetadata>()
+    mocks.current.mockResolvedValue(live)
+    mocks.metadata.mockReturnValue(pendingMetadata.promise)
+    mount()
+
+    const viewers = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(within(viewers).getByText('—')).toBeTruthy()
+    expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toHaveProperty('currentViewerCount', null)
+    expect(client.getQueryData(['stream', 'current', 'owner'])).not.toHaveProperty('currentViewerCount')
+    await waitFor(() => expect(mocks.access).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mocks.hls).toHaveLength(1))
+
+    await act(async () => {
+      pendingMetadata.resolve({ ...live, visibility: 'PUBLIC', status: 'LIVE', currentViewerCount: 7 })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(within(viewers).getByText('7')).toBeTruthy())
+    expect(mocks.access).toHaveBeenCalledTimes(1)
+    expect(mocks.hls).toHaveLength(1)
+    expect(mocks.hls[0].destroy).not.toHaveBeenCalled()
+
+    mocks.metadata.mockResolvedValue({ ...live, currentViewerCount: 8 })
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId], exact: true })
+    })
+    await waitFor(() => expect(within(viewers).getByText('8')).toBeTruthy())
+    expect(mocks.access).toHaveBeenCalledTimes(1)
+    expect(mocks.hls[0].destroy).not.toHaveBeenCalled()
+
+    mocks.metadata.mockRejectedValue(new Error('Metadata unavailable'))
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId], exact: true })
+    })
+    await waitFor(() => expect(within(viewers).getByText('—')).toBeTruthy())
+    expect(mocks.hls[0].destroy).not.toHaveBeenCalled()
+  })
+
+  it.each(['READY', 'ENDED'])('shows zero viewers for an owner session in %s', async (status) => {
+    const inactive = { ...ready, status, endedAt: status === 'ENDED' ? '2026-10-30T01:00:00Z' : null }
+    mocks.current.mockResolvedValue(inactive)
+    mocks.metadata.mockResolvedValue({ ...inactive, currentViewerCount: null })
+    mount()
+
+    const viewers = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(within(viewers).getByText('0')).toBeTruthy()
+    expect(mocks.access).not.toHaveBeenCalled()
+  })
+
   it('waits for login and does not query private APIs for guests', () => {
     useAuthStore.setState({ user: null, isAuthenticated: false })
     mount()
@@ -485,11 +537,15 @@ describe('Stream Manager', () => {
     mocks.metadata.mockResolvedValueOnce(reconnecting).mockRejectedValue(new Error('GET offline'))
     mount()
     fireEvent.click(await screen.findByRole('button', { name: 'End stream' }))
+    await waitFor(() => {
+      expect(mocks.metadata).toHaveBeenCalledTimes(1)
+      expect(client.getQueryState(['stream', 'metadata', 'owner', sessionId])?.fetchStatus).toBe('idle')
+    })
     await act(async () => {
       await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId] })
     })
     expect(screen.getByRole('dialog')).toBeTruthy()
-    expect(screen.getByRole('alert')).toBeTruthy()
+    expect(await screen.findByRole('alert')).toBeTruthy()
     expect(mocks.end).not.toHaveBeenCalled()
   })
 
@@ -506,18 +562,19 @@ describe('Stream Manager', () => {
         within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel session' }),
       )
       await waitFor(() => expect(mocks.end).toHaveBeenCalledTimes(1))
-      const ended = { ...ready, status: 'ENDED', endedAt: '2026-10-30T01:00:00Z' }
-      act(() => client.setQueryData(['stream', 'metadata', 'owner', sessionId], ended))
+      const ended: StreamSession = { ...ready, status: 'ENDED', endedAt: '2026-10-30T01:00:00Z' }
+      const endedMetadata = { ...ended, currentViewerCount: 0 }
+      act(() => client.setQueryData(['stream', 'metadata', 'owner', sessionId], endedMetadata))
       await screen.findByText('This stream has ended')
       expect(screen.queryByRole('dialog')).toBeNull()
-      mocks.metadata.mockResolvedValue(ended)
+      mocks.metadata.mockResolvedValue(endedMetadata)
       await act(async () => {
         if (outcome === 'succeeds') end.resolve(ended)
         else end.reject(new Error('Response lost'))
         await end.promise.catch(() => undefined)
       })
       expect(screen.queryByRole('dialog')).toBeNull()
-      expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(ended)
+      expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(endedMetadata)
     },
   )
 

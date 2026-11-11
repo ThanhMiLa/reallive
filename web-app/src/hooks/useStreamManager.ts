@@ -11,10 +11,18 @@ import type {
   PublishCredentials,
   StreamDetails,
   StreamMetadata,
+  StreamSession,
 } from '@/types/stream.types'
 
 const currentKey = (userId: string) => ['stream', 'current', userId] as const
 const metadataKey = (userId: string, id: string) => ['stream', 'metadata', userId, id] as const
+
+function ownerMetadata(session: StreamSession): StreamMetadata {
+  return {
+    ...session,
+    currentViewerCount: session.status === 'READY' || session.status === 'ENDED' ? 0 : null,
+  }
+}
 
 export function streamErrorMessage(error: unknown) {
   if (isAxiosError<ApiResponse>(error)) {
@@ -71,9 +79,10 @@ export function useStreamManager(userId: string) {
         isAxiosError(query.state.error) &&
         [401, 404].includes(query.state.error.response?.status || 0)
       ),
-    initialData: current.data || undefined,
+    initialData: current.data ? ownerMetadata(current.data) : undefined,
   })
-  const session: StreamMetadata | null = metadata.data || current.data || null
+  const session: StreamMetadata | null =
+    metadata.data || (current.data ? ownerMetadata(current.data) : null)
   const sessionRef = useRef(session)
   useLayoutEffect(() => {
     sessionRef.current = session
@@ -167,7 +176,7 @@ export function useStreamManager(userId: string) {
         createAttempt.current = null
         setCredentials(result.publishCredentials)
         queryClient.setQueryData(currentKey(userId), result.session)
-        queryClient.setQueryData(metadataKey(userId, result.session.id), result.session)
+        queryClient.setQueryData(metadataKey(userId, result.session.id), ownerMetadata(result.session))
         toast.success('Stream session created')
       } catch (error) {
         if (isAxiosError(error) && error.response?.status === 409) {
@@ -195,7 +204,7 @@ export function useStreamManager(userId: string) {
         !signal.aborted &&
         sessionRef.current?.id === session.id &&
         sessionRef.current.status !== 'ENDED' &&
-        queryClient.getQueryData<StreamMetadata | null>(currentKey(userId))?.id === session.id &&
+        queryClient.getQueryData<StreamSession | null>(currentKey(userId))?.id === session.id &&
         queryClient.getQueryData<StreamMetadata>(key)?.status !== 'ENDED'
 
       if (!isCurrentSession()) return false
@@ -203,9 +212,9 @@ export function useStreamManager(userId: string) {
       if (!isCurrentSession()) return false
 
       const syncSavedDetails = (queryKey: readonly string[]) => {
-        const snapshot = queryClient.getQueryState<StreamMetadata | null>(queryKey)
+        const snapshot = queryClient.getQueryState<StreamMetadata | StreamSession | null>(queryKey)
         if (!snapshot?.data) return
-        queryClient.setQueryData<StreamMetadata | null>(
+        queryClient.setQueryData<StreamMetadata | StreamSession | null>(
           queryKey,
           (cached) => {
             if (
@@ -264,7 +273,7 @@ export function useStreamManager(userId: string) {
       }
       if (!active.current || sessionRef.current?.id !== session.id) return
       await queryClient.cancelQueries({ queryKey: metadataKey(userId, session.id) })
-      queryClient.setQueryData(metadataKey(userId, session.id), result)
+      queryClient.setQueryData(metadataKey(userId, session.id), ownerMetadata(result))
       setCredentials(null)
       setDialog(false)
       toast.success('Session ended')

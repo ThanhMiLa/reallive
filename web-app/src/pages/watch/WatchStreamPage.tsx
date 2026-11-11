@@ -10,6 +10,7 @@ import {
   Tv,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
 import { useWatchStream } from '@/hooks/useWatchStream'
 
 const StreamPlayer = lazy(() =>
@@ -417,14 +418,23 @@ export function WatchStreamPage() {
               )}
 
               <div className="flex-1 min-w-0">
-                {/* Channel Name */}
-                {showDetailsSkeleton ? (
-                  <div className="h-5 w-40 bg-[#14141a] rounded animate-pulse mb-1.5" />
-                ) : (
-                  <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight font-outfit truncate">
-                    {channelName}
-                  </h2>
-                )}
+                <div className="flex min-w-0 items-center gap-3">
+                  {/* Channel Name */}
+                  {showDetailsSkeleton ? (
+                    <div className="h-5 w-40 max-w-full bg-[#14141a] rounded animate-pulse" />
+                  ) : (
+                    <h2 className="min-w-0 truncate text-base sm:text-lg font-extrabold text-white tracking-tight font-outfit">
+                      {channelName}
+                    </h2>
+                  )}
+                  <div className="shrink-0">
+                    <StreamViewerCount
+                      count={session?.currentViewerCount}
+                      status={status}
+                      unavailable={metadata.isPending || metadata.isError}
+                    />
+                  </div>
+                </div>
 
                 {/* Stream Session Title */}
                 <h1 className="text-sm sm:text-base font-medium text-gray-200 mt-0.5 break-words">

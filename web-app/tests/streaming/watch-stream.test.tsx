@@ -102,6 +102,7 @@ const liveMetadata: StreamMetadata = {
   endedAt: null,
   reconnectDeadlineAt: null,
   serverTime: '2026-11-07T11:00:00Z',
+  currentViewerCount: 42,
 }
 
 const viewerDetails: StreamViewerDetails = {
@@ -207,6 +208,67 @@ afterEach(() => {
 })
 
 describe('WatchStreamPage', () => {
+  it.each([
+    [0, '0'],
+    [1234, '1,234'],
+    [null, '—'],
+    [undefined, '—'],
+  ])('shows the metadata viewer count %s without inventing a count', async (count, label) => {
+    mocks.metadata.mockResolvedValue({ ...liveMetadata, currentViewerCount: count })
+    mount()
+
+    const viewers = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(within(viewers).getByText(label)).toBeTruthy()
+  })
+
+  it('updates viewers from refreshed metadata without reopening HLS or refetching details', async () => {
+    mount()
+    await screen.findByLabelText('Live stream player')
+    const viewers = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(within(viewers).getByText('42')).toBeTruthy()
+    await waitFor(() => expect(mocks.access).toHaveBeenCalledTimes(1))
+
+    mocks.metadata.mockResolvedValue({ ...liveMetadata, currentViewerCount: 87 })
+    await act(async () => {
+      await client.refetchQueries({
+        queryKey: ['stream', 'metadata', 'viewer-1', SESSION_ID],
+        exact: true,
+      })
+    })
+
+    await waitFor(() => expect(within(viewers).getByText('87')).toBeTruthy())
+    expect(mocks.access).toHaveBeenCalledTimes(1)
+    expect(mocks.details).toHaveBeenCalledTimes(1)
+    expect(mocks.hls).toHaveLength(1)
+    expect(mocks.hls[0].destroy).not.toHaveBeenCalled()
+  })
+
+  it('does not show the previous account viewer count while metadata for a new account loads', async () => {
+    mount()
+    const viewers = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(within(viewers).getByText('42')).toBeTruthy()
+    let resolveMetadata!: (value: StreamMetadata) => void
+    mocks.metadata.mockImplementation(
+      () => new Promise<StreamMetadata>((resolve) => { resolveMetadata = resolve }),
+    )
+
+    act(() => {
+      const user = useAuthStore.getState().user!
+      useAuthStore.setState({ user: { ...user, userId: 'viewer-2' } })
+    })
+
+    await screen.findByLabelText('Loading stream')
+    expect(screen.queryByRole('group', { name: 'Current viewers' })).toBeNull()
+    await act(async () => {
+      resolveMetadata({ ...liveMetadata, currentViewerCount: 5 })
+      await Promise.resolve()
+    })
+
+    const nextViewers = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(within(nextViewers).getByText('5')).toBeTruthy()
+    expect(within(nextViewers).queryByText('42')).toBeNull()
+  })
+
   it('loads metadata first, then details and playback access on direct URL navigation', async () => {
     const callOrder: string[] = []
     mocks.metadata.mockImplementation(async () => {
@@ -329,6 +391,7 @@ describe('WatchStreamPage', () => {
     ).toBeTruthy()
     expect(mocks.access).not.toHaveBeenCalled()
     expect(mocks.hls).toHaveLength(0)
+    expect(within(screen.getByRole('group', { name: 'Current viewers' })).getByText('0')).toBeTruthy()
 
     // 2. READY -> LIVE: opens player and calls playback-access once
     act(() => {
@@ -387,6 +450,7 @@ describe('WatchStreamPage', () => {
     })
     expect(await screen.findByText('This stream has ended')).toBeTruthy()
     expect(secondHls.destroy).toHaveBeenCalledTimes(1)
+    expect(within(screen.getByRole('group', { name: 'Current viewers' })).getByText('0')).toBeTruthy()
   })
 
   it('refetches details when metadata categoryId changes and avoids showing stale category name', async () => {
@@ -488,6 +552,7 @@ describe('WatchStreamPage', () => {
 
     expect(await screen.findByLabelText('Live stream player')).toBeTruthy()
     expect(mocks.hls).toHaveLength(1)
+    expect(within(screen.getByRole('group', { name: 'Current viewers' })).getByText('42')).toBeTruthy()
 
     await act(async () => {
       await client.refetchQueries({
@@ -500,6 +565,7 @@ describe('WatchStreamPage', () => {
     expect(
       await screen.findByText('Unable to refresh stream status.'),
     ).toBeTruthy()
+    expect(within(screen.getByRole('group', { name: 'Current viewers' })).getByText('—')).toBeTruthy()
   })
 
   it('prompts login at the same URL for guests or 401 and resumes after authentication', async () => {

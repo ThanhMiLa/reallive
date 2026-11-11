@@ -3,6 +3,7 @@ import { isAxiosError } from 'axios'
 import { Button } from '@/components/ui/Button'
 import { ObsConnectionPanel } from '@/components/stream/ObsConnectionPanel'
 import { StreamInfoForm } from '@/components/stream/StreamInfoForm'
+import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
 import { useAuthStore } from '@/stores/auth.store'
 import { streamErrorMessage, useStreamManager } from '@/hooks/useStreamManager'
 
@@ -256,8 +257,15 @@ function Dashboard({ userId }: { userId: string }) {
             aria-label="Stream chat"
             className="hidden xl:flex xl:flex-col xl:sticky xl:top-6 h-[600px] min-w-0 transform-gpu rounded-2xl border border-brand-border bg-brand-card p-5"
           >
-            <div className="border-b border-brand-border pb-3">
+            <div className="flex flex-wrap items-center gap-3 border-b border-brand-border pb-3">
               <h2 className="font-outfit text-sm font-bold text-gray-400">Stream Chat</h2>
+              {session && (
+                <StreamViewerCount
+                  count={session.currentViewerCount}
+                  status={status}
+                  unavailable={metadata.isPending || metadata.isError}
+                />
+              )}
             </div>
             <div className="flex flex-1 flex-col items-center justify-center text-center p-4 text-gray-500">
               <p className="text-sm font-medium text-gray-400">Stream Chat</p>

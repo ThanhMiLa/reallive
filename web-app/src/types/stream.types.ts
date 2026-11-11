@@ -1,6 +1,6 @@
 export type StreamStatus = 'READY' | 'LIVE' | 'RECONNECTING' | 'ENDED'
 
-export interface StreamMetadata {
+interface StreamMetadataFields {
   id: string
   channelId: string
   title: string
@@ -13,7 +13,11 @@ export interface StreamMetadata {
   serverTime: string
 }
 
-export interface StreamSession extends StreamMetadata {
+export interface StreamMetadata extends StreamMetadataFields {
+  currentViewerCount: number | null
+}
+
+export interface StreamSession extends StreamMetadataFields {
   publishReady: boolean
 }
 
