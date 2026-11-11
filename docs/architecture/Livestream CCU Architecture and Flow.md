@@ -6,7 +6,9 @@
 
 - `userId`: UUID tài khoản, nằm trong claim `sub` của Read JWT.
 - `readerId`: UUID phiên xem HLS do MediaMTX tạo. Một user có thể có nhiều reader.
-- Chỉ tính các phiên xem của tài khoản; loại phiên kỹ thuật như Media Worker chụp thumbnail.
+- Chỉ tính các phiên xem của tài khoản; loại chủ stream theo `ownerUserId` và phiên kỹ thuật như Media Worker chụp thumbnail.
+
+Contract API và cấu hình vận hành nằm tại [CCU contract](../contracts/ccu/README.md).
 
 Thiết kế dùng MediaMTX 1.21.2 nguyên bản, bổ sung script hook trong container `media-server`. Xem thêm [kiến trúc streaming](Streaming%20Architecture%20and%20Flow.md).
 
@@ -75,7 +77,7 @@ Không tra Control API ở bước UNREAD vì phiên có thể đã bị MediaMT
 
 ### 3.4. Client lấy CCU
 
-Khi nhận `GET /stream/api/streams/{sessionId}`, Stream Service đọc metadata từ PostgreSQL, đọc số phần tử của `viewers` bằng `SCARD` và trả thêm `currentViewerCount` trong response.
+Khi nhận `GET /stream/api/streams/{sessionId}`, Stream Service đọc metadata từ PostgreSQL, đọc số phần tử của `viewers` bằng `SCARD` và trả thêm `currentViewerCount` trong response. Khi CCU chưa sẵn sàng hoặc lỗi presence, field là `null` và UI hiển thị `—`; `READY/ENDED` trả `0`.
 
 Frontend cập nhật số đếm qua polling metadata hiện có, khoảng 3 giây khi tab hiển thị. `/details` lấy thông tin channel/category; `/playback-access` cấp URL và Read JWT. Các API này không thêm user vào Redis.
 
