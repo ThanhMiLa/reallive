@@ -6,7 +6,6 @@ import {
   AlertCircle,
   Camera,
   Check,
-  ChevronDown,
   ChevronUp,
   Copy,
   Gamepad2,
@@ -839,18 +838,14 @@ function ChannelEditor({ channel, allCategories, isCategoriesLoading }: ChannelE
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Broadcasting Categories Selector */}
+        {/* Broadcasting Categories Selector (only visible while editing) */}
+        {isCategoriesExpanded && (
           <div
             ref={categoriesSectionRef}
             className="rounded-2xl border border-[#1f1f26] bg-[#0c0c10] p-6 shadow-xl space-y-4 scroll-mt-6"
           >
-            {/* Header Accordion Toggle */}
-            <button
-              type="button"
-              onClick={() => setIsCategoriesExpanded((prev) => !prev)}
-              className="flex w-full items-center justify-between text-left cursor-pointer group"
-            >
+            {/* Header */}
+            <div className="flex w-full items-center justify-between text-left">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2.5">
                   <h3 className="text-base font-bold text-white font-outfit">
@@ -861,126 +856,112 @@ function ChannelEditor({ channel, allCategories, isCategoriesLoading }: ChannelE
                   </span>
                 </div>
                 <p className="text-xs text-gray-400">
-                  {isCategoriesExpanded
-                    ? 'Choose categories that represent your live broadcasts. Select at least 1 category.'
-                    : 'Click to open and manage your broadcasting categories.'}
+                  Choose categories that represent your live broadcasts. Select at least 1 category.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-[#ff2b42] group-hover:underline hidden sm:inline">
-                  {isCategoriesExpanded ? 'Collapse' : 'Edit Categories'}
-                </span>
-                <div className="rounded-lg bg-[#14141d] p-1.5 text-gray-400 group-hover:text-white border border-[#232330] transition">
-                  {isCategoriesExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCategoriesExpanded(false)}
+                  className="text-xs font-semibold text-[#ff2b42] hover:underline hidden sm:inline cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCategoriesExpanded(false)}
+                  aria-label="Close broadcasting categories editor"
+                  className="rounded-lg bg-[#14141d] p-1.5 text-gray-400 hover:text-white border border-[#232330] transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            </button>
+            </div>
 
-            {/* Collapsed View: Preview Pills */}
-            {!isCategoriesExpanded && selectedCategoryDetails.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#1a1a24]">
-                {selectedCategoryDetails.map((cat) => (
-                  <span
-                    key={cat.id}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#262636] bg-[#14141c] px-3 py-1.5 text-xs font-medium text-gray-200"
+            {/* Search + Full Category Grid (No inner vertical scroll) */}
+            <div className="space-y-5 pt-3 border-t border-[#1a1a24]">
+              {/* Category Search Filter */}
+              <div className="relative max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                <input
+                  type="text"
+                  value={categorySearch}
+                  onChange={(e) => setCategorySearch(e.target.value)}
+                  placeholder="Search categories..."
+                  className="w-full rounded-xl border border-[#1f1f26] bg-[#121217] pl-9 pr-9 py-2 text-xs text-white placeholder-gray-500 focus:border-[#ff2b42] focus:outline-none transition"
+                />
+                {categorySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCategorySearch('')}
+                    aria-label="Clear category search"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition cursor-pointer"
                   >
-                    <Layers className="h-3.5 w-3.5 text-[#ff2b42]" />
-                    {cat.name}
-                  </span>
-                ))}
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
-            )}
 
-            {/* Expanded View: Search + Full Category Grid (No inner vertical scroll) */}
-            {isCategoriesExpanded && (
-              <div className="space-y-5 pt-3 border-t border-[#1a1a24]">
-                {/* Category Search Filter */}
-                <div className="relative max-w-sm">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                  <input
-                    type="text"
-                    value={categorySearch}
-                    onChange={(e) => setCategorySearch(e.target.value)}
-                    placeholder="Search categories..."
-                    className="w-full rounded-xl border border-[#1f1f26] bg-[#121217] pl-9 pr-9 py-2 text-xs text-white placeholder-gray-500 focus:border-[#ff2b42] focus:outline-none transition"
-                  />
+              {/* Category Grid: Full Height matching Browse Categories */}
+              {isCategoriesLoading ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {Array.from({ length: 12 }).map((_, idx) => (
+                    <div key={idx} className="flex flex-col gap-2">
+                      <div className="w-full aspect-[3/4] rounded-xl bg-[#101014] border border-[#1f1f26] animate-pulse" />
+                      <div className="h-3.5 w-3/4 bg-[#101014] rounded animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+              ) : filteredCategories.length === 0 ? (
+                <div className="rounded-xl border border-[#1f1f26] bg-[#101014] py-12 text-center">
+                  <Gamepad2 className="mx-auto h-8 w-8 text-gray-600 mb-2" />
+                  <p className="text-xs text-gray-400">
+                    {categorySearch.trim()
+                      ? `No categories matching "${categorySearch}".`
+                      : 'No categories available right now.'}
+                  </p>
                   {categorySearch && (
                     <button
                       type="button"
                       onClick={() => setCategorySearch('')}
-                      aria-label="Clear category search"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition cursor-pointer"
+                      className="mt-2 text-xs font-semibold text-[#ff2b42] hover:underline cursor-pointer"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      Clear filter
                     </button>
                   )}
                 </div>
-
-                {/* Category Grid: Full Height matching Browse Categories */}
-                {isCategoriesLoading ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                    {Array.from({ length: 12 }).map((_, idx) => (
-                      <div key={idx} className="flex flex-col gap-2">
-                        <div className="w-full aspect-[3/4] rounded-xl bg-[#101014] border border-[#1f1f26] animate-pulse" />
-                        <div className="h-3.5 w-3/4 bg-[#101014] rounded animate-pulse" />
-                      </div>
-                    ))}
-                  </div>
-                ) : filteredCategories.length === 0 ? (
-                  <div className="rounded-xl border border-[#1f1f26] bg-[#101014] py-12 text-center">
-                    <Gamepad2 className="mx-auto h-8 w-8 text-gray-600 mb-2" />
-                    <p className="text-xs text-gray-400">
-                      {categorySearch.trim()
-                        ? `No categories matching "${categorySearch}".`
-                        : 'No categories available right now.'}
-                    </p>
-                    {categorySearch && (
-                      <button
-                        type="button"
-                        onClick={() => setCategorySearch('')}
-                        className="mt-2 text-xs font-semibold text-[#ff2b42] hover:underline cursor-pointer"
-                      >
-                        Clear filter
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                    {filteredCategories.map((category) => {
-                      const checked = selectedCategoryIds.includes(category.id)
-                      return (
-                        <SelectableCategoryCard
-                          key={category.id}
-                          category={category}
-                          isSelected={checked}
-                          disabled={isSubmitting}
-                          onToggle={() => handleToggleCategory(category.id)}
-                        />
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Bottom Collapse Button */}
-                <div className="flex justify-end pt-2 border-t border-[#1a1a24]">
-                  <button
-                    type="button"
-                    onClick={() => setIsCategoriesExpanded(false)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#262636] bg-[#14141c] px-3.5 py-1.5 text-xs font-semibold text-gray-300 hover:bg-[#1a1a24] hover:text-white transition cursor-pointer"
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                    Collapse categories
-                  </button>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {filteredCategories.map((category) => {
+                    const checked = selectedCategoryIds.includes(category.id)
+                    return (
+                      <SelectableCategoryCard
+                        key={category.id}
+                        category={category}
+                        isSelected={checked}
+                        disabled={isSubmitting}
+                        onToggle={() => handleToggleCategory(category.id)}
+                      />
+                    )
+                  })}
                 </div>
+              )}
+
+              {/* Bottom Collapse Button */}
+              <div className="flex justify-end pt-2 border-t border-[#1a1a24]">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoriesExpanded(false)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#262636] bg-[#14141c] px-3.5 py-1.5 text-xs font-semibold text-gray-300 hover:bg-[#1a1a24] hover:text-white transition cursor-pointer"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Collapse categories
+                </button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Persistent Action Bar */}
         <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 pt-4 border-t border-[#1f1f26]">
