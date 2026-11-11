@@ -102,11 +102,11 @@ function ChannelCard({
   )
 
   return (
-    <div className="group flex items-center justify-between gap-3 p-3.5 sm:p-4 rounded-xl bg-[#101014] border border-[#1f1f26] hover:border-[#ff2b42]/40 hover:bg-[#14141a] transition-all duration-200 cursor-pointer shadow-sm">
-      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+    <div className="group flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 p-3.5 sm:p-4 rounded-xl bg-[#101014] border border-[#1f1f26] hover:border-[#ff2b42]/40 hover:bg-[#14141a] transition-all duration-200 cursor-pointer shadow-sm">
+      <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-[1_1_11rem]">
         {/* Avatar */}
         <div className="relative flex-shrink-0">
-          <div className="w-12 h-12 rounded-full p-0.5 bg-[#000000] ring-2 ring-[#1f1f26] shadow overflow-hidden group-hover:ring-[#ff2b42]/50 transition-all">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full p-0.5 bg-[#000000] ring-2 ring-[#1f1f26] shadow overflow-hidden group-hover:ring-[#ff2b42]/50 transition-all">
             {hasAvatar ? (
               <img
                 src={channel.avatarUrl!}
@@ -126,7 +126,7 @@ function ChannelCard({
         <div className="min-w-0 flex-1">
           <h3
             title={channel.name}
-            className="text-white text-sm sm:text-base font-bold truncate group-hover:text-[#ff2b42] transition-colors"
+            className="text-white text-sm sm:text-base font-bold leading-snug break-words group-hover:text-[#ff2b42] transition-colors"
           >
             {channel.name}
           </h3>
@@ -145,7 +145,7 @@ function ChannelCard({
             onAction?.(channel)
           }}
           disabled={isActionLoading}
-          className="flex-shrink-0 flex items-center gap-1.5 bg-[#ff2b42] hover:bg-[#e02237] active:scale-95 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-red-500/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          className="ml-auto flex-shrink-0 flex items-center gap-1.5 bg-[#ff2b42] hover:bg-[#e02237] active:scale-95 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-md shadow-red-500/25 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
         >
           {isActionLoading ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -164,7 +164,7 @@ function ChannelCard({
             onAction?.(channel)
           }}
           disabled={isActionLoading}
-          className="flex-shrink-0 flex items-center gap-1.5 bg-[#101014] hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/40 text-gray-300 border border-[#1f1f26] font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+          className="ml-auto flex-shrink-0 flex items-center gap-1.5 bg-[#101014] hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/40 text-gray-300 border border-[#1f1f26] font-semibold text-xs px-3.5 py-1.5 rounded-lg transition-all shadow-sm active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
         >
           {isActionLoading ? (
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -180,15 +180,15 @@ function ChannelCard({
 
 function ChannelSkeleton() {
   return (
-    <div className="flex items-center justify-between gap-3 p-3.5 sm:p-4 rounded-xl bg-[#101014] border border-[#1f1f26] animate-pulse">
-      <div className="flex items-center gap-3.5 min-w-0 flex-1">
-        <div className="w-12 h-12 rounded-full bg-[#18181f] flex-shrink-0" />
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 p-3.5 sm:p-4 rounded-xl bg-[#101014] border border-[#1f1f26] animate-pulse">
+      <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-[1_1_11rem]">
+        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#18181f] flex-shrink-0" />
         <div className="space-y-2 flex-1 min-w-0">
           <div className="h-4 w-28 sm:w-36 bg-[#18181f] rounded" />
           <div className="h-3 w-20 bg-[#18181f] rounded" />
         </div>
       </div>
-      <div className="w-16 h-7 bg-[#18181f] rounded-lg flex-shrink-0" />
+      <div className="ml-auto w-16 h-7 bg-[#18181f] rounded-lg flex-shrink-0" />
     </div>
   )
 }
@@ -651,7 +651,7 @@ export function BrowseChannelsTab() {
           </div>
 
           {isCheckingAuth || isFollowingLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
               {Array.from({ length: 4 }).map((_, idx) => (
                 <ChannelSkeleton key={idx} />
               ))}
@@ -692,7 +692,7 @@ export function BrowseChannelsTab() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
                 {followingChannels.map((channel) => (
                   <ChannelCard
                     key={channel.id}
@@ -912,7 +912,7 @@ export function BrowseChannelsTab() {
         </div>
 
         {isCheckingAuth || isUnfollowedLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
             {Array.from({ length: 8 }).map((_, idx) => (
               <ChannelSkeleton key={idx} />
             ))}
@@ -976,7 +976,7 @@ export function BrowseChannelsTab() {
         ) : (
           <>
             {/* Channel cards rendered in exact server order */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
               {unfollowedChannels.map((channel) => (
                 <ChannelCard
                   key={channel.id}
