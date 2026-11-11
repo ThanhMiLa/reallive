@@ -26,5 +26,8 @@ pathDefaults:
   overridePublisher: false
   runOnOnline: python3 /hooks/media_hook.py online
   runOnOffline: python3 /hooks/media_hook.py offline
+  runOnRead: python3 /hooks/viewer_hook.py read
+  runOnReadRestart: false
+  runOnUnread: python3 /hooks/viewer_hook.py unread
 
 paths: {}
