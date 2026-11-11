@@ -118,3 +118,8 @@ stream:
     internal-hls-base-url: ${STREAM_MEDIA_INTERNAL_HLS_BASE_URL:http://localhost:8898}
     worker-connect-timeout: ${STREAM_THUMBNAIL_WORKER_CONNECT_TIMEOUT:2s}
     worker-read-timeout: ${STREAM_THUMBNAIL_WORKER_READ_TIMEOUT:5s}
+
+  ccu:
+    enabled: ${STREAM_CCU_ENABLED:false}
+    callback-token: ${STREAM_CCU_CALLBACK_TOKEN:}
+    control-token-directory: ${STREAM_CCU_CONTROL_TOKEN_DIRECTORY:}
