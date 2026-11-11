@@ -15,5 +15,6 @@ public record StreamMetadataResponse(
         Instant startedAt,
         Instant endedAt,
         Instant reconnectDeadlineAt,
-        Instant serverTime
+        Instant serverTime,
+        Long currentViewerCount
 ) {}

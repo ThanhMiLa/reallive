@@ -25,6 +25,7 @@ import com.reallive.streamservice.stream.service.StreamEligibilityService;
 import com.reallive.streamservice.stream.service.StreamSessionDomainService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import com.reallive.streamservice.stream.util.StreamCreationConstraints;
+import com.reallive.streamservice.stream.service.StreamViewerPresenceService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -55,6 +56,7 @@ public class StreamSessionServiceImpl implements StreamSessionService {
     StreamSessionMapper mapper;
     PlatformTransactionManager transactionManager;
     Clock streamClock;
+    StreamViewerPresenceService viewerPresence;
 
     @Override
     public SessionProvisioningResult create(UUID ownerUserId, CreateStreamSessionRequest request) {
@@ -137,7 +139,8 @@ public class StreamSessionServiceImpl implements StreamSessionService {
         var session = sessions.findById(sessionId)
                 .orElseThrow(() -> new AppException(ErrorCode.STREAM_SESSION_NOT_FOUND));
         requireViewableVisibility(session);
-        return mapper.toMetadataResponse(session, streamClock.instant());
+        return mapper.toMetadataResponse(session, streamClock.instant(),
+                viewerPresence == null ? null : viewerPresence.count(sessionId, session.getStatus()));
     }
 
     @Override

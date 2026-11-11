@@ -222,7 +222,7 @@ class StreamSessionControllerTest {
         var startedAt = Instant.parse("2026-10-29T01:00:00Z");
         for (var status : StreamSessionStatus.values()) {
             var metadata = new StreamMetadataResponse(session, UUID.randomUUID(), "Title", UUID.randomUUID(),
-                    StreamVisibility.PUBLIC, status, startedAt, null, null, Instant.parse("2026-10-29T02:00:00Z"));
+                    StreamVisibility.PUBLIC, status, startedAt, null, null, Instant.parse("2026-10-29T02:00:00Z"), null);
             when(service.metadata(session)).thenReturn(metadata);
 
             mvc.perform(get("/api/streams/" + session).with(jwt()))

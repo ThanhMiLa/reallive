@@ -1,11 +1,14 @@
 package com.reallive.streamservice.stream.repository;
 
+import com.reallive.streamservice.stream.dto.StreamPresenceSessionSnapshot;
+import com.reallive.streamservice.stream.dto.StreamSessionStatusSnapshot;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -13,12 +16,29 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface StreamSessionRepository extends JpaRepository<StreamSessionEntity, UUID> {
+
+    @Query("""
+            SELECT NEW com.reallive.streamservice.stream.dto.StreamPresenceSessionSnapshot(s.id, s.ownerUserId)
+            FROM StreamSessionEntity s
+            WHERE s.status IN :statuses
+            ORDER BY s.id ASC
+            """)
+    Slice<StreamPresenceSessionSnapshot> findPresenceSessionsByStatusIn(
+            @Param("statuses") List<StreamSessionStatus> statuses, Pageable pageable);
+
+    @Query("""
+            SELECT NEW com.reallive.streamservice.stream.dto.StreamSessionStatusSnapshot(s.id, s.status)
+            FROM StreamSessionEntity s
+            WHERE s.id IN :sessionIds
+            """)
+    List<StreamSessionStatusSnapshot> findStatusSnapshotsByIdIn(@Param("sessionIds") Collection<UUID> sessionIds);
 
     Optional<StreamSessionEntity> findByOwnerUserIdAndCreationRequestId(UUID ownerUserId, UUID creationRequestId);
 

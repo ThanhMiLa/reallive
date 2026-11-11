@@ -32,9 +32,13 @@ public class StreamSessionMapper {
     }
 
     public StreamMetadataResponse toMetadataResponse(StreamSessionEntity entity, Instant serverTime) {
+        return toMetadataResponse(entity, serverTime, null);
+    }
+
+    public StreamMetadataResponse toMetadataResponse(StreamSessionEntity entity, Instant serverTime, Long count) {
         return new StreamMetadataResponse(entity.getId(), entity.getChannelId(), entity.getTitle(), entity.getCategoryId(),
                 entity.getVisibility(), entity.getStatus(), utc(entity.getStartedAt()), utc(entity.getEndedAt()),
-                utc(entity.getReconnectDeadlineAt()), serverTime);
+                utc(entity.getReconnectDeadlineAt()), serverTime, count);
     }
 
     private Instant utc(LocalDateTime value) {
