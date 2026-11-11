@@ -171,7 +171,18 @@ export function StreamPlayer({
           if (!alive) return
           setFailed(false)
           setMessage('')
-          void video.play().catch(() => {
+          void video.play().catch(async (error: unknown) => {
+            if (!alive) return
+            if (error instanceof DOMException && error.name === 'NotAllowedError') {
+              video.muted = true
+              try {
+                await video.play()
+                if (alive) setNotice('Playback started muted. Turn on sound when ready.')
+                return
+              } catch {
+                // Some browsers also block muted autoplay.
+              }
+            }
             if (alive) setMessage(copy.pressPlay)
           })
         })

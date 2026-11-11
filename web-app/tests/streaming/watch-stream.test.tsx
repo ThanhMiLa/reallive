@@ -208,6 +208,36 @@ afterEach(() => {
 })
 
 describe('WatchStreamPage', () => {
+  it('retries muted when the browser blocks audible autoplay', async () => {
+    const play = vi.fn()
+      .mockRejectedValueOnce(new DOMException('Autoplay blocked', 'NotAllowedError'))
+      .mockResolvedValueOnce(undefined)
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: play })
+    mount()
+    await waitFor(() => expect(mocks.hls).toHaveLength(1))
+
+    await act(async () => { mocks.hls[0].handlers.parsed() })
+
+    const video = screen.getByLabelText('Live stream player') as HTMLVideoElement
+    expect(play).toHaveBeenCalledTimes(2)
+    expect(video.muted).toBe(true)
+    expect(video.volume).toBe(1)
+    expect(screen.getByText('Playback started muted. Turn on sound when ready.')).toBeTruthy()
+  })
+
+  it('asks the viewer to press play when muted autoplay is also blocked', async () => {
+    const play = vi.fn().mockRejectedValue(new DOMException('Autoplay blocked', 'NotAllowedError'))
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: play })
+    mount()
+    await waitFor(() => expect(mocks.hls).toHaveLength(1))
+
+    await act(async () => { mocks.hls[0].handlers.parsed() })
+
+    expect(play).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Playback started muted. Turn on sound when ready.')).toBeNull()
+    expect(screen.getByText('Press play to watch the live stream.')).toBeTruthy()
+  })
+
   it.each([
     [0, '0'],
     [1234, '1,234'],

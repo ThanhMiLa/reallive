@@ -9,18 +9,17 @@
   --color-brand-neon: #ff2b42;
   --color-brand-dark-950: #000000;
   --color-brand-dark-900: #000000;
-  --color-brand-dark-800: #08080a;
-  --color-brand-dark-700: #101014;
-  --color-brand-dark-600: #18181f;
-  --color-brand-border: #1f1f26;
-  --color-brand-panel: #08080a;
-  --color-brand-card: #101014;
-  --color-brand-hover: #18181f;
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  /* Roobert requires a licensed webfont; use a local installation or fall back to Inter. */
-  --font-roobert: 'Roobert', 'Inter', sans-serif;
-  /* Preserve existing heading utilities while switching their typeface. */
-  --font-outfit: var(--font-roobert);
+  --color-brand-dark-800: #000000;
+  --color-brand-dark-700: #16181c;
+  --color-brand-dark-600: #202327;
+  --color-brand-border: #2f3336;
+  --color-brand-panel: #000000;
+  --color-brand-card: #000000;
+  --color-brand-hover: #181818;
+  /* X's Chirp is proprietary; use its familiar system-font fallback. */
+  --font-sans: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+  --font-roobert: var(--font-sans);
+  --font-outfit: var(--font-sans);
 }
 
 :root {
@@ -30,14 +29,14 @@
 body {
   margin: 0;
   background-color: #000000;
-  color: #f3f4f6;
+  color: #e7e9ea;
   font-family: var(--font-sans);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom terminal dark scrollbar */
+/* Subtle dark scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -48,12 +47,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1f1f26;
+  background: #2f3336;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #ff2b42;
+  background: #536471;
 }
 
 /* Glow effects */

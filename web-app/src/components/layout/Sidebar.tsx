@@ -63,7 +63,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`bg-[#08080a] border-r border-[#1f1f26] flex min-h-0 flex-col justify-between select-none flex-shrink-0 z-30 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] ${
+      className={`bg-brand-panel border-r border-brand-border flex min-h-0 flex-col justify-between select-none flex-shrink-0 z-30 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] ${
         isSidebarCollapsed ? 'w-16 hidden sm:flex' : 'w-64 hidden lg:flex'
       }`}
     >
@@ -286,7 +286,7 @@ export function Sidebar() {
       </div>
 
       {/* Sidebar settings */}
-      <div className="shrink-0 px-2.5 py-3 border-t border-[#1f1f26] bg-[#050507] flex items-center justify-end overflow-hidden whitespace-nowrap">
+      <div className="shrink-0 px-2.5 py-3 border-t border-brand-border bg-brand-panel flex items-center justify-end overflow-hidden whitespace-nowrap">
         <div
           className={`overflow-hidden transition-[max-width,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isSidebarCollapsed

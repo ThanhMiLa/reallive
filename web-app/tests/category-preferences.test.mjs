@@ -43,42 +43,45 @@ test('backend selection constraints require 1 to 20 valid category IDs', () => {
 
 test('saved category IDs are preselected in the complete catalog', () => {
   const { html } = render({ saved: [ids[0], ids[2]] })
-  const checkboxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g)
+  const checkboxes = html.match(/<div[^>]*role="checkbox"[^>]*>/g)
   assert.equal(checkboxes.length, 25)
-  assert.match(checkboxes[0], /checked=""/)
-  assert.doesNotMatch(checkboxes[1], /checked=""/)
-  assert.match(checkboxes[2], /checked=""/)
+  assert.match(checkboxes[0], /aria-checked="true"/)
+  assert.match(checkboxes[1], /aria-checked="false"/)
+  assert.match(checkboxes[2], /aria-checked="true"/)
   assert.match(html, /2 \/ 20 selected/)
 })
 
 test('20 selected categories disable additional choices while allowing deselection', () => {
   const { html } = render({ saved: ids.slice(0, 20) })
-  const checkboxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g)
-  assert.equal(checkboxes.filter((input) => input.includes('checked=""')).length, 20)
-  assert.equal(checkboxes.filter((input) => input.includes('disabled=""')).length, 5)
-  assert.doesNotMatch(checkboxes[0], /disabled=""/)
+  const checkboxes = html.match(/<div[^>]*role="checkbox"[^>]*>/g)
+  assert.equal(checkboxes.filter((input) => input.includes('aria-checked="true"')).length, 20)
+  assert.equal(checkboxes.filter((input) => input.includes('tabindex="-1"')).length, 5)
+  assert.match(checkboxes[0], /tabindex="0"/)
 })
 
 test('unavailable saved categories are excluded and explained', () => {
   const { html } = render({ saved: [ids[0], '00000000-0000-4000-8000-999999999999'] })
   assert.match(html, /Some saved categories are no longer available/)
   assert.match(html, /1 \/ 20 selected/)
-  const inputs = html.match(/<input[^>]*type="checkbox"[^>]*>/g)
-  assert.equal(inputs.filter((input) => input.includes('checked=""')).length, 1)
+  const inputs = html.match(/<div[^>]*role="checkbox"[^>]*>/g)
+  assert.equal(inputs.filter((input) => input.includes('aria-checked="true"')).length, 1)
 })
 
 test('private preferences wait for authentication and use a viewer-specific cache', () => {
   for (const options of [{ userId: null }, { checking: true }]) {
     const { html, queries } = render(options)
     assert.equal(queries.find((query) => query.queryKey[0] === 'category-preferences').options.enabled, false)
-    assert.doesNotMatch(html, /type="checkbox"/)
+    assert.doesNotMatch(html, /role="checkbox"/)
   }
   const { queries } = render({ userId: 'another-viewer' })
   assert.deepEqual(queries.find((query) => query.queryKey[0] === 'category-preferences').queryKey, ['category-preferences', 'another-viewer'])
 })
 
 test('loading and empty catalogs provide useful feedback', () => {
-  assert.match(render({ seed: false }).html, /Loading your categories/)
+  const loading = render({ seed: false }).html
+  assert.match(loading, /animate-pulse/)
+  assert.doesNotMatch(loading, /role="checkbox"/)
+  assert.doesNotMatch(loading, /Save changes/)
   const { html } = render({ list: [] })
   assert.match(html, /No categories are available/)
   assert.doesNotMatch(html, /Save changes/)
