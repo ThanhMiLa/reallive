@@ -21,6 +21,14 @@ public class SchedulingConfiguration {
         return createScheduler("thumbnail-scheduler-");
     }
 
+    @Bean(name = "ccuTaskScheduler")
+    @ConditionalOnProperty(name = "stream.ccu.enabled", havingValue = "true")
+    ThreadPoolTaskScheduler ccuTaskScheduler() {
+        var scheduler = createScheduler("ccu-scheduler-");
+        scheduler.setPoolSize(2);
+        return scheduler;
+    }
+
     private ThreadPoolTaskScheduler createScheduler(String threadNamePrefix) {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(1);
