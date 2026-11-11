@@ -8,8 +8,8 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
@@ -27,10 +27,10 @@ public class AuthStateBackfill implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments arguments) {
         int page = 0;
-        Page<UUID> users;
+        Slice<UUID> users;
         do {
             users = userRepository.findAllIds(PageRequest.of(page++, 100, Sort.by("id")));
-            users.forEach(processor::backfill);
+            processor.backfill(users.getContent());
         } while (users.hasNext());
     }
 }

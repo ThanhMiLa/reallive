@@ -63,6 +63,8 @@ An HTTP 503 after database commit can therefore mean the database mutation succe
 
 ## Deployment and backfill
 
+Backfill scans account IDs in slices of 100 without a count query, then loads each slice's accounts, roles and permissions together with an entity graph. Only the ID query is paginated; collection fetching is not. Each nonempty slice uses two SELECT queries and a separate read-only transaction for loading and publishing its current state. Redis publication remains per account, and a publication failure stops the backfill so it can be safely rerun.
+
 1. Apply the User Service auth-revision/task migration before switching readers.
 2. In a staged release, deploy auth-state writers while legacy readers still receive scoped tokens.
 3. Set `AUTH_STATE_BACKFILL_ENABLED=true` for a controlled User Service startup to publish existing users in batches. It issues no JWTs and preserves blacklist keys. Stop rollout if backfill fails; rerunning is safe. Return this setting to false afterward.

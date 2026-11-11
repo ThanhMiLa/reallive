@@ -78,8 +78,11 @@ public class AuthStateSyncProcessor {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
-    public void backfill(UUID userId) {
-        userRepository.findWithAuthoritiesById(userId).ifPresent(this::publish);
+    public void backfill(List<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return;
+        }
+        userRepository.findAllByIdIn(userIds).forEach(this::publish);
     }
 
     private void publish(UserEntity user) {
