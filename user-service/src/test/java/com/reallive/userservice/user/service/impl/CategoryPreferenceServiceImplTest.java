@@ -179,7 +179,7 @@ class CategoryPreferenceServiceImplTest {
         assertEquals(ErrorCode.CATEGORY_NOT_FOUND, exception.getErrorCode());
         verify(channelClientResolver).validateCategories(Set.of(categoryId));
         verify(userCategoryPreferenceRepository, never()).deleteAllById_UserId(any());
-        verify(userCategoryPreferenceRepository, never()).saveAll(any());
+        verify(userCategoryPreferenceRepository, never()).insertAll(any());
     }
 
     @Test
@@ -205,7 +205,7 @@ class CategoryPreferenceServiceImplTest {
         assertEquals(ErrorCode.CATEGORY_NOT_ACTIVE, exception.getErrorCode());
         verify(channelClientResolver).validateCategories(Set.of(categoryId));
         verify(userCategoryPreferenceRepository, never()).deleteAllById_UserId(any());
-        verify(userCategoryPreferenceRepository, never()).saveAll(any());
+        verify(userCategoryPreferenceRepository, never()).insertAll(any());
     }
 
     @Test
@@ -231,7 +231,7 @@ class CategoryPreferenceServiceImplTest {
         assertEquals(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE, exception.getErrorCode());
         verify(channelClientResolver).validateCategories(Set.of(categoryId));
         verify(userCategoryPreferenceRepository, never()).deleteAllById_UserId(any());
-        verify(userCategoryPreferenceRepository, never()).saveAll(any());
+        verify(userCategoryPreferenceRepository, never()).insertAll(any());
     }
 
     @Test
@@ -261,13 +261,11 @@ class CategoryPreferenceServiceImplTest {
         verify(channelClientResolver).validateCategories(validatedCaptor.capture());
         assertEquals(Set.of(cat1, cat2, cat3), validatedCaptor.getValue());
 
-        // Verify old preferences were removed and new preferences were flushed and saved
         verify(userCategoryPreferenceRepository).deleteAllById_UserId(userId);
-        verify(userCategoryPreferenceRepository).flush();
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<UserCategoryPreferenceEntity>> entitiesCaptor = ArgumentCaptor.forClass(List.class);
-        verify(userCategoryPreferenceRepository).saveAll(entitiesCaptor.capture());
+        verify(userCategoryPreferenceRepository).insertAll(entitiesCaptor.capture());
 
         List<UserCategoryPreferenceEntity> savedEntities = entitiesCaptor.getValue();
         assertEquals(3, savedEntities.size());

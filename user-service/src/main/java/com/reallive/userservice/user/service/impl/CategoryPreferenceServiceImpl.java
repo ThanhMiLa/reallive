@@ -64,7 +64,6 @@ public class CategoryPreferenceServiceImpl implements CategoryPreferenceService 
     private void persistCategoryPreferences(UserEntity user, Set<UUID> categoryIds) {
         transactionOperations.executeWithoutResult(status -> {
             userCategoryPreferenceRepository.deleteAllById_UserId(user.getId());
-            userCategoryPreferenceRepository.flush();
             List<UserCategoryPreferenceEntity> entities = categoryIds.stream()
                     .map(categoryId -> UserCategoryPreferenceEntity.builder()
                             .id(UserCategoryPreferenceId.builder()
@@ -74,7 +73,7 @@ public class CategoryPreferenceServiceImpl implements CategoryPreferenceService 
                             .user(user)
                             .build())
                     .toList();
-            userCategoryPreferenceRepository.saveAll(entities);
+            userCategoryPreferenceRepository.insertAll(entities);
         });
     }
 }
