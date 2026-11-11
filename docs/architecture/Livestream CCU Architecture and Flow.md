@@ -79,6 +79,8 @@ Không tra Control API ở bước UNREAD vì phiên có thể đã bị MediaMT
 
 Khi nhận `GET /stream/api/streams/{sessionId}`, Stream Service đọc metadata từ PostgreSQL, đọc số phần tử của `viewers` bằng `SCARD` và trả thêm `currentViewerCount` trong response. Khi CCU chưa sẵn sàng hoặc lỗi presence, field là `null` và UI hiển thị `—`; `READY/ENDED` trả `0`.
 
+Endpoint danh sách `GET /stream/api/streams` cũng trả `currentViewerCount` trong từng phần tử `result.content[]` của trang hiện tại. Service dùng lại logic presence sau khi kết thúc transaction đọc danh sách; lỗi CCU trả `null` cho stream tương ứng và không làm hỏng danh sách. Đọc danh sách không thêm viewer hoặc gọi MediaMTX.
+
 Frontend cập nhật số đếm qua polling metadata hiện có, khoảng 3 giây khi tab hiển thị. `/details` lấy thông tin channel/category; `/playback-access` cấp URL và Read JWT. Các API này không thêm user vào Redis.
 
 ### 3.5. Nguyên tắc vận hành

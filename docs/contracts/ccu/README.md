@@ -4,6 +4,8 @@
 
 GET /stream/api/streams/{sessionId} adds result.currentViewerCount (integer or null). READY/ENDED return 0. LIVE/RECONNECTING return SCARD of the per-session viewer Set only when presence is ACTIVE; disabled/unavailable/recovering presence returns null. Owner session endpoints do not acquire a new count field. Existing account authentication remains required.
 
+GET /stream/api/streams adds result.content[].currentViewerCount (integer or null) for each LIVE session in the requested page, including when filtering by categoryId. It reuses the same presence count as metadata: 0 means no viewers; null means disabled/unavailable/recovering presence. Presence is read after the database transaction, without adding viewers or calling MediaMTX. Count failures do not prevent listing streams. Pagination, authentication, and Cache-Control: no-store remain unchanged.
+
 ## Internal reader callback
 
 POST /stream/internal/api/viewer-events uses X-Internal-Token with STREAM_CCU_CALLBACK_TOKEN; this route is not public through Gateway. Never use account cookies or player Read JWT as callback credentials.

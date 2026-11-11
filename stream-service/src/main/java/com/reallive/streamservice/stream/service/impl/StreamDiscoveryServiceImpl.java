@@ -7,6 +7,7 @@ import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.StreamDiscoveryService;
+import com.reallive.streamservice.stream.service.StreamViewerPresenceService;
 import java.time.LocalDateTime;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,6 +32,7 @@ public class StreamDiscoveryServiceImpl implements StreamDiscoveryService {
     StreamSessionRepository sessions;
     ChannelClient channelClient;
     PlatformTransactionManager transactionManager;
+    StreamViewerPresenceService viewerPresence;
 
     @Override
     public StreamDiscoveryResponse list(int page, int size, UUID categoryId) {
@@ -54,14 +56,15 @@ public class StreamDiscoveryServiceImpl implements StreamDiscoveryService {
                 .collect(Collectors.toMap(LivestreamSummaries.CategorySummary::id, Function.identity()));
         var content = found.stream().map(item -> new StreamDiscoveryResponse.Item(item.id(), item.title(), item.status(),
                 item.startedAt(), item.thumbnailUrl(), item.thumbnailUpdatedAt(), item.channelId(), item.categoryId(),
-                channels.get(item.channelId()), categories.get(item.categoryId()))).toList();
+                channels.get(item.channelId()), categories.get(item.categoryId()),
+                viewerPresence.count(item.id(), StreamSessionStatus.LIVE))).toList();
         return new StreamDiscoveryResponse(content, page, size, found.getTotalElements(), found.getTotalPages());
     }
 
     private StreamDiscoveryResponse.Item snapshot(StreamSessionEntity session) {
         return new StreamDiscoveryResponse.Item(session.getId(), session.getTitle(), session.getStatus().name(),
                 utc(session.getStartedAt()), session.getThumbnailUrl(), utc(session.getThumbnailUpdatedAt()),
-                session.getChannelId(), session.getCategoryId(), null, null);
+                session.getChannelId(), session.getCategoryId(), null, null, null);
     }
 
     private Instant utc(LocalDateTime time) {

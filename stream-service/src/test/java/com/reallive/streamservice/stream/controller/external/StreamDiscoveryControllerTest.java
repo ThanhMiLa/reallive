@@ -15,6 +15,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.UUID;
+import static org.hamcrest.Matchers.hasEntry;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,5 +46,26 @@ class StreamDiscoveryControllerTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result.content").isArray())
                 .andExpect(jsonPath("$.result.totalElements").value(0));
         verify(service).list(0, 20, category);
+    }
+
+    @Test
+    void returnsViewerCountForEachStreamWithoutCaching() throws Exception {
+        var active = new StreamDiscoveryResponse.Item(UUID.randomUUID(), "Active", "LIVE", null, null, null,
+                UUID.randomUUID(), UUID.randomUUID(), null, null, 42L);
+        var empty = new StreamDiscoveryResponse.Item(UUID.randomUUID(), "Empty", "LIVE", null, null, null,
+                UUID.randomUUID(), UUID.randomUUID(), null, null, 0L);
+        var unavailable = new StreamDiscoveryResponse.Item(UUID.randomUUID(), "Unavailable", "LIVE", null, null, null,
+                UUID.randomUUID(), UUID.randomUUID(), null, null, null);
+        when(service.list(0, 20, null))
+                .thenReturn(new StreamDiscoveryResponse(List.of(active, empty, unavailable), 0, 20, 3, 1));
+
+        mvc.perform(get("/api/streams").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.result.content[0].currentViewerCount").value(42))
+                .andExpect(jsonPath("$.result.content[1].currentViewerCount").value(0))
+                .andExpect(jsonPath("$.result.content[2]").value(
+                        hasEntry("currentViewerCount", null)))
+                .andExpect(jsonPath("$.result.totalElements").value(3));
     }
 }

@@ -22,6 +22,7 @@ public record StreamDiscoveryResponse(
             UUID channelId,
             UUID categoryId,
             LivestreamSummaries.ChannelSummary channel,
-            LivestreamSummaries.CategorySummary category
+            LivestreamSummaries.CategorySummary category,
+            Long currentViewerCount
     ) {}
 }
