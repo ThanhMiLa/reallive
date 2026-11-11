@@ -679,7 +679,7 @@ class AuthServiceImplTest {
             String jti = UUID.randomUUID().toString();
             UserEntity user = createTestUser();
             String token = createSignedToken("REFRESH", user.getId().toString(), jti, Instant.now().plusSeconds(3600));
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
             doThrow(new AppException(ErrorCode.UNAUTHENTICATED)).when(authStateStore).publish(any(), any(), eq(true));
 
             when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + jti), eq("1"), any(Duration.class)))
@@ -707,7 +707,7 @@ class AuthServiceImplTest {
             String token = createSignedToken("REFRESH", user.getId().toString(), UUID.randomUUID().toString(),
                     Instant.now().plusSeconds(3600));
             when(valueOperations.setIfAbsent(any(), eq("1"), any(Duration.class))).thenReturn(true);
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
 
             AppException exception = assertThrows(AppException.class, () -> authService.refresh(token));
 
@@ -723,7 +723,7 @@ class AuthServiceImplTest {
 
             when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + jti), eq("1"), any(Duration.class)))
                     .thenReturn(true);
-            when(userRepository.findById(userId)).thenReturn(Optional.empty());
+            when(userRepository.findWithAuthoritiesById(userId)).thenReturn(Optional.empty());
 
             AppException exception = assertThrows(AppException.class, () -> authService.refresh(token));
             assertEquals(ErrorCode.USER_NOT_FOUND, exception.getErrorCode());
@@ -742,7 +742,7 @@ class AuthServiceImplTest {
 
             when(valueOperations.setIfAbsent(eq("auth:revoked:refresh:" + jti), eq("1"), any(Duration.class)))
                     .thenReturn(true);
-            when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(userId)).thenReturn(Optional.of(user));
 
             AuthResponse response = authService.refresh(token);
 
@@ -773,7 +773,7 @@ class AuthServiceImplTest {
             StringRedisTemplate redis = new StringRedisTemplate(connectionFactory);
             try (var executor = Executors.newFixedThreadPool(2)) {
                 UserRepository users = mock(UserRepository.class);
-                when(users.findById(user.getId())).thenReturn(Optional.of(user));
+                when(users.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
                 AuthServiceImpl service = new AuthServiceImpl(users, mock(UserMapper.class),
                         mock(PasswordEncoder.class), mock(RoleRepository.class), issuer(new RedisAuthStateStore(redis), signingKey), mock(ProfileRepository.class),
                         mock(PasswordResetOtpStore.class), mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class),
@@ -829,7 +829,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), "some-access-token", refreshToken, request));
@@ -848,7 +848,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(userId)).thenReturn(Optional.empty());
+            when(userRepository.findWithAuthoritiesById(userId)).thenReturn(Optional.empty());
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(userId, "access-token", "refresh-token", request));
@@ -866,7 +866,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
@@ -884,7 +884,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
@@ -903,7 +903,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
@@ -921,7 +921,7 @@ class AuthServiceImplTest {
                     .confirmPassword("differentSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
 
             AppException exception = assertThrows(AppException.class,
                     () -> authService.changePassword(user.getId(), "access-token", "refresh-token", request));
@@ -939,7 +939,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
             when(passwordEncoder.matches("wrongOldSecret", "hashed_pwd")).thenReturn(false);
 
             AppException exception = assertThrows(AppException.class,
@@ -959,7 +959,7 @@ class AuthServiceImplTest {
                     .confirmPassword("oldSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
             when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
 
             AppException exception = assertThrows(AppException.class,
@@ -985,7 +985,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
             when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
             when(passwordEncoder.matches("newSecret123", "hashed_pwd")).thenReturn(false);
             when(passwordEncoder.encode("newSecret123")).thenReturn("new_hashed_pwd");
@@ -1016,7 +1016,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
             when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
             when(passwordEncoder.matches("newSecret123", "hashed_pwd")).thenReturn(false);
             when(passwordEncoder.encode("newSecret123")).thenReturn("new_hashed_pwd");
@@ -1053,7 +1053,7 @@ class AuthServiceImplTest {
                     .confirmPassword("newSecret123")
                     .build();
 
-            when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+            when(userRepository.findWithAuthoritiesById(user.getId())).thenReturn(Optional.of(user));
             when(passwordEncoder.matches("oldSecret123", "hashed_pwd")).thenReturn(true);
             when(passwordEncoder.matches("newSecret123", "hashed_pwd")).thenReturn(false);
             when(passwordEncoder.encode("newSecret123")).thenReturn("new_hashed_pwd");

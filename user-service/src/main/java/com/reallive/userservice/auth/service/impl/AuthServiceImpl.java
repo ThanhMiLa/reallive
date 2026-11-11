@@ -99,7 +99,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse refresh(String token) {
         UUID userId = authTokenService.refreshUserId(token);
-        UserEntity user = userRepository.findById(userId)
+        UserEntity user = userRepository.findWithAuthoritiesById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         return authTokenService.issue(user, authTokenService.revocation(token, "REFRESH"));
     }
@@ -107,7 +107,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse changePassword(UUID userId, String accessToken, String refreshToken, ChangePasswordRequest request) {
-        UserEntity userEntity = userRepository.findById(userId)
+        UserEntity userEntity = userRepository.findWithAuthoritiesById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         if (userEntity.getPasswordHash() == null || userEntity.getPasswordHash().isBlank()) {
