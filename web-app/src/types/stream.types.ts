@@ -14,6 +14,7 @@ interface StreamMetadataFields {
 }
 
 export interface StreamMetadata extends StreamMetadataFields {
+  ownerUserId?: string
   currentViewerCount: number | null
 }
 
