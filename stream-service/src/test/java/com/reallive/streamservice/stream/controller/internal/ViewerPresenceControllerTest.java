@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(
-        controllers = ViewerPresenceController.class,
+        controllers = InternalViewerPresenceController.class,
         properties = {
                 "stream.ccu.enabled=true",
                 "stream.ccu.callback-token=viewer-callback-token-0123456789abcdef",

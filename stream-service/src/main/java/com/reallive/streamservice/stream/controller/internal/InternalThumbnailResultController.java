@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @ConditionalOnProperty(prefix = "stream.thumbnail", name = "callback-enabled", havingValue = "true")
-public class ThumbnailResultController {
+public class InternalThumbnailResultController {
 
     ThumbnailResultService resultService;
 

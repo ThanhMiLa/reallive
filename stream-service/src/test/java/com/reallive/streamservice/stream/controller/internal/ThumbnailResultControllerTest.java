@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(
-        controllers = ThumbnailResultController.class,
+        controllers = InternalThumbnailResultController.class,
         properties = {
                 "stream.thumbnail.callback-enabled=true",
                 "stream.thumbnail.callback-internal-token=callback-token-0123456789abcdefg",

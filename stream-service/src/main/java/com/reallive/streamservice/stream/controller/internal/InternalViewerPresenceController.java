@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @ConditionalOnProperty(prefix = "stream.ccu", name = "enabled", havingValue = "true")
-public class ViewerPresenceController {
+public class InternalViewerPresenceController {
     StreamViewerPresenceService service;
 
     @PostMapping
