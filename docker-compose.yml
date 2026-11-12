@@ -227,6 +227,16 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_ADMIN_PASSWORD:?Set MONGODB_ADMIN_PASSWORD in .env}
       MONGO_INITDB_DATABASE: reallive_chat
       CHAT_DB_PASSWORD: ${CHAT_DB_PASSWORD:?Set CHAT_DB_PASSWORD in .env}
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        if [ ! -s /data/configdb/replica.key ]; then
+          openssl rand -base64 756 > /data/configdb/replica.key
+        fi
+        chmod 400 /data/configdb/replica.key
+        chown mongodb:mongodb /data/configdb/replica.key
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/configdb/replica.key --bind_ip_all
     ports:
       - "127.0.0.1:${MONGODB_PORT:-27017}:27017"
     volumes:
@@ -243,7 +253,7 @@ services:
           --username "$$MONGO_INITDB_ROOT_USERNAME"
           --password "$$MONGO_INITDB_ROOT_PASSWORD"
           --authenticationDatabase admin
-          --eval 'quit(db.adminCommand({ ping: 1 }).ok === 1 ? 0 : 1)'
+          --eval 'let status; try { status = db.adminCommand({ replSetGetStatus: 1 }); } catch (e) { status = { ok: 0, code: e.code, codeName: e.codeName }; } if (status.ok !== 1) { if (status.code !== 94 && status.codeName !== "NotYetInitialized") quit(1); const init = rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "127.0.0.1:27017" }] }); if (init.ok !== 1) quit(1); } for (let i = 0; i < 10; i++) { if (db.hello().isWritablePrimary) quit(0); sleep(250); } quit(1);'
       interval: 10s
       timeout: 10s
       retries: 10
