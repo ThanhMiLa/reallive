@@ -157,6 +157,19 @@ class ProfileControllerTest {
         userRepository.deleteAll();
     }
 
+    @Test
+    void internalChatProfilePermitsAnonymousAccessAndOnlyReturnsSnapshotFields() throws Exception {
+        var user = createUser("chat-viewer");
+        profileRepository.saveAndFlush(ProfileEntity.builder().user(user).displayName("Snapshot")
+                .avatarUrl("https://example.com/retained.png").build());
+        String path = "/internal/api/users/" + user.getId() + "/chat-profile";
+        mockMvc.perform(get(path))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.length()").value(3))
+                .andExpect(jsonPath("$.result.displayName").value("Snapshot"))
+                .andExpect(jsonPath("$.result.avatarUrl").value("https://example.com/retained.png"))
+                .andExpect(jsonPath("$.result.email").doesNotExist());
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void getMyProfileReturnsExactlyTheRequestedFields(boolean emailVerified) throws Exception {
@@ -304,7 +317,7 @@ class ProfileControllerTest {
         assertEquals(LocalDate.of(2001, 2, 3), saved.getDob());
         assertTrue(saved.getAvatarUrl().endsWith(".png"));
         verify(storage).upload(anyString(), any(byte[].class), eq("image/png"));
-        verify(storage).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
+        verify(storage, never()).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
     }
 
     @Test
@@ -351,7 +364,7 @@ class ProfileControllerTest {
         assertEquals("New streamer", saved.getDisplayName());
         assertTrue(saved.getAvatarUrl().startsWith("https://images.example.com/avatars/" + user.getId() + "/"));
         verify(channelClientResolver).updateChannelProfile(streamer.getId(), "New streamer", saved.getAvatarUrl());
-        verify(storage).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
+        verify(storage, never()).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
         verify(storage, never()).deleteQuietly(anyString());
     }
 
@@ -679,7 +692,7 @@ class ProfileControllerTest {
         assertTrue(url.matches("https://images.example.com/avatars/" + user.getId() + "/[0-9a-f-]+\\." + format));
         String key = url.substring("https://images.example.com/".length());
         verify(storage).upload(eq(key), eq(content), eq(format.equals("jpg") ? "image/jpeg" : "image/" + format));
-        verify(storage).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
+        verify(storage, never()).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
     }
 
     @Test
@@ -719,7 +732,7 @@ class ProfileControllerTest {
 
         assertTrue(profileRepository.findByUserId(user.getId()).orElseThrow().getAvatarUrl()
                 .startsWith("https://images.example.com/avatars/" + user.getId() + "/"));
-        verify(storage).deleteManagedAvatar(null, user.getId());
+        verify(storage, never()).deleteManagedAvatar(null, user.getId());
         verify(storage, never()).deleteQuietly(anyString());
     }
 
@@ -850,8 +863,8 @@ class ProfileControllerTest {
 
         assertNotEquals(firstUrl, secondUrl);
         verify(storage, times(2)).upload(anyString(), any(byte[].class), eq("image/png"));
-        verify(storage).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
-        verify(storage).deleteManagedAvatar(firstUrl, user.getId());
+        verify(storage, never()).deleteManagedAvatar("https://images.example.com/old.png", user.getId());
+        verify(storage, never()).deleteManagedAvatar(firstUrl, user.getId());
         verify(storage, never()).deleteQuietly(anyString());
     }
 

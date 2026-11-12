@@ -180,9 +180,8 @@ class ProfileServiceImplTest {
     }
 
     @Test
-    void updateUploadsNewAvatarAndDeletesOldOnlyAfterCommit() throws Exception {
+    void updateUploadsNewAvatarAndRetainsOldAfterCommit() throws Exception {
         ProfileEntity profile = profileForUpdate();
-        String oldUrl = profile.getAvatarUrl();
         prepareAvatarTransaction();
 
         UserProfileResponse response = profileService.updateMyProfile(user.getId(), avatarRequest());
@@ -192,7 +191,7 @@ class ProfileServiceImplTest {
         verify(storage, never()).deleteManagedAvatar(any(), any());
         verify(storage, never()).deleteQuietly(anyString());
         completeTransaction(TransactionSynchronization.STATUS_COMMITTED);
-        verify(storage).deleteManagedAvatar(oldUrl, user.getId());
+        verify(storage, never()).deleteManagedAvatar(any(), any());
         verify(storage, never()).deleteQuietly(anyString());
         verify(streamerRepository).findByUserId(user.getId());
         verifyNoInteractions(channelClientResolver);
@@ -336,7 +335,6 @@ class ProfileServiceImplTest {
     void updateDoesNotFailCommittedResponseWhenOldAvatarCleanupFails() throws Exception {
         profileForUpdate();
         prepareAvatarTransaction();
-        doThrow(new IllegalStateException("Cleanup failure")).when(storage).deleteManagedAvatar(any(), any());
         profileService.updateMyProfile(user.getId(), avatarRequest());
         completeTransaction(TransactionSynchronization.STATUS_COMMITTED);
         verify(storage, never()).deleteQuietly(anyString());
@@ -355,7 +353,7 @@ class ProfileServiceImplTest {
         assertEquals(user.getId(), response.getUserId());
         verify(profileRepository).save(profile);
         completeTransaction(TransactionSynchronization.STATUS_COMMITTED);
-        verify(storage).deleteManagedAvatar(null, user.getId());
+        verify(storage, never()).deleteManagedAvatar(null, user.getId());
         verify(storage, never()).deleteQuietly(anyString());
     }
 

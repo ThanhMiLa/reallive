@@ -82,26 +82,24 @@ public class ProfileServiceImpl implements ProfileService {
     private void replaceAvatar(ProfileEntity profile, UUID userId, AvatarImage avatar) {
         String objectKey = "avatars/" + userId + "/" + UUID.randomUUID() + "." + avatar.extension();
         String newAvatarUrl = r2StorageService.getPublicUrl(objectKey);
-        String oldAvatarUrl = profile.getAvatarUrl();
         if (newAvatarUrl.length() > 500) {
             throw new IllegalStateException("Configured avatar URL exceeds the database column length");
         }
-        registerAvatarCleanup(userId, objectKey, oldAvatarUrl);
+        registerAvatarCleanup(userId, objectKey);
         r2StorageService.upload(objectKey, avatar.content(), avatar.contentType());
         profile.setAvatarUrl(newAvatarUrl);
     }
 
     /** R2 operations are compensated after the database transaction outcome is known. */
-    private void registerAvatarCleanup(UUID userId, String objectKey, String oldAvatarUrl) {
+    private void registerAvatarCleanup(UUID userId, String objectKey) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCompletion(int status) {
                 try {
-                    if (status == STATUS_COMMITTED) {
-                        r2StorageService.deleteManagedAvatar(oldAvatarUrl, userId);
-                    } else if (status == STATUS_ROLLED_BACK) {
+                    // Committed avatars remain available to historical chat snapshots.
+                    if (status == STATUS_ROLLED_BACK) {
                         r2StorageService.deleteQuietly(objectKey);
-                    } else {
+                    } else if (status != STATUS_COMMITTED) {
                         log.warn("Transaction outcome is unknown for avatar {}; manual cleanup may be required", objectKey);
                     }
                 } catch (RuntimeException exception) {
