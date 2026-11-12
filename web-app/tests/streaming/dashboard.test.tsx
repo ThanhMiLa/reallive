@@ -5,12 +5,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { useAuthStore } from '@/stores/auth.store'
+import type { ChatMessage, ChatPage } from '@/types/chat.types'
 import type { StreamMetadata, StreamSession } from '@/types/stream.types'
 
 type HlsStub = {
   source: string
   config: { fetchSetup: (context: { url: string }, init: RequestInit) => Promise<Request> }
   destroy: ReturnType<typeof vi.fn>
+}
+type SocketStub = {
+  connected: boolean
+  sent: { clientMessageId: string; content: string }[]
+  trigger: (event: string, value?: unknown) => void
 }
 
 const mocks = vi.hoisted(() => ({
@@ -22,11 +28,96 @@ const mocks = vi.hoisted(() => ({
   access: vi.fn(),
   end: vi.fn(),
   categories: vi.fn(),
+  chatHistory: vi.fn(),
   toast: vi.fn(),
   hls: [] as HlsStub[],
+  sockets: [] as SocketStub[],
 }))
+class FakeSocket {
+  connected = false
+  handlers = new Map<string, ((...args: unknown[]) => void)[]>()
+  sent: { clientMessageId: string; content: string }[] = []
+  nextSequence = 2
+  on(event: string, handler: (...args: never[]) => void) {
+    this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler as (...args: unknown[]) => void])
+    return this
+  }
+  trigger(event: string, value?: unknown) {
+    this.handlers.get(event)?.forEach((fn) => fn(value))
+  }
+  connect() {
+    this.connected = true
+    queueMicrotask(() => this.trigger('connect'))
+    return this
+  }
+  disconnect() {
+    this.connected = false
+    this.trigger('disconnect')
+    return this
+  }
+  removeAllListeners() {
+    this.handlers.clear()
+    return this
+  }
+  timeout() {
+    return this
+  }
+  emit(event: string, input: { clientMessageId: string; content: string }, callback?: (...args: unknown[]) => void) {
+    if (event === 'chat:join') {
+      queueMicrotask(() =>
+        callback?.(null, { ok: true, data: { sessionId, canRead: true, canSend: true, watermark: 'head' } }),
+      )
+    }
+    if (event === 'chat:send') {
+      this.sent.push(input)
+      const seq = this.nextSequence++
+      queueMicrotask(() =>
+        callback?.(null, {
+          ok: true,
+          data: {
+            id: `00000000-0000-4000-8000-${String(seq).padStart(12, '0')}`,
+            cursor: `cursor-${seq}`,
+            streamId: sessionId,
+            channelId: 'channel',
+            userId: 'owner',
+            clientMessageId: input.clientMessageId,
+            sequence: seq,
+            content: input.content,
+            sender: { displayName: 'Owner', avatarUrl: null },
+            createdAt: '2026-10-30T00:01:00Z',
+          } satisfies ChatMessage,
+        }),
+      )
+    }
+    return this
+  }
+}
 vi.mock('@/api/stream.api', () => ({ streamApi: mocks }))
 vi.mock('@/api/channel.api', () => ({ channelApi: { getCategories: mocks.categories } }))
+vi.mock('@/api/chat.api', () => ({ chatApi: { history: mocks.chatHistory } }))
+vi.mock('socket.io-client', () => ({
+  io: () => {
+    const socket = new FakeSocket()
+    mocks.sockets.push(socket)
+    return socket
+  },
+}))
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: (options: { count: number }) => ({
+    getTotalSize: () => options.count * 64,
+    getVirtualItems: () =>
+      Array.from({ length: options.count }, (_, index) => ({
+        index,
+        start: index * 64,
+        end: (index + 1) * 64,
+        size: 64,
+      })),
+    measureElement: () => undefined,
+    scrollToIndex: () => undefined,
+    getOffsetForIndex: (index: number) => [index * 64, 'start'],
+    scrollToOffset: () => undefined,
+  }),
+}))
 vi.mock('sonner', () => ({ toast: { success: mocks.toast, error: mocks.toast } }))
 vi.mock('hls.js', () => {
   class FakeHls {
@@ -100,6 +191,15 @@ function mount(node: ReactNode = <StreamerDashboardPage />) {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.hls.length = 0
+  mocks.sockets.length = 0
+  mocks.chatHistory.mockResolvedValue({
+    items: [],
+    hasOlder: false,
+    hasNewer: false,
+    olderCursor: null,
+    newerCursor: null,
+    watermark: 'head',
+  } satisfies ChatPage)
   useAuthStore.setState({
     isCheckingAuth: false,
     isAuthenticated: true,
@@ -633,5 +733,66 @@ describe('Stream Manager', () => {
     mount()
     await screen.findByText('Stream session is unavailable.')
     expect(screen.queryByLabelText('Stream preview')).toBeNull()
+  })
+
+  it('shows empty chat guidance without a session and opens live chat for the streamer', async () => {
+    mocks.current.mockResolvedValue(null)
+    mount()
+    await screen.findByText('Create a stream session to open chat.')
+    cleanup()
+
+    const live: StreamMetadata = {
+      ...ready,
+      status: 'LIVE',
+      startedAt: '2026-10-30T00:00:00Z',
+      currentViewerCount: 3,
+      ownerUserId: 'owner',
+    }
+    mocks.current.mockResolvedValue(live)
+    mocks.metadata.mockResolvedValue(live)
+    mocks.access.mockResolvedValue({
+      sessionId,
+      playbackUrl: 'https://cdn.example/live/playlist.m3u8',
+      readToken: 'tok',
+      readExpiresAt: '2026-10-30T08:00:00Z',
+    })
+    mocks.chatHistory.mockResolvedValue({
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000001',
+          cursor: 'cursor-1',
+          streamId: sessionId,
+          channelId: 'channel',
+          userId: 'viewer-1',
+          clientMessageId: 'viewer-1-msg',
+          sequence: 1,
+          content: 'Hi streamer!',
+          sender: { displayName: 'Viewer One', avatarUrl: null },
+          createdAt: '2026-10-30T00:00:10Z',
+        },
+      ],
+      hasOlder: false,
+      hasNewer: false,
+      olderCursor: 'cursor-1',
+      newerCursor: 'cursor-1',
+      watermark: 'head',
+    } satisfies ChatPage)
+
+    mount()
+    const chatAside = await screen.findByLabelText('Stream chat')
+    expect(within(chatAside).getByText('Stream Chat')).toBeTruthy()
+    expect(await within(chatAside).findByText('Hi streamer!')).toBeTruthy()
+    expect(within(chatAside).getByText('Viewer One').className).toContain('text-white')
+
+    const input = within(chatAside).getByLabelText('Send a message') as HTMLInputElement
+    input.focus()
+    fireEvent.change(input, { target: { value: 'Welcome everyone!' } })
+    fireEvent.click(within(chatAside).getByLabelText('Send chat message'))
+
+    await within(chatAside).findByText('Welcome everyone!')
+    const ownerName = within(chatAside).getByText('Owner')
+    expect(ownerName.className).toContain('text-green-400')
+    expect(ownerName.closest('.border-\\[\\#ff2b42\\]')).toBeTruthy()
+    expect(document.activeElement).toBe(input)
   })
 })

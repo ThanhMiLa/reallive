@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef } from 'react'
 import { isAxiosError } from 'axios'
 import { Button } from '@/components/ui/Button'
+import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 import { ObsConnectionPanel } from '@/components/stream/ObsConnectionPanel'
 import { StreamInfoForm } from '@/components/stream/StreamInfoForm'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
@@ -255,9 +256,9 @@ function Dashboard({ userId }: { userId: string }) {
           </div>
           <aside
             aria-label="Stream chat"
-            className="hidden xl:flex xl:flex-col xl:sticky xl:top-6 h-[600px] min-w-0 transform-gpu rounded-2xl border border-brand-border bg-brand-card p-5"
+            className="flex h-[520px] min-w-0 flex-col overflow-hidden transform-gpu rounded-2xl border border-brand-border bg-brand-card xl:sticky xl:top-6 xl:h-[600px]"
           >
-            <div className="flex flex-wrap items-center gap-3 border-b border-brand-border pb-3">
+            <div className="flex flex-wrap items-center gap-3 border-b border-brand-border px-5 py-3.5">
               <h2 className="font-outfit text-sm font-bold text-gray-400">Stream Chat</h2>
               {session && (
                 <StreamViewerCount
@@ -267,10 +268,21 @@ function Dashboard({ userId }: { userId: string }) {
                 />
               )}
             </div>
-            <div className="flex flex-1 flex-col items-center justify-center text-center p-4 text-gray-500">
-              <p className="text-sm font-medium text-gray-400">Stream Chat</p>
-              <p className="mt-1 text-xs text-gray-500">Chat messages will appear here.</p>
-            </div>
+            {id ? (
+              <StreamChatPanel
+                embedded
+                sessionId={id}
+                status={status}
+                streamerUserId={session?.ownerUserId ?? userId}
+              />
+            ) : (
+              <div
+                role="status"
+                className="flex flex-1 items-center justify-center bg-[#08080a] p-5 text-center text-sm text-gray-400"
+              >
+                Create a stream session to open chat.
+              </div>
+            )}
           </aside>
         </div>
         {dialog && session && !ended && (
