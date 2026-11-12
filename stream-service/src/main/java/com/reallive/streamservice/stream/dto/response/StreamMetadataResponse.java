@@ -8,6 +8,7 @@ import java.util.UUID;
 public record StreamMetadataResponse(
         UUID id,
         UUID channelId,
+        UUID ownerUserId,
         String title,
         UUID categoryId,
         StreamVisibility visibility,

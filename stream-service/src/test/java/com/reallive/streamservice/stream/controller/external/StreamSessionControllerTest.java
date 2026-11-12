@@ -221,7 +221,7 @@ class StreamSessionControllerTest {
     void viewerMetadataIsNoStoreAndContainsNoCredentialsForEveryLifecycleState() throws Exception {
         var startedAt = Instant.parse("2026-10-29T01:00:00Z");
         for (var status : StreamSessionStatus.values()) {
-            var metadata = new StreamMetadataResponse(session, UUID.randomUUID(), "Title", UUID.randomUUID(),
+            var metadata = new StreamMetadataResponse(session, UUID.randomUUID(), owner, "Title", UUID.randomUUID(),
                     StreamVisibility.PUBLIC, status, startedAt, null, null, Instant.parse("2026-10-29T02:00:00Z"), null);
             when(service.metadata(session)).thenReturn(metadata);
 
@@ -230,6 +230,7 @@ class StreamSessionControllerTest {
                     .andExpect(header().string("Cache-Control", "no-store"))
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.result.id").value(session.toString()))
+                    .andExpect(jsonPath("$.result.ownerUserId").value(owner.toString()))
                     .andExpect(jsonPath("$.result.status").value(status.name()))
                     .andExpect(jsonPath("$.result.visibility").value("PUBLIC"))
                     .andExpect(jsonPath("$.result.playbackUrl").doesNotExist())

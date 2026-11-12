@@ -36,7 +36,8 @@ public class StreamSessionMapper {
     }
 
     public StreamMetadataResponse toMetadataResponse(StreamSessionEntity entity, Instant serverTime, Long count) {
-        return new StreamMetadataResponse(entity.getId(), entity.getChannelId(), entity.getTitle(), entity.getCategoryId(),
+        return new StreamMetadataResponse(entity.getId(), entity.getChannelId(), entity.getOwnerUserId(),
+                entity.getTitle(), entity.getCategoryId(),
                 entity.getVisibility(), entity.getStatus(), utc(entity.getStartedAt()), utc(entity.getEndedAt()),
                 utc(entity.getReconnectDeadlineAt()), serverTime, count);
     }
