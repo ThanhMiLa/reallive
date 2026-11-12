@@ -1,118 +1,84 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Chat Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS + Socket.IO + MongoDB/Mongoose livestream chat. See [the contract](../docs/contracts/chat/README.md) and [verification notes](../docs/testing/Chat%20MVP.md).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Source organization
 
-## Description
+Chat stays in one feature module. Files inside `src/chat/` are grouped by responsibility:
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```text
+chat/
+  chat.module.ts
+  chat.spec.ts
+  controllers/chat.controller.ts
+  gateways/chat.gateway.ts
+  services/
+    chat.service.ts
+    chat-access.service.ts
+    chat-auth.service.ts
+    chat-history.service.ts
+    chat-database.service.ts
+  clients/chat-clients.service.ts
+  repositories/chat.repository.ts
+  mappers/chat.mapper.ts
+  schemas/
+    chat-message.schema.ts
+    chat-counter.schema.ts
+  dto/
+    chat-message.dto.ts
+    chat-history.dto.ts
+  interfaces/
+    chat.types.ts
+    chat-history.interface.ts
+    create-message.interface.ts
+  utils/
+    chat-cursor.ts
+    room-queue.ts
 ```
 
-## Compile and run the project
+Controllers handle HTTP; gateways handle Socket.IO; clients call other application services. `ChatService` owns authorization, send orchestration and idempotency decisions. `ChatHistoryService` validates cursors and builds pagination boundaries. `ChatDatabaseService` validates database readiness. `ChatRepository` only performs MongoDB queries, writes and transaction execution; it does not depend on response DTOs, mappers or application error codes. `ChatMapper` converts service input to documents and stored documents/page metadata to public responses.
 
-```bash
-# development
-$ npm run start
+The send service executes request-ID lookup, counter increment and message insertion in one repository transaction. It maps the committed result and broadcasts only newly created messages after commit. MongoDB can retry the transaction callback without allocating a different message ID or broadcasting a duplicate.
 
-# watch mode
-$ npm run start:dev
+Schemas define MongoDB document shapes and their TypeScript interfaces, serving the role of persistence entities. DTO interfaces describe history query and public message/page shapes; runtime validation remains in the service layer. Other internal and integration contracts live in `interfaces/`.
 
-# production mode
-$ npm run start:prod
+## Local startup
+
+1. Run `npm ci` in this directory.
+2. Copy `.env.example` to `.env`. Supply the existing `JWT_SIGNER_KEY` and Redis connection shared by User Service/Gateway. The private Stream/Channel/User chat endpoints use `permitAll()` and are called without internal-token or user credentials. Never commit `.env`.
+3. Set `MONGODB_URI` to an available MongoDB replica set, including its hosts, credentials when required, database and replica-set name. Chat uses transactions and requires a replica set.
+4. Run `npm run db:indexes`. Startup/readiness reject a standalone database or missing required unique indexes.
+5. Apply Channel Service migration V5 through its normal startup/Flyway process. Deploy the private integration endpoints in User/Channel/Stream Service before starting chat.
+6. Run `npm run start:dev`. It listens on `127.0.0.1:3001` by default.
+7. Start/restart Gateway with the chat HTTP/WS routes and run Web. Web continues to use `VITE_API_BASE_URL=http://localhost:8888`.
+
+The default service URLs include the Java servlet context paths. Docker deployments must change these URLs and Gateway `CHAT_HTTP_URI`/`CHAT_WS_URI` to reachable service addresses. Bind internal ports only on a trusted network. Keep Gateway and Socket.IO origins explicit.
+
+## Verification
+
+```sh
+npm run build
+npm run lint
+npm test -- --runInBand
+npm run test:integration
+npm run test:baseline
 ```
 
-## Run tests
+`test:integration` creates uniquely named disposable MongoDB replica-set/Redis containers on available localhost ports, runs HTTP and real Socket.IO tests, then stops its own containers. Docker must be available. The test database name starts with `chat_it_`; teardown refuses to drop a differently named database. The tests never point at application MongoDB or Redis.
 
-```bash
-# unit tests
-$ npm run test
+`test:baseline` runs the explicit performance scenario and updates `docs/testing/Chat Baseline.json`. It is a local measurement with mock Java integrations, not a production capacity claim.
 
-# e2e tests
-$ npm run test:e2e
+For already provisioned isolated test containers, `npm run test:e2e -- --runInBand` uses ports 27028/16388 by default; override `CHAT_TEST_MONGO_PORT` and `CHAT_TEST_REDIS_PORT` to point only at disposable test infrastructure.
 
-# test coverage
-$ npm run test:cov
-```
+## Operations and current limits
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- Live: `GET /internal/health/live`; ready: `GET /internal/health/ready`. Gateway does not expose them. Readiness checks Redis, MongoDB replica-set configuration and required indexes.
+- Run one Chat Service instance. No Redis Socket.IO adapter or multi-instance room sequencing is supported in this MVP.
+- Message persistence is authoritative. Restart causes socket reconnect/catch-up, and counters/idempotency survive restart.
+- Missing auth state, expired credentials and unavailable dependencies reject access. Do not recover Redis misses by granting default roles or querying account status from User Service.
+- Dependency failures reject the current operation and may be retried; a 503 is not automatically classified as a stream ending.
+- Session/channel access is cached for at most 1,750 ms and refreshed on demand. No periodic participant checks or automatic idle-room closure is implemented; active actions validate access. Passive ban/revocation/stream-end enforcement is deferred.
+- No automatic message TTL, avatar deletion, spam policy, moderation commands, VOD chat replay or Android client is implemented.
+- Retaining old avatar objects is intentional and grows object storage until retention/cleanup is defined.
+- Do not log cookies, JWTs, internal tokens or message/profile bodies. Current error logs contain only an operation and exception type.
+- HTTP error rate, disconnect reasons, MongoDB transaction latency, resource use and deep-page explain results should be monitored before raising load or enabling multiple instances.

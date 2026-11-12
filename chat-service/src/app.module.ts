@@ -1,21 +1,16 @@
 import { Module } from '@nestjs/common';
-import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-
-export const { ObserveModule, ObserveInstrument } = createObserveModule();
+import { ConfigModule } from '@nestjs/config';
+import { ChatModule } from './chat/chat.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
-    // Distributed tracing, auto-correlated logs, request/job metrics, error
-    // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'chat-service',
+    ConfigModule.forRoot({
+      isGlobal: true,
+      ignoreEnvFile: process.env.NODE_ENV === 'test',
     }),
+    ChatModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [HealthController],
 })
 export class AppModule {}
