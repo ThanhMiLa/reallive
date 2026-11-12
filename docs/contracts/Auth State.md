@@ -35,7 +35,7 @@ Public endpoints allow requests without an access-token cookie and do not requir
 
 Normal requests never fetch auth state from User Service on a Redis miss. Login or refresh republishes it. Dependent services must use the same Redis host, logical database and key serialization. Development backends bind to `127.0.0.1` by default through `BACKEND_BIND_ADDRESS`. If overridden for deployment, backend ports must remain restricted to trusted callers because downstream JWT decoders trust gateway validation.
 
-Channel ownership, channel-specific moderators, bans on chat/viewing, email verification and streamer status remain separate business rules. Stream authentication follows this contract; future VOD and Chat authentication must also follow it; mobile clients continue using the gateway cookie API.
+Channel ownership, channel-specific moderators, bans on chat/viewing, email verification and streamer status remain separate business rules. Stream authentication follows this contract; Chat authentication follows it with signature validation and continuous WebSocket revalidation; future VOD authentication must also follow it; mobile clients continue using the gateway cookie API.
 
 ### Stream session endpoint permissions
 
@@ -91,3 +91,7 @@ Run `./mvnw clean verify` in each of API Gateway, User, Channel, Payment and Not
 ```
 
 This opt-in suite uses a disposable Redis on `127.0.0.1`, logical database 14, without credentials. It verifies immediate permission changes with an unchanged JWT, post-commit retry, rollback, ban/unban synchronization, refresh replay, TTL renewal and atomic Redis publication. It deletes only the random keys it creates. Do not use a production Redis instance.
+
+### Chat integration
+
+Chat uses the same cookie, signing key, Redis database, account state and revocation keys, including after WebSocket upgrade. The three private chat data endpoints in User/Channel/Stream Service use `permitAll()` and are called without internal-token or user credentials. Access relies on private service networking and absence of Gateway routes to these internal paths. See [Chat contract](chat/README.md).

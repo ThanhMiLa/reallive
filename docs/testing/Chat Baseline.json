@@ -1,0 +1,28 @@
+{
+  "measuredAt": "2026-11-11T16:44:42.012Z",
+  "environment": "Local Docker MongoDB replica set and Redis; mock Java integrations; Nest server and clients share the Jest process; Gateway excluded",
+  "node": "v26.3.0",
+  "historyRecords": 100000,
+  "connections": 20,
+  "writeRtt": {
+    "samples": 100,
+    "p50Ms": 92.92,
+    "p95Ms": 237.9,
+    "p99Ms": 282.06
+  },
+  "historyRtt": {
+    "samples": 100,
+    "p50Ms": 34.4,
+    "p95Ms": 79.02,
+    "p99Ms": 84.84
+  },
+  "elapsedMs": 2391.09,
+  "mixedOperationsPerSecond": 83.64,
+  "cpuMs": 1394.38,
+  "maxRssMiB": 805.3,
+  "deepPage": {
+    "returned": 50,
+    "keysExamined": 50,
+    "docsExamined": 50
+  }
+}

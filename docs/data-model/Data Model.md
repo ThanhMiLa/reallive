@@ -227,6 +227,7 @@ Composite Constraint:
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
 | id | UUID | PK, NOT NULL | Primary | Ban event ID |
+| event_order | BIGINT | GENERATED ALWAYS AS IDENTITY, UNIQUE | UNIQUE | Tie breaker for events with equal timestamps |
 | channel_id | UUID | FK, NOT NULL | INDEX | Channel ID |
 | user_id | UUID | NOT NULL | INDEX | User ID from User Service |
 | action | VARCHAR(20) | NOT NULL | - | `BAN, UNBAN` |
@@ -236,7 +237,7 @@ Composite Constraint:
 | created_at | TIMESTAMP | NOT NULL | - | Event time |
 
 Composite Index:
-- `INDEX (channel_id, user_id, ban_type, created_at)`
+- `INDEX (channel_id, user_id, ban_type, created_at DESC, event_order DESC)`
 
 ### 2.2 Relationships
 
@@ -346,23 +347,32 @@ Indexes:
 
 ## 4. Chat Service Data Model
 
-### 4.1 Collections
-| Field | Type | Required | Index | Description |
-|---|---|---|---|---|
-| _id | UUID | YES | Primary | Chat message identifier |
-| stream_id | UUID | YES | INDEX | Stream session ID from Stream Service |
-| channel_id | UUID | YES | INDEX | Channel ID from Channel Service |
-| user_id | UUID | YES | INDEX | Sender user ID from User Service |
-| content | STRING | YES | - | Chat message content |
-| offset_ms | LONG | YES | COMPOSITE | Message position relative to livestream start time |
-| status | STRING | YES | INDEX | `ACTIVE, DELETED` |
-| created_at | DATETIME | YES | COMPOSITE | Message creation time |
-| deleted_at | DATETIME | NO | - | Time when message was deleted |
-| deleted_by | UUID | NO | - | Moderator / streamer user ID who deleted the message |
+### 4.1 chat_messages
 
-### 4.2 Relationships
+| Field | Type | Required | Description |
+|---|---|---|---|
+| _id | UUID string | YES | Server message ID |
+| stream_id | UUID string | YES | Session ID; one chat room per session |
+| channel_id | UUID string | YES | Channel resolved from Stream Service |
+| user_id | UUID string | YES | Authenticated sender |
+| client_message_id | UUID string | YES | Stable retry identifier per sender and session |
+| sequence | NUMBER (safe integer) | YES | Monotonic per-session ordering and cursor key |
+| content | STRING | YES | Trimmed text, 1–500 Unicode code points |
+| sender_snapshot.display_name | STRING | YES | Name observed by the server when accepting the message |
+| sender_snapshot.avatar_url | STRING / null | NO | Retained avatar URL at send time |
+| created_at | DATETIME | YES | Server timestamp; sequence orders equal timestamps |
 
-*TBD*
+Indexes: default `_id`, unique `(stream_id, sequence)`, unique `(stream_id, user_id, client_message_id)`.
+
+### 4.2 chat_counters
+
+One document per session: `_id` is the session UUID string, `value` is the latest committed sequence. Counter increment and message insert share a MongoDB transaction. Replica set required; application startup does not auto-create indexes.
+
+### 4.3 Access and retention
+
+Chat is readable/writable only during PUBLIC/LIVE or PUBLIC/RECONNECTING, subject to account and channel access. History uses cursor pagination, 50 messages per request. There is no VOD chat replay or offset_ms requirement. No retention TTL is configured yet; ending a stream closes access but does not delete stored messages. User Service retains previous committed avatar objects for historical snapshots.
+
+See [Chat contract](../contracts/chat/README.md). Cross-service identifiers are logical references; no MongoDB join to PostgreSQL or foreign key across services.
 
 ---
 
