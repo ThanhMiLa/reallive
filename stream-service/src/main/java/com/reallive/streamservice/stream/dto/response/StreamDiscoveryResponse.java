@@ -1,6 +1,6 @@
 package com.reallive.streamservice.stream.dto.response;
 
-import com.reallive.streamservice.stream.client.channel.LivestreamSummaries;
+import com.reallive.streamservice.client.channel.LivestreamSummaries;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

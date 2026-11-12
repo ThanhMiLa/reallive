@@ -2,10 +2,10 @@ package com.reallive.streamservice.stream.service.impl;
 
 import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
 import com.reallive.streamservice.stream.adapter.media.MediaToken;
-import com.reallive.streamservice.stream.client.thumbnail.RejectedThumbnailJob;
-import com.reallive.streamservice.stream.client.thumbnail.ThumbnailBatchResponse;
-import com.reallive.streamservice.stream.client.thumbnail.ThumbnailJobPayload;
-import com.reallive.streamservice.stream.client.thumbnail.ThumbnailWorkerClient;
+import com.reallive.streamservice.client.thumbnail.RejectedThumbnailJob;
+import com.reallive.streamservice.client.thumbnail.ThumbnailBatchResponse;
+import com.reallive.streamservice.client.thumbnail.ThumbnailJobPayload;
+import com.reallive.streamservice.client.thumbnail.ThumbnailWorkerClient;
 import com.reallive.streamservice.stream.configuration.ThumbnailProperties;
 import com.reallive.streamservice.stream.dto.ThumbnailDispatchJob;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;

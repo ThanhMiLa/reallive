@@ -7,7 +7,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;

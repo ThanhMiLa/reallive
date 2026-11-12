@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.client;
+package com.reallive.streamservice.client;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;

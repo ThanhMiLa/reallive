@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.client.channel;
+package com.reallive.streamservice.client.channel;
 
 import java.util.UUID;
 

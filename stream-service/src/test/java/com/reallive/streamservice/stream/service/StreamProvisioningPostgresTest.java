@@ -7,7 +7,7 @@ import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.stream.adapter.media.MediaPathConfiguration;
 import com.reallive.streamservice.stream.adapter.media.MediaPathStatus;
 import com.reallive.streamservice.stream.adapter.media.MediaServerAdapter;
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.dto.MediaOfflineCommand;
 import com.reallive.streamservice.stream.dto.MediaOnlineCommand;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;

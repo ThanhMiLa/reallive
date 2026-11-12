@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.client;
+package com.reallive.streamservice.client;
 
 import feign.Retryer;
 import org.springframework.context.annotation.Bean;

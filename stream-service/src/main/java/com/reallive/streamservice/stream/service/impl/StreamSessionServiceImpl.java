@@ -5,7 +5,7 @@ import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
 import com.reallive.streamservice.stream.adapter.media.MediaPathConfiguration;
 import com.reallive.streamservice.stream.adapter.media.MediaServerAdapter;
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.dto.CreateSessionCommand;
 import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;

@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.client.thumbnail;
+package com.reallive.streamservice.client.thumbnail;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;

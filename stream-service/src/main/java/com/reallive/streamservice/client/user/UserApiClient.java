@@ -1,7 +1,7 @@
-package com.reallive.streamservice.stream.client.user;
+package com.reallive.streamservice.client.user;
 
 import com.reallive.streamservice.common.dto.ApiResponse;
-import com.reallive.streamservice.stream.client.StreamClientConfiguration;
+import com.reallive.streamservice.client.StreamClientConfiguration;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

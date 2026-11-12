@@ -2,7 +2,7 @@ package com.reallive.streamservice.stream.service.impl;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.dto.response.StreamDetailsResponse;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;

@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.client.thumbnail;
+package com.reallive.streamservice.client.thumbnail;
 
 import com.reallive.streamservice.stream.configuration.ThumbnailProperties;
 import feign.FeignException;

@@ -1,8 +1,8 @@
-package com.reallive.streamservice.stream.client.channel;
+package com.reallive.streamservice.client.channel;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
-import com.reallive.streamservice.stream.client.ClientResponses;
+import com.reallive.streamservice.client.ClientResponses;
 import lombok.RequiredArgsConstructor;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;

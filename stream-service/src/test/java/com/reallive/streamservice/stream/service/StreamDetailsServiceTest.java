@@ -2,8 +2,8 @@ package com.reallive.streamservice.stream.service;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
-import com.reallive.streamservice.stream.client.channel.LivestreamSummaries;
+import com.reallive.streamservice.client.channel.ChannelClient;
+import com.reallive.streamservice.client.channel.LivestreamSummaries;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;

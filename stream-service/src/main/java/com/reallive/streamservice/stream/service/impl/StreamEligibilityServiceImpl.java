@@ -2,8 +2,8 @@ package com.reallive.streamservice.stream.service.impl;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
-import com.reallive.streamservice.stream.client.user.UserClient;
+import com.reallive.streamservice.client.channel.ChannelClient;
+import com.reallive.streamservice.client.user.UserClient;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
 import com.reallive.streamservice.stream.service.StreamEligibilityService;
 import lombok.AccessLevel;

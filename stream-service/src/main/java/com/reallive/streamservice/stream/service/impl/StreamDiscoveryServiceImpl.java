@@ -1,7 +1,7 @@
 package com.reallive.streamservice.stream.service.impl;
 
-import com.reallive.streamservice.stream.client.channel.ChannelClient;
-import com.reallive.streamservice.stream.client.channel.LivestreamSummaries;
+import com.reallive.streamservice.client.channel.ChannelClient;
+import com.reallive.streamservice.client.channel.LivestreamSummaries;
 import com.reallive.streamservice.stream.dto.response.StreamDiscoveryResponse;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
