@@ -58,6 +58,8 @@ vi.mock('@/api/channel.api', () => ({
   },
 }))
 
+vi.mock('@/components/chat/StreamChatPanel', () => ({ StreamChatPanel: () => <aside aria-label="Stream chat">Chat</aside> }))
+
 vi.mock('hls.js', () => {
   class FakeHls {
     static isSupported() {

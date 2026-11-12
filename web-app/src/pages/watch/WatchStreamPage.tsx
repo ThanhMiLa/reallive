@@ -3,15 +3,14 @@ import { Link, useParams } from 'react-router-dom'
 import {
   AlertCircle,
   Lock,
-  MessageSquare,
   Radio,
   RefreshCw,
-  Send,
   Tv,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
 import { useWatchStream } from '@/hooks/useWatchStream'
+import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 
 const StreamPlayer = lazy(() =>
   import('@/components/stream/StreamPlayer').then((module) => ({
@@ -62,55 +61,6 @@ function ChannelAvatar({
         </span>
       )}
     </div>
-  )
-}
-
-function ChatPlaceholderPanel() {
-  return (
-    <aside
-      aria-label="Stream chat"
-      className="w-full xl:w-[340px] 2xl:w-[360px] flex-shrink-0 border-t xl:border-t-0 xl:border-l border-[#1f1f26] bg-[#08080a] flex min-h-0 flex-col h-[400px] xl:h-full"
-    >
-      {/* Chat Header */}
-      <div className="h-12 px-4 border-b border-[#1f1f26] flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-gray-400" />
-          <h2 className="text-sm font-bold text-gray-200 font-outfit">Chat</h2>
-        </div>
-      </div>
-
-      {/* Chat Messages Placeholder */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 flex flex-col items-center justify-center text-center">
-        <div className="w-10 h-10 rounded-full bg-[#121218] border border-[#1f1f26] flex items-center justify-center mb-3">
-          <MessageSquare className="w-4 h-4 text-gray-500" />
-        </div>
-        <p className="text-sm font-semibold text-gray-300">Stream Chat</p>
-        <p className="text-xs text-gray-500 mt-1 max-w-[220px] leading-relaxed">
-          Live chat for this stream will be available soon.
-        </p>
-      </div>
-
-      {/* Chat Input Footer (Disabled UI Placeholder) */}
-      <div className="p-3 border-t border-[#1f1f26] bg-[#050507] flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            disabled
-            placeholder="Send a message"
-            aria-label="Send a message"
-            className="flex-1 bg-[#101014] text-xs text-gray-400 placeholder-gray-500 px-3.5 py-2.5 rounded-lg border border-[#1f1f26] opacity-60 cursor-not-allowed"
-          />
-          <button
-            type="button"
-            disabled
-            className="px-3.5 py-2.5 rounded-lg bg-[#ff2b42]/40 text-white/60 text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>Chat</span>
-          </button>
-        </div>
-      </div>
-    </aside>
   )
 }
 
@@ -270,7 +220,7 @@ export function WatchStreamPage() {
               </div>
             </div>
           </div>
-          <ChatPlaceholderPanel />
+          <StreamChatPanel sessionId={sessionId} onAccessError={handleAccessError} />
         </div>
       </main>
     )
@@ -495,7 +445,7 @@ export function WatchStreamPage() {
         </div>
 
         {/* Right Side Chat UI Placeholder */}
-        <ChatPlaceholderPanel />
+        <StreamChatPanel sessionId={sessionId} status={session?.status} streamerUserId={session?.ownerUserId} onAccessError={handleAccessError} />
       </div>
     </main>
   )
