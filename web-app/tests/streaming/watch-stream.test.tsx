@@ -249,6 +249,8 @@ describe('WatchStreamPage', () => {
 
     const viewers = await screen.findByRole('group', { name: 'Current viewers' })
     expect(within(viewers).getByText(label)).toBeTruthy()
+    expect(within(viewers).queryByText('Viewers')).toBeNull()
+    expect(viewers.querySelector('svg.lucide-user-round[aria-hidden="true"]')).not.toBeNull()
   })
 
   it('updates viewers from refreshed metadata without reopening HLS or refetching details', async () => {

@@ -73,6 +73,7 @@ export interface LiveStreamItem {
   categoryId: string
   channel: StreamChannelSummary | null
   category: StreamCategorySummary | null
+  currentViewerCount: number | null
 }
 
 export interface StreamDiscoveryResponse {
@@ -108,5 +109,4 @@ export interface StreamViewerDetails {
   channel: StreamDetailsChannelSummary | null
   category: StreamDetailsCategorySummary | null
 }
-
 

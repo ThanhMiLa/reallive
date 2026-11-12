@@ -6,6 +6,8 @@ GET /stream/api/streams/{sessionId} adds result.currentViewerCount (integer or n
 
 GET /stream/api/streams adds result.content[].currentViewerCount (integer or null) for each LIVE session in the requested page, including when filtering by categoryId. It reuses the same presence count as metadata: 0 means no viewers; null means disabled/unavailable/recovering presence. Presence is read after the database transaction, without adding viewers or calling MediaMTX. Count failures do not prevent listing streams. Pagination, authentication, and Cache-Control: no-store remain unchanged.
 
+Web livestream cards in Browse and category detail display currentViewerCount using the shared viewer-count badge: counts are formatted with thousands separators, 0 remains visible, and null or a missing field displays —. Counts refresh with the existing list query; cards do not fetch individual session metadata or add separate polling.
+
 ## Internal reader callback
 
 POST /stream/internal/api/viewer-events uses X-Internal-Token with STREAM_CCU_CALLBACK_TOKEN; this route is not public through Gateway. Never use account cookies or player Read JWT as callback credentials.

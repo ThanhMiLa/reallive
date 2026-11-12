@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Radio } from 'lucide-react'
+import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
 import type { LiveStreamItem } from '@/types/stream.types'
 
 export function StreamCard({ stream }: { stream: LiveStreamItem }) {
@@ -46,9 +47,12 @@ export function StreamCard({ stream }: { stream: LiveStreamItem }) {
 
           {/* Live indicator badge */}
           <div className="absolute top-2 left-2 z-10">
-            <span className="inline-flex items-center bg-[#e91916] text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+            <span className="inline-flex items-center rounded-sm bg-[#eb0400] px-1.5 py-0.5 text-xs font-bold leading-tight text-white shadow">
               LIVE
             </span>
+          </div>
+          <div className="absolute bottom-2 left-2 z-10">
+            <StreamViewerCount count={stream.currentViewerCount} variant="thumbnail" />
           </div>
         </div>
 

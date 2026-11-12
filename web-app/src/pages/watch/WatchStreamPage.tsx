@@ -432,6 +432,7 @@ export function WatchStreamPage() {
                       count={session?.currentViewerCount}
                       status={status}
                       unavailable={metadata.isPending || metadata.isError}
+                      variant="watch"
                     />
                   </div>
                 </div>
@@ -443,19 +444,19 @@ export function WatchStreamPage() {
 
                 {/* Category Badge / Link */}
                 {showDetailsSkeleton ? (
-                  <div className="h-5 w-24 bg-[#14141a] rounded animate-pulse mt-2" />
+                  <div className="h-7 w-24 bg-[#14141a] rounded animate-pulse mt-2" />
                 ) : (
                   categoryName && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {categoryLinkId ? (
                         <Link
                           to={`/browse/categories/${encodeURIComponent(categoryLinkId)}`}
-                          className="inline-block text-xs font-semibold text-emerald-400 hover:text-emerald-300 bg-[#14141a] hover:bg-[#1a1a22] border border-[#1f1f26] px-2.5 py-0.5 rounded transition-colors"
+                          className="inline-block text-sm font-semibold text-emerald-400 hover:text-emerald-300 bg-[#14141a] hover:bg-[#1a1a22] border border-[#1f1f26] px-3 py-1 rounded transition-colors"
                         >
                           {categoryName}
                         </Link>
                       ) : (
-                        <span className="inline-block text-xs font-semibold text-emerald-400 bg-[#14141a] border border-[#1f1f26] px-2.5 py-0.5 rounded">
+                        <span className="inline-block text-sm font-semibold text-emerald-400 bg-[#14141a] border border-[#1f1f26] px-3 py-1 rounded">
                           {categoryName}
                         </span>
                       )}

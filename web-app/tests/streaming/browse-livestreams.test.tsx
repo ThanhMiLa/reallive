@@ -65,6 +65,7 @@ function makeStream(overrides: Partial<LiveStreamItem> = {}): LiveStreamItem {
     startedAt: '2026-11-07T05:00:00Z',
     thumbnailUrl: 'https://cdn.example.com/thumb-1.jpg',
     thumbnailUpdatedAt: '2026-11-07T06:00:00Z',
+    currentViewerCount: 42,
     channelId: '20000000-0000-4000-8000-000000000001',
     categoryId: CAT_GAMING,
     channel: {
@@ -141,6 +142,48 @@ afterEach(() => {
 })
 
 describe('BrowseLivestreamsTab & CategoryDetailPage', () => {
+  it.each([
+    { count: 1234, label: '1,234' },
+    { count: 0, label: '0' },
+    { count: null, label: '—' },
+    { count: undefined, label: '—' },
+  ])('renders viewer count $count as $label on stream cards', async ({ count, label }) => {
+    mocks.list.mockResolvedValue(makePage([makeStream({ currentViewerCount: count })]))
+
+    mount()
+
+    const badge = await screen.findByRole('group', { name: 'Current viewers' })
+    expect(badge.textContent).toBe(`${label} viewers`)
+    expect(badge.closest('a')?.getAttribute('href')).toBe(
+      '/watch/10000000-0000-4000-8000-000000000001',
+    )
+  })
+
+  it('keeps counts independent and replaces stale counts when the list refreshes', async () => {
+    mocks.list.mockResolvedValueOnce(makePage([
+      makeStream({ id: 's-active', currentViewerCount: 25 }),
+      makeStream({ id: 's-empty', currentViewerCount: 0 }),
+    ]))
+    mount()
+
+    const badges = await screen.findAllByRole('group', { name: 'Current viewers' })
+    expect(badges[0].textContent).toBe('25 viewers')
+    expect(badges[1].textContent).toBe('0 viewers')
+
+    mocks.list.mockResolvedValueOnce(makePage([
+      makeStream({ id: 's-active', currentViewerCount: null }),
+      makeStream({ id: 's-empty', currentViewerCount: 3 }),
+    ]))
+    await client.invalidateQueries({ queryKey: ['streams', 'live'] })
+
+    await waitFor(() => {
+      const refreshed = screen.getAllByRole('group', { name: 'Current viewers' })
+      expect(refreshed[0].textContent).toBe('— viewers')
+      expect(refreshed[1].textContent).toBe('3 viewers')
+      expect(screen.queryByText('25 viewers')).toBeNull()
+    })
+  })
+
   it('renders livestream card with thumbnail, avatar, name, title, and category', async () => {
     const stream1 = makeStream({
       id: 's-1',
@@ -263,6 +306,7 @@ describe('BrowseLivestreamsTab & CategoryDetailPage', () => {
     // Verify livestream of that category is rendered below
     expect(await screen.findByText('ESLCS')).toBeTruthy()
     expect(screen.getByText('LIVE: MOUZ vs. BB Team')).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Current viewers' }).textContent).toBe('42 viewers')
   })
 
   it('paginates across stream pages', async () => {
