@@ -17,7 +17,7 @@ import java.util.UUID;
 @RequestMapping("/internal/api/streams")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class ChatContextController {
+public class InternalChatContextController {
     ChatContextService service;
 
     @GetMapping("/{sessionId}/chat-context")

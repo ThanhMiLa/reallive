@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/jwks").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/internal/api/streams/*/chat-context").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/media/events").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions

@@ -25,6 +25,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -48,6 +50,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -58,6 +63,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @ImportAutoConfiguration(FlywayAutoConfiguration.class)
 @ActiveProfiles("test")
 class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
@@ -65,6 +71,7 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
     private static final String SCHEMA = newSchema();
     private static final Instant BASE = Instant.parse("2026-10-29T03:00:00Z");
 
+    @Autowired private MockMvc mvc;
     @Autowired private StreamSessionService sessionService;
     @Autowired private StreamPlaybackService playbackService;
     @Autowired private StreamSessionClosureService closureService;
@@ -91,6 +98,16 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
         clock.now = BASE;
         when(media.getPath(any())).thenReturn(Optional.empty());
         when(media.getSource(any())).thenReturn(Optional.empty());
+    }
+
+    @Test
+    void internalChatContextPermitsAnonymousAccessAndReturnsCurrentState() throws Exception {
+        UUID id = createSession();
+        String path = "/internal/api/streams/" + id + "/chat-context";
+        mvc.perform(get(path))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.sessionId").value(id.toString()))
+                .andExpect(jsonPath("$.result.status").value("READY"));
     }
 
     @Test
