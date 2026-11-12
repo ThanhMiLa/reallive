@@ -1,6 +1,7 @@
 package com.reallive.streamservice.client;
 
 import com.reallive.streamservice.common.exception.AppException;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.service.StreamEligibilityService;
@@ -15,6 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.ObjectMapper;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,6 +45,11 @@ class StreamClientsHttpTest {
     private static final HttpServer SERVER = server();
 
     @Autowired private StreamEligibilityService eligibility;
+    @Autowired private ChannelClient channelClient;
+    private static volatile Map<String, Object> chatAccess;
+    private static volatile String chatRequest;
+    private static volatile String chatToken;
+
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -56,6 +63,8 @@ class StreamClientsHttpTest {
 
     @BeforeEach
     void reset() {
+        chatAccess = Map.of("channelId", CHANNEL, "userId", USER, "canView", true, "canRead", true, "canSend", true);
+        chatRequest = null; chatToken = null;
         CALLS.clear(); USER_STATUS.set(200); malformed = false; wrongOwner = false; invalidCategory = false; delayed = false;
     }
 
@@ -76,6 +85,23 @@ class StreamClientsHttpTest {
         assertTrue(CALLS.getFirst().endsWith("/by-user/" + USER + "/streaming-eligibility"));
         assertTrue(CALLS.get(1).endsWith("/by-streamer/" + STREAMER + "/streaming-context"));
         assertTrue(CALLS.get(2).endsWith("/categories/validate"));
+    }
+
+    @Test
+    void checksOneUserThroughTheChatAccessHttpContract() throws Exception {
+        channelClient.requireViewAccess(CHANNEL, USER);
+        assertEquals(List.of("/channel/internal/api/channels/" + CHANNEL + "/chat-access"), CALLS);
+        assertEquals(Map.of("userId", USER.toString()), JSON.readValue(chatRequest, Map.class));
+        assertNull(chatToken);
+        chatAccess = Map.of("channelId", CHANNEL, "userId", USER, "canView", false, "canRead", false, "canSend", false);
+        assertEquals(ErrorCode.ACCESS_DENIED, assertThrows(AppException.class,
+                () -> channelClient.requireViewAccess(CHANNEL, USER)).getErrorCode());
+        chatAccess = Map.of("channelId", CHANNEL, "userId", UUID.randomUUID(), "canView", true, "canRead", true, "canSend", true);
+        assertEquals(ErrorCode.STREAM_DATA_UNAVAILABLE, assertThrows(AppException.class,
+                () -> channelClient.requireViewAccess(CHANNEL, USER)).getErrorCode());
+        chatAccess = Map.of("channelId", CHANNEL, "userId", USER, "canView", true);
+        assertEquals(ErrorCode.STREAM_DATA_UNAVAILABLE, assertThrows(AppException.class,
+                () -> channelClient.requireViewAccess(CHANNEL, USER)).getErrorCode());
     }
 
     @Test
@@ -127,6 +153,10 @@ class StreamClientsHttpTest {
                     result = malformed ? Map.of("unexpected", true) : Map.of("userId", USER, "streamerId", STREAMER);
                 } else if (path.endsWith("/streaming-context")) {
                     result = Map.of("channelId", CHANNEL, "streamerId", STREAMER, "ownerUserId", wrongOwner ? UUID.randomUUID() : USER, "status", "ACTIVE");
+                } else if (path.endsWith("/chat-access")) {
+                    chatRequest = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    chatToken = exchange.getRequestHeaders().getFirst("X-Internal-Token");
+                    result = chatAccess;
                 } else if (path.endsWith("/categories/validate")) {
                     result = !invalidCategory;
                 } else {

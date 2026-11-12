@@ -16,6 +16,19 @@ import java.util.UUID;
 public class ChannelClient {
     ChannelApiClient api;
 
+    public void requireViewAccess(UUID channelId, UUID userId) {
+        var result = ClientResponses.read(() -> api.chatAccess(channelId,
+                new ChatAccessResponse.Request(userId)), ErrorCode.ACCESS_DENIED, Set.of(403, 404));
+        if (!channelId.equals(result.channelId()) || !userId.equals(result.userId())
+                || result.canView() == null || result.canRead() == null || result.canSend() == null
+                || (result.canRead() && !result.canView()) || (result.canSend() && !result.canRead())) {
+            throw new AppException(ErrorCode.STREAM_DATA_UNAVAILABLE);
+        }
+        if (!result.canView()) {
+            throw new AppException(ErrorCode.ACCESS_DENIED);
+        }
+    }
+
     public StreamingChannelContext requireContext(UUID streamerId, UUID ownerUserId) {
         var result = ClientResponses.read(() -> api.getContext(streamerId), ErrorCode.STREAM_CHANNEL_NOT_ELIGIBLE, Set.of(403, 404));
         if (result.channelId() == null || !streamerId.equals(result.streamerId()) || result.ownerUserId() == null

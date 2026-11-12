@@ -4,6 +4,7 @@ import com.reallive.streamservice.common.configuration.MediaProperties;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
@@ -28,12 +29,17 @@ import java.util.UUID;
 public class StreamPlaybackServiceImpl implements StreamPlaybackService {
 
     StreamSessionRepository sessions;
+    ChannelClient channelClient;
     MediaJwtIssuer issuer;
     MediaProperties properties;
     PlatformTransactionManager transactionManager;
 
     @Override
     public StreamPlaybackAccessResponse access(UUID sessionId, UUID viewerUserId) {
+        var initial = sessions.findById(sessionId)
+                .orElseThrow(() -> new AppException(ErrorCode.STREAM_SESSION_NOT_FOUND));
+        requireWatchable(initial);
+        channelClient.requireViewAccess(initial.getChannelId(), viewerUserId);
         return new TransactionTemplate(transactionManager).execute(status -> {
             var session = sessions.findByIdForUpdate(sessionId)
                     .orElseThrow(() -> new AppException(ErrorCode.STREAM_SESSION_NOT_FOUND));

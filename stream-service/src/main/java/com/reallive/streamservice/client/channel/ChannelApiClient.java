@@ -21,6 +21,10 @@ public interface ChannelApiClient {
     @PostMapping("/internal/api/channels/livestream-summaries")
     ApiResponse<LivestreamSummaries> getLivestreamSummaries(@RequestBody LivestreamSummaries.Request request);
 
+    @PostMapping("/internal/api/channels/{channelId}/chat-access")
+    ApiResponse<ChatAccessResponse> chatAccess(@PathVariable UUID channelId,
+            @RequestBody ChatAccessResponse.Request request);
+
     record CategoryIds(
             Set<UUID> categoryIds
     ) {}

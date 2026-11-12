@@ -5,6 +5,7 @@ import com.nimbusds.jwt.SignedJWT;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.MediaTestSupport;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
 import com.reallive.streamservice.stream.adapter.media.MediaServerAdapter;
@@ -27,6 +28,11 @@ import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -50,9 +56,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -81,7 +84,13 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private MutableClock clock;
     @MockitoBean private MediaServerAdapter media;
+    @MockitoSpyBean private ChannelClient channelAccess;
     @MockitoSpyBean private MediaJwtIssuer issuer;
+
+    @BeforeEach
+    void allowViewerChannelAccess() {
+        doNothing().when(channelAccess).requireViewAccess(any(), any());
+    }
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -108,6 +117,16 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.sessionId").value(id.toString()))
                 .andExpect(jsonPath("$.result.status").value("READY"));
+    }
+
+    @Test
+    void playbackRejectsCurrentChannelViewBansBeforeIssuingCredentials() {
+        UUID id = createSession();
+        goLive(id);
+        doThrow(new AppException(ErrorCode.ACCESS_DENIED)).when(channelAccess)
+                .requireViewAccess(any(), any());
+        error(ErrorCode.ACCESS_DENIED, () -> playbackService.access(id, UUID.randomUUID()));
+        verifyNoInteractions(issuer);
     }
 
     @Test

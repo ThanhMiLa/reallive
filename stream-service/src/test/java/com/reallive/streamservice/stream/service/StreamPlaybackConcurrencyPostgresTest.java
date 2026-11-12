@@ -1,5 +1,7 @@
 package com.reallive.streamservice.stream.service;
 
+import com.reallive.streamservice.client.channel.ChannelClient;
+
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
@@ -41,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
@@ -58,7 +61,13 @@ class StreamPlaybackConcurrencyPostgresTest extends PostgresIntegrationTestSuppo
     @Autowired private StreamSessionRepository sessions;
     @Autowired private JdbcTemplate jdbc;
     @MockitoBean private MediaServerAdapter media;
+    @MockitoSpyBean private ChannelClient channelAccess;
     @MockitoSpyBean private MediaJwtIssuer issuer;
+
+    @BeforeEach
+    void allowViewerChannelAccess() {
+        doNothing().when(channelAccess).requireViewAccess(any(), any());
+    }
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
