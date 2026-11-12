@@ -16,6 +16,15 @@ export const apiClient = axios.create({
 // Track ongoing refresh promise to prevent duplicate refresh calls
 let refreshTokenPromise: Promise<void> | null = null
 
+export function refreshAccessToken(): Promise<void> {
+  if (!refreshTokenPromise) {
+    refreshTokenPromise = axios.post(`${baseURL}/user/api/auth/refresh`, {}, { withCredentials: true })
+      .then(() => undefined)
+      .finally(() => { refreshTokenPromise = null })
+  }
+  return refreshTokenPromise
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -38,21 +47,7 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true
 
       try {
-        if (!refreshTokenPromise) {
-          refreshTokenPromise = (async () => {
-            try {
-              await axios.post(
-                `${baseURL}/user/api/auth/refresh`,
-                {},
-                { withCredentials: true },
-              )
-            } finally {
-              refreshTokenPromise = null
-            }
-          })()
-        }
-
-        await refreshTokenPromise
+        await refreshAccessToken()
         return apiClient(originalRequest)
       } catch (refreshError) {
         return Promise.reject(refreshError)
