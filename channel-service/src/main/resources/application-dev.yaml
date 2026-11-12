@@ -65,4 +65,3 @@ storage:
     endpoint: ${R2_ENDPOINT}
     access-key-id: ${R2_ACCESS_KEY_ID}
     secret-access-key: ${R2_SECRET_ACCESS_KEY}
-
