@@ -45,8 +45,7 @@ All paths below are relative to `/stream/api/streams`. The `STREAMER` role recei
 |---|---|
 | `GET /me/setup` | `STREAM_VIEW_OWN` and `STREAM_PUBLISH` |
 | `PUT /me/setup` | `STREAM_UPDATE` and `STREAM_PUBLISH` |
-| `POST /me/stream-key/reset` | `STREAM_PUBLISH` |
-| `GET /me/operations/{operationId}` | `STREAM_VIEW_OWN` |
+| `POST /me/stream-key` | `STREAM_PUBLISH`; synchronous issue/replace, key returned once |
 | `GET /me/current` | `STREAM_VIEW_OWN` |
 | `GET /{sessionId}` | Authentication only; no dedicated permission |
 | `GET /{sessionId}/details` | Authentication only; no dedicated permission |

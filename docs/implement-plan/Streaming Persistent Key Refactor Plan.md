@@ -1,3 +1,5 @@
+> Historical V5 plan. The synchronous V6 scope supersedes operation queues, encrypted credentials and restart recovery; see [current architecture](../architecture/Streaming%20Architecture%20and%20Flow.md).
+
 # Refactor livestream: Stream Key cố định, OBS tự bắt đầu và kết thúc buổi phát
 
 ## 1. Mục tiêu và các quyết định đã chốt

@@ -116,7 +116,7 @@ Yêu cầu: Stream Service, Gateway và MediaMTX đang chạy; HLS allow-origin 
 ### Chuẩn bị
 
 1. Đăng nhập web app qua Gateway (`http://localhost:8888`) bằng account test (hoặc kiểm tra luồng setup/reset key qua `provisioning.py`).
-2. Vào **Stream Manager**, lưu Title + Category (`PUT /stream/api/streams/me/setup`) để cấp Stream Key cố định, sau đó cho OBS Start Streaming bằng `serverUrl` (`.../ingest`) và `streamKey` (`{ingestKeyId}?token={PublishJWT}`) để backend tự tạo session và chuyển `LIVE`.
+2. Vào **Stream Manager**, lưu Title + Category (`PUT /stream/api/streams/me/setup`) để lưu settings; bấm Generate key (`POST /stream/api/streams/me/stream-key`) để nhận key một lần, sau đó cho OBS Start Streaming bằng `serverUrl` (`.../ingest`) và `streamKey` (`{ingestKeyId}?token={PublishJWT}`) để backend tự tạo session và chuyển `LIVE`.
 3. Lấy đúng header `Cookie` của account từ DevTools → Network, chỉ dán một dòng vào file ngoài Git:
 
    ```sh
@@ -198,4 +198,6 @@ Stop Streaming trong OBS, đóng path trên trang, sau đó:
 python3 scripts/testing/streaming/stack.py down
 ```
 
-Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service (`/stream/internal/api/media-events` với `X-Internal-Token`) và vòng đời DB/worker/reconciler thật thuộc backend, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service (`/stream/internal/api/media-events` với `X-Internal-Token`) và vòng đời DB/service đồng bộ thật thuộc backend, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+
+V6 owner smoke: setup/save → POST `/api/streams/me/stream-key` → current → save → POST cấp lại key. Không có polling operation hay idempotency header; credential chỉ có trong response POST. GET setup không trả key.

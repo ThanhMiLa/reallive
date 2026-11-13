@@ -2,7 +2,7 @@
 
 Một container MediaMTX `1.21.2`, custom image có shell/Python standard library/CA certificates để chạy hook HTTP JSON trực tiếp. Không có FFmpeg/transcoding trong container.
 
-Service `media-server` được khai báo trực tiếp trong [docker-compose.yml ở root](../docker-compose.yml), dùng image nội bộ `reallive-media-server:1.21.2` và chạy cùng các service khác bằng `docker compose up -d`. Hook nguồn phát không cần env file callback secret hoặc fixture trước khi chạy backend thật; callback CCU có credential riêng khi được bật. Module này quản lý Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
+Service `media-server` được khai báo trực tiếp trong [docker-compose.yml ở root](../docker-compose.yml), dùng image nội bộ `reallive-media-server:1.21.2` và chạy cùng các service khác bằng `docker compose up -d`. Hook nguồn phát yêu cầu callback secret được cấu hình trước khi chạy backend thật; callback CCU có credential riêng khi được bật. Module này quản lý Dockerfile, cấu hình MediaMTX và helper callback; key ký JWT thuộc Stream Service, không mount private key vào media container.
 
 ## Cấu trúc thư mục
 
@@ -23,7 +23,7 @@ Tên module/service là `media-server`; phần mềm bên trong vẫn là MediaM
 
 Backend thật (JWKS/callback gọi trực tiếp Stream Service):
 
-Chuẩn bị key RSA, `STREAM_MEDIA_CREDENTIAL_ENCRYPTION_KEY`, `STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`, DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media container trước khi lưu cấu hình kênh / phát OBS. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
+Chuẩn bị key RSA, `STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`, DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media container trước khi lưu cấu hình kênh / phát OBS. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
 
 ```sh
 docker compose up -d --build --wait media-server
@@ -51,9 +51,9 @@ Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 
 - Stream Service gọi Control API qua `STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997` khi chạy trên host. Timeout connect/request mặc định 2s/5s. Khi bật CCU, hook cũng nhận một Control API JWT qua file riêng. Khi chạy backend trong Docker, đổi URL theo network/service name tương ứng.
 - Production cần HTTPS/RTMPS và network/secret riêng; cấu hình local này chưa là bằng chứng production pass.
 
-Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Sau khi MediaMTX restart, `StreamMediaReconciler` trong Stream Service dọn path mồ côi/revoked, kết thúc session cũ nếu không xác định được khoảng ngắt an toàn và khôi phục các ingest path `ACTIVE`.
+Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Sau MediaMTX restart không tự khôi phục path; streamer cần yêu cầu key mới khi media server đã hoạt động lại.
 
-Vòng đời persistent stream key hiện xử lý bất đồng bộ qua `POST /stream/internal/api/media-events`, worker PostgreSQL (`stream_media_operations`) và reconciler tự phục hồi; các endpoint cũ `/api/streams`, `/publish-credentials`, `/end` và `/api/media/events` đã được gỡ bỏ theo [Persistent Key Refactor Plan](../docs/implement-plan/Streaming%20Persistent%20Key%20Refactor%20Plan.md).
+Vòng đời persistent stream key hiện xử lý đồng bộ qua `POST /stream/internal/api/media-events`, service đồng bộ; các endpoint cũ `/api/streams`, `/publish-credentials`, `/end` và `/api/media/events` đã được gỡ bỏ theo [Persistent Key Refactor Plan](../docs/implement-plan/Streaming%20Persistent%20Key%20Refactor%20Plan.md).
 
 ## Hook đếm CCU
 
@@ -79,3 +79,5 @@ Test hook dùng HTTP server giả lập trên port ngẫu nhiên, không gọi s
 ```sh
 python3 -m unittest discover -s scripts/testing/streaming -p 'test_viewer_hook.py' -v
 ```
+
+Luồng V6: Save chỉ lưu settings; `POST /stream/api/streams/me/stream-key` cấp/thay key đồng bộ và trả một lần. Không lưu token trong DB hay trả lại từ GET setup. Xem [kiến trúc hiện tại](../docs/architecture/Streaming%20Architecture%20and%20Flow.md).
