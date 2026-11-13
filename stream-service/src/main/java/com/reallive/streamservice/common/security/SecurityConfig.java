@@ -1,15 +1,19 @@
 package com.reallive.streamservice.common.security;
 
 import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
-import org.springframework.http.HttpMethod;
-import jakarta.servlet.http.Cookie;
+
 import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.Cookie;
+
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -18,9 +22,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
+@Import(InternalEndpointSecurityConfiguration.class)
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
@@ -34,34 +40,47 @@ public class SecurityConfig {
     ObjectMapper objectMapper;
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, BearerTokenResolver bearerTokenResolver,
-                                   RedisJwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
-        http
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new AuthStateFailureFilter(objectMapper), BearerTokenAuthenticationFilter.class)
-                .authorizeHttpRequests(auth -> auth
-                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/media/jwks").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/internal/api/streams/*/chat-context").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/media/events").permitAll()
-                        .anyRequest().authenticated())
-                .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-                        .accessDeniedHandler(jwtAccessDeniedHandler))
-                .oauth2ResourceServer(oauth2 -> oauth2
-                        .bearerTokenResolver(bearerTokenResolver)
-                        .jwt(jwt -> jwt
-                                .decoder(customJwtDecoder)
-                                .jwtAuthenticationConverter(jwtAuthenticationConverter))
-                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
-                        .accessDeniedHandler(jwtAccessDeniedHandler));
+    SecurityFilterChain filterChain(
+            HttpSecurity http,
+            BearerTokenResolver bearerTokenResolver,
+            RedisJwtAuthenticationConverter jwtAuthenticationConverter)
+            throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(
+                        new AuthStateFailureFilter(objectMapper),
+                        BearerTokenAuthenticationFilter.class)
+                .authorizeHttpRequests(
+                        auth ->
+                                auth.dispatcherTypeMatchers(DispatcherType.ERROR)
+                                        .permitAll()
+                                        .requestMatchers(HttpMethod.GET, "/api/media/jwks")
+                                        .permitAll()
+                                        .anyRequest()
+                                        .authenticated())
+                .exceptionHandling(
+                        exceptions ->
+                                exceptions
+                                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                                        .accessDeniedHandler(jwtAccessDeniedHandler))
+                .oauth2ResourceServer(
+                        oauth2 ->
+                                oauth2.bearerTokenResolver(bearerTokenResolver)
+                                        .jwt(
+                                                jwt ->
+                                                        jwt.decoder(customJwtDecoder)
+                                                                .jwtAuthenticationConverter(
+                                                                        jwtAuthenticationConverter))
+                                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                                        .accessDeniedHandler(jwtAccessDeniedHandler));
 
         return http.build();
     }
 
     @Bean
-    BearerTokenResolver bearerTokenResolver(@Value("${auth.cookie.access-token.name}") String accessTokenName) {
+    BearerTokenResolver bearerTokenResolver(
+            @Value("${auth.cookie.access-token.name}") String accessTokenName) {
         return request -> {
             Cookie[] cookies = request.getCookies();
             if (cookies == null) {

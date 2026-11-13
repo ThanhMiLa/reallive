@@ -8,6 +8,8 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,22 +33,38 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS_GET = {
             "/api/channels",
-            "/api/categories",
+            "/api/categories"
+    };
+
+    private static final String[] INTERNAL_ENDPOINTS_GET = {
             "/internal/api/channels/by-streamer/*/streaming-context"
     };
 
-    private static final String[] PUBLIC_ENDPOINTS_POST = {
+    private static final String[] INTERNAL_ENDPOINTS_POST = {
             "/internal/api/channels",
             "/internal/api/categories/validate",
             "/internal/api/channels/livestream-summaries",
             "/internal/api/channels/*/chat-access"
     };
 
-    private static final String[] PUBLIC_ENDPOINTS_PATCH = {
+    private static final String[] INTERNAL_ENDPOINTS_PATCH = {
             "/internal/api/channels/by-streamer/*/avatar"
     };
 
     RedisAuthoritiesReader authoritiesReader;
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    SecurityFilterChain internalEndpointFilterChain(HttpSecurity http) throws Exception {
+        http.securityMatchers(matchers -> matchers
+                        .requestMatchers(HttpMethod.GET, INTERNAL_ENDPOINTS_GET)
+                        .requestMatchers(HttpMethod.POST, INTERNAL_ENDPOINTS_POST)
+                        .requestMatchers(HttpMethod.PATCH, INTERNAL_ENDPOINTS_PATCH))
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, BearerTokenResolver bearerTokenResolver) throws Exception {
@@ -56,8 +74,6 @@ public class SecurityConfig {
                 .addFilterBefore(new AuthStateFailureFilter(), BearerTokenAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, PUBLIC_ENDPOINTS_GET).permitAll()
-                        .requestMatchers(HttpMethod.POST, PUBLIC_ENDPOINTS_POST).permitAll()
-                        .requestMatchers(HttpMethod.PATCH, PUBLIC_ENDPOINTS_PATCH).permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
