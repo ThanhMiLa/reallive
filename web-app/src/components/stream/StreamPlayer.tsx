@@ -88,6 +88,17 @@ export function StreamPlayer({
     let hls: Hls | undefined
     let renewed = false
     let decodeRecovered = false
+    let mediaRetries = 0
+    let recoveryTimer: ReturnType<typeof setTimeout> | undefined
+    const retryMedia = () => {
+      if (mediaRetries >= 3 || recoveryTimer) return false
+      mediaRetries += 1
+      recoveryTimer = setTimeout(() => {
+        recoveryTimer = undefined
+        if (alive) void open(true)
+      }, 1000 * mediaRetries)
+      return true
+    }
 
     const fail = (text: string) => {
       if (alive) {
@@ -109,7 +120,10 @@ export function StreamPlayer({
             fail('Could not refresh stream status. Check your connection and try again.')
             return
           }
-          if (latest.status !== 'LIVE') return
+          if (latest.status !== 'LIVE') {
+            if (latest.status === 'RECONNECTING') retryMedia()
+            return
+          }
         }
         const access = await streamApi.access(sessionId, abort.signal)
         if (!alive || access.sessionId !== sessionId) return
@@ -198,6 +212,11 @@ export function StreamPlayer({
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !decodeRecovered) {
             decodeRecovered = true
             instance.recoverMediaError()
+          } else if ((data.type === Hls.ErrorTypes.NETWORK_ERROR || status === 404 || status === 503) && retryMedia()) {
+            instance.destroy()
+            hlsRef.current = null
+            setActiveHls(null)
+            setMessage('Reconnecting to the stream…')
           } else {
             instance.destroy()
             hlsRef.current = null
@@ -225,6 +244,7 @@ export function StreamPlayer({
     void open(attempt > 0)
     return () => {
       alive = false
+      if (recoveryTimer) clearTimeout(recoveryTimer)
       abort.abort()
       hls?.destroy()
       hlsRef.current = null

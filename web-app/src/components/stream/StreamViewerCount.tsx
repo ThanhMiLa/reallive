@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function StreamViewerCount({ count, status, unavailable = false, variant = 'default' }: Props) {
-  const inactive = status === 'READY' || status === 'ENDED'
+  const inactive = status === 'ENDED'
   const value = inactive ? 0 : unavailable ? null : count
   const formatted = value == null ? '—' : viewerNumber.format(value)
 

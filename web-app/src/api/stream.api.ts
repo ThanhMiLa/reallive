@@ -1,15 +1,14 @@
 import apiClient from './client'
 import type { ApiResponse } from '@/types/auth.types'
 import type {
-  CreateStreamRequest,
-  CreateStreamResponse,
   PlaybackAccess,
-  PublishCredentials,
-  StreamDetails,
+  SaveStreamSetupRequest,
   StreamDiscoveryResponse,
   StreamListParams,
   StreamMetadata,
+  StreamOperation,
   StreamSession,
+  StreamSetup,
   StreamViewerDetails,
 } from '@/types/stream.types'
 
@@ -39,6 +38,29 @@ export const streamApi = {
       })
     ).data.result
   },
+  setup: async (signal?: AbortSignal) =>
+    (await apiClient.get<ApiResponse<StreamSetup>>(`${base}/me/setup`, { signal })).data.result,
+  saveSetup: async (payload: SaveStreamSetupRequest, signal?: AbortSignal) =>
+    (await apiClient.put<ApiResponse<StreamSetup>>(`${base}/me/setup`, payload, { signal })).data
+      .result,
+  resetKey: async (idempotencyKey: string, signal?: AbortSignal) =>
+    (
+      await apiClient.post<ApiResponse<StreamOperation>>(
+        `${base}/me/stream-key/reset`,
+        undefined,
+        {
+          headers: { 'Idempotency-Key': idempotencyKey },
+          signal,
+        },
+      )
+    ).data.result,
+  operation: async (operationId: string, signal?: AbortSignal) =>
+    (
+      await apiClient.get<ApiResponse<StreamOperation>>(
+        `${base}/me/operations/${encodeURIComponent(operationId)}`,
+        { signal },
+      )
+    ).data.result,
   current: async (signal?: AbortSignal) =>
     (await apiClient.get<ApiResponse<StreamSession | null>>(`${base}/me/current`, { signal })).data
       .result,
@@ -47,26 +69,10 @@ export const streamApi = {
   details: async (id: string, signal?: AbortSignal) =>
     (await apiClient.get<ApiResponse<StreamViewerDetails>>(`${path(id)}/details`, { signal })).data
       .result,
-  create: async (payload: CreateStreamRequest, signal?: AbortSignal) =>
-    (await apiClient.post<ApiResponse<CreateStreamResponse>>(base, payload, { signal })).data
-      .result,
-  update: async (id: string, payload: Partial<StreamDetails>, signal?: AbortSignal) =>
-    (await apiClient.patch<ApiResponse<StreamSession>>(path(id), payload, { signal })).data.result,
-  credentials: async (id: string, signal?: AbortSignal) =>
-    (
-      await apiClient.post<ApiResponse<PublishCredentials>>(
-        `${path(id)}/publish-credentials`,
-        undefined,
-        { signal },
-      )
-    ).data.result,
   access: async (id: string, signal?: AbortSignal) =>
     (
       await apiClient.post<ApiResponse<PlaybackAccess>>(`${path(id)}/playback-access`, undefined, {
         signal,
       })
     ).data.result,
-  end: async (id: string, signal?: AbortSignal) =>
-    (await apiClient.post<ApiResponse<StreamSession>>(`${path(id)}/end`, undefined, { signal }))
-      .data.result,
 }

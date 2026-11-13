@@ -7,21 +7,27 @@ import { channelApi } from '@/api/channel.api'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ApiResponse } from '@/types/auth.types'
 import type {
-  CreateStreamRequest,
-  PublishCredentials,
-  StreamDetails,
+  SaveStreamSetupRequest,
   StreamMetadata,
+  StreamOperation,
   StreamSession,
+  StreamSetup,
 } from '@/types/stream.types'
 
+const setupKey = (userId: string) => ['stream', 'setup', userId] as const
 const currentKey = (userId: string) => ['stream', 'current', userId] as const
 const metadataKey = (userId: string, id: string) => ['stream', 'metadata', userId, id] as const
+const operationKey = (userId: string, opId: string) => ['stream', 'operation', userId, opId] as const
 
 function ownerMetadata(session: StreamSession): StreamMetadata {
   return {
     ...session,
-    currentViewerCount: session.status === 'READY' || session.status === 'ENDED' ? 0 : null,
+    currentViewerCount: session.status === 'ENDED' ? 0 : null,
   }
+}
+
+function isAuthStatus(error: unknown, statuses = [401, 403]) {
+  return isAxiosError(error) && statuses.includes(error.response?.status || 0)
 }
 
 export function streamErrorMessage(error: unknown) {
@@ -41,25 +47,52 @@ export function useStreamManager(userId: string) {
   const queryClient = useQueryClient()
   const authModalOpen = useAuthStore((state) => state.isAuthModalOpen)
   const wasAuthModalOpen = useRef(false)
-  const [credentials, setCredentials] = useState<PublishCredentials | null>(null)
-  const [pending, setPending] = useState<'create' | 'update' | 'credentials' | 'end' | null>(null)
-  const [dialog, setDialog] = useState(false)
+  const [pending, setPending] = useState<'save' | 'reset' | null>(null)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [trackedOperationId, setTrackedOperationId] = useState<string | null>(null)
+  const [lastEndedAt, setLastEndedAt] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const active = useRef(true)
-  const operation = useRef(false)
+  const busy = useRef(false)
   const operationAbort = useRef<AbortController | null>(null)
-  const createAttempt = useRef<CreateStreamRequest | null>(null)
+  const latestGenerationRef = useRef(0)
+  const resetAttemptIdRef = useRef<string | null>(null)
+  const handledOpsRef = useRef<Set<string>>(new Set())
+
+  const setup = useQuery({
+    queryKey: setupKey(userId),
+    queryFn: ({ signal }) => streamApi.setup(signal),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      if (isAuthStatus(query.state.error)) return false
+      const status = query.state.data?.status
+      return status === 'PROVISIONING' || status === 'ROTATING' ||
+        (status === 'ACTIVE' && !query.state.data?.publishReady) ? 1000 : false
+    },
+    refetchIntervalInBackground: false,
+  })
+
   const current = useQuery({
     queryKey: currentKey(userId),
     queryFn: ({ signal }) => streamApi.current(signal),
     retry: false,
     refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      if (isAuthStatus(query.state.error)) return false
+      const session = query.state.data
+      if (session && session.status !== 'ENDED') return false
+      return 3000
+    },
+    refetchIntervalInBackground: false,
   })
+
   const categories = useQuery({
     queryKey: ['categories'],
     queryFn: ({ signal }) => channelApi.getCategories(signal),
     staleTime: 600_000,
   })
+
   const id = current.data?.id
   const metadata = useQuery({
     queryKey: metadataKey(userId, id || ''),
@@ -81,18 +114,46 @@ export function useStreamManager(userId: string) {
       ),
     initialData: current.data ? ownerMetadata(current.data) : undefined,
   })
+
   const session: StreamMetadata | null =
     metadata.data || (current.data ? ownerMetadata(current.data) : null)
+
+  const watchedOperationId =
+    trackedOperationId ||
+    (setup.data?.status === 'PROVISIONING' || setup.data?.status === 'ROTATING' ||
+      (setup.data?.status === 'ACTIVE' && !setup.data.publishReady)
+      ? setup.data.operationId
+      : null)
+
+  const operation = useQuery({
+    queryKey: operationKey(userId, watchedOperationId || ''),
+    queryFn: ({ signal }) => streamApi.operation(watchedOperationId!, signal),
+    enabled: Boolean(watchedOperationId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: (query) => {
+      if (isAuthStatus(query.state.error, [401, 403, 404])) return false
+      const status = query.state.data?.status
+      return status === 'SUCCEEDED' || status === 'CANCELLED' ? false : 750
+    },
+    refetchIntervalInBackground: false,
+  })
+
   const sessionRef = useRef(session)
   useLayoutEffect(() => {
     sessionRef.current = session
-  }, [session])
+    if (setup.data && setup.data.generation > latestGenerationRef.current) {
+      latestGenerationRef.current = setup.data.generation
+    }
+  }, [session, setup.data])
+
+  const refreshSetup = setup.refetch
   const refreshCurrent = current.refetch
-  const refresh = metadata.refetch
+  const refreshMetadataQuery = metadata.refetch
   const refreshMetadata = useCallback(async () => {
-    const result = await refresh({ cancelRefetch: true })
+    const result = await refreshMetadataQuery({ cancelRefetch: true })
     return result.isError ? null : result.data || null
-  }, [refresh])
+  }, [refreshMetadataQuery])
 
   useEffect(() => {
     active.current = true
@@ -102,42 +163,85 @@ export function useStreamManager(userId: string) {
       operationAbort.current?.abort()
       window.clearInterval(timer)
       void queryClient.cancelQueries({ queryKey: ['stream', 'metadata', userId] })
+      if (useAuthStore.getState().user?.userId === userId) return
+      for (const kind of ['setup', 'current', 'metadata', 'operation']) {
+        const queryKey = ['stream', kind, userId]
+        void queryClient.cancelQueries({ queryKey })
+        queryClient.removeQueries({ queryKey })
+      }
     }
   }, [queryClient, userId])
 
   useEffect(() => {
     if (wasAuthModalOpen.current && !authModalOpen) {
-      if (isAxiosError(current.error) && current.error.response?.status === 401)
-        void refreshCurrent()
-      if (isAxiosError(metadata.error) && metadata.error.response?.status === 401)
-        void refreshMetadata()
+      if (isAuthStatus(setup.error, [401])) void refreshSetup()
+      if (isAuthStatus(current.error, [401])) void refreshCurrent()
+      if (isAuthStatus(metadata.error, [401])) void refreshMetadata()
     }
     wasAuthModalOpen.current = authModalOpen
-  }, [authModalOpen, current.error, metadata.error, refreshCurrent, refreshMetadata])
+  }, [
+    authModalOpen,
+    current.error,
+    metadata.error,
+    refreshCurrent,
+    refreshMetadata,
+    refreshSetup,
+    setup.error,
+  ])
 
   useEffect(() => {
     if (isAxiosError(metadata.error) && metadata.error.response?.status === 404) {
-      void refreshCurrent().then((result) => {
-        if (active.current && !result.isError && !result.data) setCredentials(null)
-      })
+      void refreshCurrent()
     }
   }, [metadata.error, refreshCurrent])
 
   useEffect(() => {
     if (session?.status === 'ENDED') {
-      // Clear secrets and obsolete actions once the server confirms the terminal state.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCredentials(null)
-      setDialog(false)
+      const endedTimestamp = session.endedAt
+      const sessionId = session.id
+      void refreshCurrent().then((result) => {
+        if (!active.current) return
+        if (!result.isError && result.data?.id !== sessionId) {
+          setLastEndedAt(endedTimestamp || new Date().toISOString())
+        }
+      })
+    } else if (session && (session.status === 'LIVE' || session.status === 'RECONNECTING')) {
+      void Promise.resolve().then(() => {
+        if (active.current) setLastEndedAt(null)
+      })
     }
-  }, [session?.id, session?.status])
+  }, [session, refreshCurrent])
+
+  const opData = operation.data
+  useEffect(() => {
+    if (!opData) return
+    if (opData.status !== 'SUCCEEDED' && opData.status !== 'CANCELLED') return
+    if (handledOpsRef.current.has(opData.operationId)) return
+    handledOpsRef.current.add(opData.operationId)
+
+    void Promise.all([refreshSetup(), refreshCurrent()]).then(() => {
+      if (!active.current) return
+      if (trackedOperationId === opData.operationId) {
+        setTrackedOperationId(null)
+      }
+      if (opData.operationType === 'RESET_KEY') {
+        if (opData.status === 'SUCCEEDED') {
+          resetAttemptIdRef.current = null
+          setResetDialogOpen(false)
+          toast.success('Stream key reset. Update OBS with your new key.')
+        } else {
+          toast.error(opData.lastError || 'Stream key reset was cancelled.')
+        }
+      }
+    })
+  }, [opData, refreshCurrent, refreshSetup, trackedOperationId])
 
   const run = async (
     kind: NonNullable<typeof pending>,
     fn: (signal: AbortSignal) => Promise<void | boolean>,
   ) => {
-    if (operation.current) return false
-    operation.current = true
+    if (busy.current) return false
+    busy.current = true
     const controller = new AbortController()
     operationAbort.current = controller
     setPending(kind)
@@ -148,167 +252,108 @@ export function useStreamManager(userId: string) {
       if (active.current) toast.error(streamErrorMessage(error))
       return false
     } finally {
-      operation.current = false
+      busy.current = false
       if (operationAbort.current === controller) operationAbort.current = null
       if (active.current) setPending(null)
     }
   }
-  const create = (details: StreamDetails) =>
-    run('create', async (signal) => {
-      if (createAttempt.current) {
-        const existing = await streamApi.current(signal)
-        if (!active.current) return
-        if (existing) {
-          queryClient.setQueryData(currentKey(userId), existing)
-          createAttempt.current = null
-          return
-        }
-      }
-      const previous = createAttempt.current
-      const request =
-        previous && previous.title === details.title && previous.categoryId === details.categoryId
-          ? previous
-          : { ...details, requestId: crypto.randomUUID() }
-      createAttempt.current = request
-      try {
-        const result = await streamApi.create(request, signal)
-        if (!active.current) return
-        createAttempt.current = null
-        setCredentials(result.publishCredentials)
-        queryClient.setQueryData(currentKey(userId), result.session)
-        queryClient.setQueryData(metadataKey(userId, result.session.id), ownerMetadata(result.session))
-        toast.success('Stream session created')
-      } catch (error) {
-        if (isAxiosError(error) && error.response?.status === 409) {
-          const existing = await streamApi.current(signal)
-          if (active.current && existing) {
-            queryClient.setQueryData(currentKey(userId), existing)
-            createAttempt.current = null
-            return
-          }
-        }
-        throw error
-      }
-    })
-  const update = (details: StreamDetails) =>
-    run('update', async (signal) => {
-      if (!session || session.status === 'ENDED') return false
-      const patch: Partial<StreamDetails> = {}
-      if (details.title !== session.title) patch.title = details.title
-      if (details.categoryId !== session.categoryId) patch.categoryId = details.categoryId
-      if (!Object.keys(patch).length) return
-      const saved = await streamApi.update(session.id, patch, signal)
-      const key = metadataKey(userId, session.id)
-      const isCurrentSession = () =>
-        active.current &&
-        !signal.aborted &&
-        sessionRef.current?.id === session.id &&
-        sessionRef.current.status !== 'ENDED' &&
-        queryClient.getQueryData<StreamSession | null>(currentKey(userId))?.id === session.id &&
-        queryClient.getQueryData<StreamMetadata>(key)?.status !== 'ENDED'
 
-      if (!isCurrentSession()) return false
-      await queryClient.cancelQueries({ queryKey: key, exact: true })
-      if (!isCurrentSession()) return false
+  const saveSetup = (details: SaveStreamSetupRequest) =>
+    run('save', async (signal) => {
+      const expectedMinGeneration = latestGenerationRef.current
+      const saved = await streamApi.saveSetup(details, signal)
+      if (!active.current) return false
 
-      const syncSavedDetails = (queryKey: readonly string[]) => {
-        const snapshot = queryClient.getQueryState<StreamMetadata | StreamSession | null>(queryKey)
-        if (!snapshot?.data) return
-        queryClient.setQueryData<StreamMetadata | StreamSession | null>(
-          queryKey,
-          (cached) => {
-            if (
-              !cached ||
-              cached.id !== saved.id ||
-              cached.status === 'ENDED' ||
-              Date.parse(cached.serverTime) > Date.parse(saved.serverTime)
-            )
-              return cached
-
-            return {
-              ...cached,
-              ...(patch.title !== undefined ? { title: saved.title } : {}),
-              ...(patch.categoryId !== undefined ? { categoryId: saved.categoryId } : {}),
-            }
-          },
-          { updatedAt: snapshot.dataUpdatedAt },
-        )
+      const cachedGeneration =
+        queryClient.getQueryData<StreamSetup>(setupKey(userId))?.generation ?? 0
+      const observedGeneration = Math.max(latestGenerationRef.current, cachedGeneration)
+      if (saved.generation < observedGeneration || saved.generation < expectedMinGeneration) {
+        await refreshSetup()
+        return false
       }
 
-      // PATCH confirms the saved fields. Preserve lifecycle data and its clock anchor.
-      syncSavedDetails(key)
-      syncSavedDetails(currentKey(userId))
-      await refreshMetadata()
-      if (!isCurrentSession()) return false
-      toast.success('Stream information updated')
-    })
-  const getCredentials = () =>
-    run('credentials', async (signal) => {
-      if (!session) return
-      const result = await streamApi.credentials(session.id, signal)
-      if (
-        !active.current ||
-        sessionRef.current?.id !== session.id ||
-        sessionRef.current.status === 'ENDED'
+      latestGenerationRef.current = saved.generation
+      queryClient.setQueryData<StreamSetup>(setupKey(userId), (previous) =>
+        previous && previous.generation > saved.generation ? previous : saved,
       )
-        return
-      setCredentials(result)
+
+      const liveSession = sessionRef.current
+      if (liveSession && liveSession.status !== 'ENDED') {
+        const metaKey = metadataKey(userId, liveSession.id)
+        queryClient.setQueryData<StreamMetadata>(metaKey, (cached) =>
+          cached && cached.status !== 'ENDED'
+            ? { ...cached, title: details.title, categoryId: details.categoryId }
+            : cached,
+        )
+        queryClient.setQueryData<StreamSession | null>(currentKey(userId), (cached) =>
+          cached && cached.id === liveSession.id && cached.status !== 'ENDED'
+            ? { ...cached, title: details.title, categoryId: details.categoryId }
+            : cached,
+        )
+        void refreshMetadata()
+      }
+
+      if (saved.status === 'BLOCKED') {
+        toast.error(saved.blockedReason || 'Streaming is blocked for this channel.')
+        return false
+      }
+      toast.success(
+        saved.status === 'PROVISIONING'
+          ? 'Stream information saved. Preparing your stream key…'
+          : 'Stream information saved',
+      )
+      return true
     })
-  const end = () =>
-    run('end', async (signal) => {
-      if (!session) return
-      let result
+
+  const resetStreamKey = () =>
+    run('reset', async (signal) => {
+      const attemptKey = resetAttemptIdRef.current || crypto.randomUUID()
+      resetAttemptIdRef.current = attemptKey
+      let op: StreamOperation
       try {
-        result = await streamApi.end(session.id, signal)
+        op = await streamApi.resetKey(attemptKey, signal)
       } catch (error) {
-        if (!active.current) return
-        const latest = await refreshMetadata()
-        if (latest?.status === 'ENDED') {
-          setCredentials(null)
-          setDialog(false)
-          toast.success('Session ended')
-          return
+        if (isAxiosError(error) && [400, 403, 409].includes(error.response?.status || 0)) {
+          resetAttemptIdRef.current = null
         }
         throw error
       }
-      if (!active.current || sessionRef.current?.id !== session.id) return
-      await queryClient.cancelQueries({ queryKey: metadataKey(userId, session.id) })
-      queryClient.setQueryData(metadataKey(userId, session.id), ownerMetadata(result))
-      setCredentials(null)
-      setDialog(false)
-      toast.success('Session ended')
+      if (!active.current) return false
+      if (op.credentialGeneration > latestGenerationRef.current) {
+        latestGenerationRef.current = op.credentialGeneration
+      }
+      setTrackedOperationId(op.operationId)
+      queryClient.setQueryData(operationKey(userId, op.operationId), op)
+      if (op.status === 'SUCCEEDED') {
+        resetAttemptIdRef.current = null
+        setResetDialogOpen(false)
+        await Promise.all([refreshSetup(), refreshCurrent()])
+        if (active.current) {
+          setTrackedOperationId(null)
+          toast.success('Stream key reset. Update OBS with your new key.')
+        }
+      } else {
+        setResetDialogOpen(false)
+        await refreshSetup()
+      }
+      return true
     })
-  const newStream = async () => {
-    const latest = await current.refetch()
-    if (!active.current || latest.isError) {
-      if (latest.isError) toast.error(streamErrorMessage(latest.error))
-      return
-    }
-    if (latest.data) {
-      toast.error('An active session already exists.')
-      return
-    }
-    setCredentials(null)
-    createAttempt.current = null
-    queryClient.setQueryData(currentKey(userId), null)
-  }
 
   return {
+    setup,
     current,
     categories,
     metadata,
+    operation,
     session,
     id,
-    credentials,
     pending,
-    dialog,
-    setDialog,
+    resetDialogOpen,
+    setResetDialogOpen,
+    lastEndedAt,
     now,
     refreshMetadata,
-    create,
-    update,
-    getCredentials,
-    end,
-    newStream,
+    saveSetup,
+    resetStreamKey,
   }
 }

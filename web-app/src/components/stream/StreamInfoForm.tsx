@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { streamDetailsSchema } from '@/schemas/stream.schema'
 import type { CategoryItem } from '@/types/channel.types'
-import type { StreamDetails, StreamStatus } from '@/types/stream.types'
+import type { StreamConfigStatus, StreamDetails } from '@/types/stream.types'
 
 interface Props {
   initial: StreamDetails
@@ -14,12 +14,8 @@ interface Props {
   categoriesLoading: boolean
   categoriesError: boolean
   onRetryCategories: () => void
-  editing: boolean
-  disabled: boolean
+  configStatus?: StreamConfigStatus
   pending: boolean
-  sessionStatus?: StreamStatus
-  onEndStream?: () => void
-  endPending?: boolean
   onSubmit: (value: StreamDetails) => Promise<boolean>
 }
 
@@ -29,12 +25,8 @@ export function StreamInfoForm({
   categoriesLoading,
   categoriesError,
   onRetryCategories,
-  editing,
-  disabled,
+  configStatus,
   pending,
-  sessionStatus,
-  onEndStream,
-  endPending = false,
   onSubmit,
 }: Props) {
   const {
@@ -49,10 +41,15 @@ export function StreamInfoForm({
   })
   const title = useWatch({ control, name: 'title' }) || ''
   const categoryId = useWatch({ control, name: 'categoryId' })
+
   useEffect(() => {
     if (!isDirty) reset({ title: initial.title, categoryId: initial.categoryId })
   }, [initial.title, initial.categoryId, isDirty, reset])
+
   const missingCategory = categoryId && !categories.some((category) => category.id === categoryId)
+  const needsSetup = configStatus === 'DRAFT' || configStatus === 'BLOCKED'
+  const canSubmitClean = needsSetup && Boolean(initial.title.trim() || initial.categoryId)
+
   return (
     <section className="rounded-2xl border border-brand-border bg-brand-card p-5 sm:p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
@@ -67,7 +64,7 @@ export function StreamInfoForm({
           if (await onSubmit(value)) reset(value)
         })}
       >
-        <fieldset disabled={disabled || pending} className="space-y-5 disabled:opacity-65">
+        <fieldset disabled={pending} className="space-y-5 disabled:opacity-65">
           <div>
             <Input
               id="stream-title"
@@ -121,36 +118,25 @@ export function StreamInfoForm({
             )}
           </div>
         </fieldset>
-        {!disabled && (
-          <div className="flex items-center justify-end gap-3">
-            {editing && onEndStream && (
-              <Button
-                type="button"
-                variant="danger"
-                disabled={endPending || pending}
-                onClick={onEndStream}
-              >
-                {sessionStatus === 'READY' ? 'Cancel session' : 'End stream'}
-              </Button>
-            )}
-            <Button
-              type="submit"
-              isLoading={pending}
-              variant={editing ? 'secondary' : 'success'}
-              disabled={
-                (editing && !isDirty) || (!editing && (categoriesError || categoriesLoading))
-              }
-            >
-              {pending
-                ? editing
-                  ? 'Saving…'
-                  : 'Creating…'
-                : editing
-                  ? 'Save changes'
-                  : 'Create stream'}
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center justify-end gap-3">
+          <Button
+            type="submit"
+            isLoading={pending}
+            variant={configStatus === 'DRAFT' ? 'success' : 'secondary'}
+            disabled={
+              pending ||
+              categoriesLoading ||
+              categoriesError ||
+              (!isDirty && !canSubmitClean && configStatus !== 'DRAFT')
+            }
+          >
+            {pending
+              ? 'Saving…'
+              : configStatus === 'DRAFT'
+                ? 'Save & get stream key'
+                : 'Save changes'}
+          </Button>
+        </div>
       </form>
     </section>
   )

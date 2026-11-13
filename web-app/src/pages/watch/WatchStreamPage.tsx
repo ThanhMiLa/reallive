@@ -5,7 +5,6 @@ import {
   Lock,
   Radio,
   RefreshCw,
-  Tv,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
@@ -306,20 +305,7 @@ export function WatchStreamPage() {
                 role="status"
                 className="aspect-video w-full flex flex-col items-center justify-center p-6 text-center bg-[#08080a]"
               >
-                {status === 'READY' ? (
-                  <>
-                    <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3">
-                      <Tv className="w-6 h-6 text-amber-400" />
-                    </div>
-                    <h2 className="text-lg sm:text-xl font-bold text-white font-outfit">
-                      Stream has not started yet
-                    </h2>
-                    <p className="text-xs sm:text-sm text-gray-400 mt-1.5 max-w-md">
-                      Waiting for the streamer to start broadcasting. The video
-                      will appear automatically once the stream goes live.
-                    </p>
-                  </>
-                ) : status === 'RECONNECTING' ? (
+                {status === 'RECONNECTING' ? (
                   <>
                     <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3">
                       <RefreshCw className="w-6 h-6 text-amber-400 animate-spin" />

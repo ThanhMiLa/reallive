@@ -9,6 +9,12 @@ import type {
   UserProfile,
 } from '@/types/auth.types'
 
+function clearStreamCredentials() {
+  const filters = { queryKey: ['stream'] }
+  void queryClient.cancelQueries(filters)
+  queryClient.removeQueries(filters)
+}
+
 let authCheckPromise: Promise<void> | null = null
 
 function extractRolesFromAuthResponse(response: unknown): { role?: string; roles: string[] } {
@@ -55,7 +61,7 @@ interface AuthState {
   setUser: (user: UserProfile | null) => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
@@ -96,6 +102,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         ...(extraRole ? { role: extraRole } : {}),
       }
 
+      if (get().user?.userId !== profile.userId) clearStreamCredentials()
       queryClient.setQueryData(['profile', profile.userId], mergedUser)
       set({
         user: mergedUser,
@@ -124,6 +131,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         ...(extraRole ? { role: extraRole } : {}),
       }
 
+      if (get().user?.userId !== profile.userId) clearStreamCredentials()
       queryClient.setQueryData(['profile', profile.userId], mergedUser)
       set({
         user: mergedUser,
@@ -142,6 +150,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Even if network fails, reset client auth state
     } finally {
+      clearStreamCredentials()
       queryClient.removeQueries({ queryKey: ['profile'] })
       set({
         user: null,
@@ -158,10 +167,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ isCheckingAuth: true })
       try {
         const profile = await authApi.getProfile()
+        if (get().user?.userId !== profile.userId) clearStreamCredentials()
         queryClient.setQueryData(['profile', profile.userId], profile)
         set({ user: profile, isAuthenticated: true })
       } catch (error) {
         if (isAxiosError(error) && error.response?.status === 503) return
+        clearStreamCredentials()
         queryClient.removeQueries({ queryKey: ['profile'] })
         set({ user: null, isAuthenticated: false })
       } finally {
@@ -173,9 +184,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     return authCheckPromise
   },
 
-  setUser: (user) =>
-    set({
-      user,
-      isAuthenticated: !!user,
-    }),
+  setUser: (user) => {
+    if (get().user?.userId !== user?.userId) clearStreamCredentials()
+    set({ user, isAuthenticated: !!user })
+  },
 }))
