@@ -27,6 +27,8 @@ auth:
 stream:
   lifecycle:
     reconnect-sweep-enabled: false
+    operation-worker-enabled: false
+    reconciler-enabled: false
   thumbnail:
     enabled: false
     worker-base-url: http://127.0.0.1:1

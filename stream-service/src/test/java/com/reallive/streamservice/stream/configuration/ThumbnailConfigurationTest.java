@@ -19,8 +19,10 @@ class ThumbnailConfigurationTest {
         runner.withPropertyValues("stream.thumbnail.enabled=false").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasBean("reconnectTaskScheduler");
+            assertThat(context).hasBean("mediaOperationTaskScheduler");
+            assertThat(context).hasBean("mediaReconciliationTaskScheduler");
             assertThat(context).doesNotHaveBean("thumbnailTaskScheduler");
-            assertThat(context).hasSingleBean(TaskScheduler.class);
+            assertThat(context.getBeansOfType(TaskScheduler.class)).hasSize(3);
         });
     }
 
@@ -42,8 +44,10 @@ class ThumbnailConfigurationTest {
         ).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasBean("reconnectTaskScheduler");
+            assertThat(context).hasBean("mediaOperationTaskScheduler");
+            assertThat(context).hasBean("mediaReconciliationTaskScheduler");
             assertThat(context).hasBean("thumbnailTaskScheduler");
-            assertThat(context.getBeansOfType(TaskScheduler.class)).hasSize(2);
+            assertThat(context.getBeansOfType(TaskScheduler.class)).hasSize(4);
         });
     }
 

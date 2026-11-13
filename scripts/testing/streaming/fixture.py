@@ -25,10 +25,11 @@ DEFAULT_STATE = REPO / '.local/streaming'
 ISSUER = 'reallive-stream'
 AUDIENCE = 'reallive-media'
 KEY_ID = 'stream-rs256-v1'
-PUBLISH_TTL = 8 * 3600
 READ_TTL = 5 * 60
+CONTROL_TTL = 5 * 60
 JWKS_PATH = '/stream/api/media/jwks'
-EVENTS_PATH = '/stream/api/media/events'
+EVENTS_PATH = '/stream/internal/api/media-events'
+DEFAULT_CALLBACK_TOKEN = 'fixture-only-internal-callback-token'
 MAX_BODY = 16384
 
 
@@ -84,19 +85,22 @@ def jwks(state):
                       'n': b64url(modulus.lstrip(b'\0')), 'e': b64url(exponent.lstrip(b'\0'))}]}
 
 
-def issue(state, action, path, ttl, now=None):
+def issue(state, action, path, ttl=None, now=None, subject=None):
     now = int(time.time()) if now is None else now
-    subject = '22222222-2222-4222-8222-222222222222' if action == 'read' else '11111111-1111-4111-8111-111111111111'
+    if subject is None:
+        subject = '22222222-2222-4222-8222-222222222222' if action == 'read' else '11111111-1111-4111-8111-111111111111'
     permission = {'action': action, 'path': '' if action == 'api' else path}
     header = {'alg': 'RS256', 'kid': KEY_ID, 'typ': 'JWT'}
     payload = {'iss': ISSUER, 'aud': AUDIENCE, 'sub': subject, 'iat': now,
-               'exp': now + ttl, 'jti': str(uuid4()), 'mediamtx_permissions': [permission]}
+               'jti': str(uuid4()), 'mediamtx_permissions': [permission]}
+    if ttl is not None:
+        payload['exp'] = now + ttl
     unsigned = '.'.join(b64url(json.dumps(item, separators=(',', ':')).encode()) for item in [header, payload])
     signature = openssl('dgst', '-sha256', '-sign', state / 'private.pem', data=unsigned.encode())
     return unsigned + '.' + b64url(signature)
 
 
-def verify(state, token, action, path, now=None):
+def verify(state, token, action, path, now=None, allow_permanent=None):
     """Independently verify signature and expected fixture claims/permissions."""
     parts = token.split('.')
     if len(parts) != 3:
@@ -112,8 +116,12 @@ def verify(state, token, action, path, now=None):
     now = int(time.time()) if now is None else now
     if payload.get('iss') != ISSUER or payload.get('aud') != AUDIENCE:
         raise ValueError('Unexpected issuer/audience')
-    if payload.get('exp', 0) <= now:
-        raise ValueError('Expired JWT')
+    permanent_allowed = (action == 'publish') if allow_permanent is None else allow_permanent
+    if 'exp' in payload:
+        if payload.get('exp', 0) <= now:
+            raise ValueError('Expired JWT')
+    elif not permanent_allowed:
+        raise ValueError('Missing JWT expiry')
     expected = {'action': action, 'path': '' if action == 'api' else path}
     if payload.get('mediamtx_permissions') != [expected]:
         raise ValueError('Unexpected permissions')
@@ -130,21 +138,29 @@ def corrupt_signature(token):
 def prepare(state):
     subprocess.run([str(REPO / 'scripts/dev/generate-stream-media-keys.sh'), str(state)], check=True)
     session_file = state / 'session.json'
-    if not session_file.exists():
-        write_private_json(session_file, {'sessionId': str(uuid4())})
-    session_id = str(UUID(json.loads(session_file.read_text())['sessionId']))
+    existing = json.loads(session_file.read_text()) if session_file.exists() else {}
+    session_id = str(UUID(existing['sessionId'])) if 'sessionId' in existing else str(uuid4())
+    ingest_key_id = str(UUID(existing['ingestKeyId'])) if 'ingestKeyId' in existing else str(uuid4())
+    if existing.get('sessionId') != session_id or existing.get('ingestKeyId') != ingest_key_id:
+        write_private_json(session_file, {'sessionId': session_id, 'ingestKeyId': ingest_key_id})
+    ingest_path = 'ingest/' + ingest_key_id
     path = 'live/' + session_id
-    publish = issue(state, 'publish', path, PUBLISH_TTL)
+    publish = issue(state, 'publish', ingest_path, None)
+    relay_read = issue(state, 'read', ingest_path, None, subject='relay-internal')
     read = issue(state, 'read', path, READ_TTL)
+    other_ingest = 'ingest/' + str(uuid4())
     other_path = 'live/' + str(uuid4())
-    fixtures = {'sessionId': session_id, 'path': path, 'serverUrl': 'rtmp://localhost:1935/live',
-                'streamKey': session_id + '?token=' + publish,
+    fixtures = {'sessionId': session_id, 'ingestKeyId': ingest_key_id,
+                'ingestPath': ingest_path, 'path': path,
+                'serverUrl': 'rtmp://localhost:1935/ingest',
+                'streamKey': ingest_key_id + '?token=' + publish,
                 'playbackUrl': 'http://localhost:8898/' + path + '/index.m3u8',
-                'publishToken': publish, 'readToken': read, 'apiToken': issue(state, 'api', '', 300),
+                'publishToken': publish, 'relayReadToken': relay_read,
+                'readToken': read, 'apiToken': issue(state, 'api', '', CONTROL_TTL),
                 'negativeTokens': {
-                    'expiredPublish': issue(state, 'publish', path, -1),
+                    'expiredPublish': issue(state, 'publish', ingest_path, -1),
                     'expiredRead': issue(state, 'read', path, -1),
-                    'wrongPathPublish': issue(state, 'publish', other_path, PUBLISH_TTL),
+                    'wrongPathPublish': issue(state, 'publish', other_ingest, None),
                     'wrongPathRead': issue(state, 'read', other_path, READ_TTL),
                     'wrongSignaturePublish': corrupt_signature(publish),
                     'wrongSignatureRead': corrupt_signature(read)}}
@@ -168,9 +184,9 @@ def validate_event(event):
         raise ValueError('Unexpected callback fields')
     UUID(event['eventId'])
     UUID(event['sourceId'])
-    if not re.fullmatch(r'live/[0-9a-f-]{36}', event['path']):
+    if not re.fullmatch(r'ingest/[0-9a-f-]{36}', event['path']):
         raise ValueError('Invalid callback path')
-    UUID(event['path'][5:])
+    UUID(event['path'][len('ingest/'):])
     if event['eventType'] not in ['ONLINE', 'OFFLINE'] or event['sourceType'] not in ['rtmpConn', 'rtmpsConn']:
         raise ValueError('Invalid callback type')
     occurred = datetime.fromisoformat(event['occurredAt'].replace('Z', '+00:00'))
@@ -289,8 +305,10 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
                 except BackendError as error:
                     self.backend_error(error, 'backend_metadata_failed')
                     return
-                status, source = request(state, 'GET', '/v3/paths/get/' + values['path'])
-                configured, _ = request(state, 'GET', '/v3/config/paths/get/' + values['path'])
+                inspect_path = values['path'] if access_source == 'backend' else values.get('ingestPath', values['path'])
+                status, source = request(state, 'GET', '/v3/paths/get/' + inspect_path)
+                configured, _ = request(state, 'GET', '/v3/config/paths/get/' + inspect_path)
+                event_path = values['path'] if access_source == 'backend' else values.get('ingestPath', values['path'])
                 with event_lock:
                     events = ([json.loads(line) for line in events_file.read_text().splitlines()]
                               if events_file.exists() else [])
@@ -300,7 +318,7 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
                                   'backendEnabled': backend is not None,
                                   'configured': configured == 200,
                                   'source': safe_source(source) if status == 200 else None,
-                                  'events': [event for event in events if event['path'] == values['path']][-20:]})
+                                  'events': [event for event in events if event['path'] == event_path][-20:]})
             elif self.path.startswith('/fixture/backend-metadata'):
                 self.backend_metadata()
             elif urlsplit(self.path).path == '/fixture/acceptance':
@@ -363,6 +381,11 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
                 except BackendError as error:
                     self.backend_error(error, 'backend_access_failed')
                 return
+            expected_token = os.environ.get('STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN') or DEFAULT_CALLBACK_TOKEN
+            provided_token = self.headers.get('X-Internal-Token', '')
+            if not hmac.compare_digest(provided_token, expected_token):
+                self.respond(401, {'error': 'unauthorized'})
+                return
             try:
                 event = json.loads(body)
                 validate_event(event)
@@ -398,14 +421,32 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
             else:
                 values = json.loads((state / 'fixtures.json').read_text())
             path = values['path']
+            ingest_path = values.get('ingestPath', path)
             if self.path == '/fixture/path':
                 if value == {'action': 'create'}:
-                    status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
-                    if status == 404:
-                        status, _ = request(state, 'POST', '/v3/config/paths/add/' + path,
-                                            {'source': 'publisher', 'overridePublisher': False})
+                    if 'ingestPath' in values and 'relayReadToken' in values:
+                        status, _ = request(state, 'GET', '/v3/config/paths/get/' + ingest_path)
+                        if status == 404:
+                            status, _ = request(state, 'POST', '/v3/config/paths/add/' + ingest_path,
+                                                {'source': 'publisher', 'overridePublisher': False,
+                                                 'runOnRead': '', 'runOnUnread': ''})
+                        if status in [200, 404]:
+                            playback_status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
+                            if playback_status == 404:
+                                source_url = 'rtmp://127.0.0.1:1935/' + ingest_path + '?token=' + values['relayReadToken']
+                                playback_status, _ = request(state, 'POST', '/v3/config/paths/add/' + path,
+                                                             {'source': source_url, 'sourceOnDemand': False,
+                                                              'runOnOnline': '', 'runOnOffline': ''})
+                            status = playback_status
+                    else:
+                        status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
+                        if status == 404:
+                            status, _ = request(state, 'POST', '/v3/config/paths/add/' + path,
+                                                {'source': 'publisher', 'overridePublisher': False})
                 elif value == {'action': 'delete'}:
                     status, _ = request(state, 'DELETE', '/v3/config/paths/delete/' + path)
+                    if 'ingestPath' in values and status in [200, 404]:
+                        status, _ = request(state, 'DELETE', '/v3/config/paths/delete/' + ingest_path)
                 else:
                     raise ValueError('Invalid path action')
                 self.respond(200 if status in [200, 404] else 503, {'ok': status in [200, 404]})
@@ -415,22 +456,28 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
                 case = value['case']
                 if case not in ['valid', 'missing', 'wrong-action', 'wrong-path', 'wrong-signature', 'expired']:
                     raise ValueError('Invalid credential case')
-                configured, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
+                check_path = ingest_path if value['kind'] == 'publish' else path
+                configured, _ = request(state, 'GET', '/v3/config/paths/get/' + check_path)
                 if configured != 200:
                     self.respond(409, {'error': 'create_fixture_path_first'})
                     return
                 action = value['kind']
                 if case == 'wrong-action':
                     action = 'read' if action == 'publish' else 'publish'
-                token_path = 'live/' + str(uuid4()) if case == 'wrong-path' else path
-                token = issue(state, action, token_path, -1 if case == 'expired' else (PUBLISH_TTL if action == 'publish' else READ_TTL))
+                if value['kind'] == 'publish':
+                    token_path = ('ingest/' + str(uuid4())) if case == 'wrong-path' else ingest_path
+                else:
+                    token_path = ('live/' + str(uuid4())) if case == 'wrong-path' else path
+                token_ttl = -1 if case == 'expired' else (None if action == 'publish' else READ_TTL)
+                token = issue(state, action, token_path, token_ttl)
                 if case == 'wrong-signature':
                     token = corrupt_signature(token)
                 if case == 'missing':
                     token = None
                 if value['kind'] == 'publish':
+                    key_prefix = values.get('ingestKeyId', values['sessionId'])
                     self.respond(200, {'serverUrl': values['serverUrl'],
-                                       'streamKey': values['sessionId'] + ('?token=' + token if token else '')})
+                                       'streamKey': key_prefix + ('?token=' + token if token else '')})
                 else:
                     self.respond(200, {'playbackUrl': values['playbackUrl'], 'readToken': token, 'path': path})
             else:
@@ -466,9 +513,10 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
                     raise ValueError('Invalid observation')
                 # Human observations are evidence for review, never an automatic task-completion switch.
                 from media import safe_source
-                status, observed = request(state, 'GET', '/v3/paths/get/' + path)
+                inspect_path = path if (backend_observation or value.get('kind') == 'browser') else values.get('ingestPath', path)
+                status, observed = request(state, 'GET', '/v3/paths/get/' + inspect_path)
                 source = observed.get('source') if status == 200 else None
-                configured, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
+                configured, _ = request(state, 'GET', '/v3/config/paths/get/' + inspect_path)
                 if configured not in [200, 404] or status not in [200, 404]:
                     self.respond(503, {'error': 'cannot_confirm_media_state'})
                     return

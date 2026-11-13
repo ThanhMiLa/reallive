@@ -228,8 +228,6 @@ class ThumbnailDispatchPostgresTest extends PostgresIntegrationTestSupport {
 
     @Test
     void neverDispatchesNonLiveSessionsOrAcceptedJobs() {
-        StreamSessionEntity ready = saveSession(StreamSessionStatus.READY, MediaPathState.OPEN,
-                null, null, null, null, null, null);
         StreamSessionEntity reconnecting = saveSession(StreamSessionStatus.RECONNECTING, MediaPathState.OPEN,
                 null, null, null, null, null, null);
         StreamSessionEntity ended = saveSession(StreamSessionStatus.ENDED, MediaPathState.CLOSED,
@@ -242,7 +240,7 @@ class ThumbnailDispatchPostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(0, dispatch.dispatchDueJobs());
         assertEquals(0, REQUESTS.get());
 
-        for (StreamSessionEntity session : List.of(ready, reconnecting, ended)) {
+        for (StreamSessionEntity session : List.of(reconnecting, ended)) {
             StreamSessionEntity stored = sessions.findById(session.getId()).orElseThrow();
             assertNull(stored.getThumbnailJobId());
             assertNull(stored.getThumbnailJobStatus());

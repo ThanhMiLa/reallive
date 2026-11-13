@@ -84,7 +84,11 @@ def evaluate(state, session_id=None, access_source='fixture'):
         reported = {item for item in confirmation['confirmedChecks'] if isinstance(item, str)}
     event_file = state / 'events.jsonl'
     events = [json.loads(line) for line in event_file.read_text().splitlines()] if event_file.exists() else []
-    events = [event for event in events if event['path'] == 'live/' + session_id]
+    fixtures_file = state / 'fixtures.json'
+    fixtures = json.loads(fixtures_file.read_text()) if fixtures_file.exists() else {}
+    expected_event_path = fixtures.get('ingestPath') if fixtures.get('sessionId') == session_id else None
+    expected_event_path = expected_event_path or ('live/' + session_id)
+    events = [event for event in events if event['path'] == expected_event_path]
 
     def source_id(record):
         return (record.get('source') or {}).get('id')

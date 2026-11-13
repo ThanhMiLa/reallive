@@ -16,35 +16,35 @@ it('binds the owner and playback API contract through the account client', async
     return { data: { result: null }, status: 200, statusText: 'OK', headers: {}, config }
   }
   const id = '462c912c-ee66-4477-9852-bed13d377297'
+  const opId = '00000000-0000-4000-8000-000000000099'
   const payload = {
     title: 'Morning',
     categoryId: '00000000-0000-4000-8000-000000000001',
-    requestId: '00000000-0000-4000-8000-000000000002',
   }
   const controller = new AbortController()
+  await streamApi.setup(controller.signal)
+  await streamApi.saveSetup(payload, controller.signal)
+  await streamApi.resetKey('idem-key-1', controller.signal)
+  await streamApi.operation(opId, controller.signal)
   await streamApi.current(controller.signal)
-  await streamApi.create(payload)
-  await streamApi.update(id, { title: 'Changed' })
-  await streamApi.credentials(id)
   await streamApi.metadata(id)
   await streamApi.details(id)
   await streamApi.access(id)
-  await streamApi.end(id)
   expect(requests.map((request: AxiosRequestConfig) => [request.method, request.url])).toEqual([
+    ['get', '/stream/api/streams/me/setup'],
+    ['put', '/stream/api/streams/me/setup'],
+    ['post', '/stream/api/streams/me/stream-key/reset'],
+    ['get', `/stream/api/streams/me/operations/${opId}`],
     ['get', '/stream/api/streams/me/current'],
-    ['post', '/stream/api/streams'],
-    ['patch', `/stream/api/streams/${id}`],
-    ['post', `/stream/api/streams/${id}/publish-credentials`],
     ['get', `/stream/api/streams/${id}`],
     ['get', `/stream/api/streams/${id}/details`],
     ['post', `/stream/api/streams/${id}/playback-access`],
-    ['post', `/stream/api/streams/${id}/end`],
   ])
   expect(requests.every((request) => request.withCredentials)).toBe(true)
   expect(requests[0].signal).toBe(controller.signal)
   expect(JSON.parse(requests[1].data)).toEqual(payload)
-  expect(JSON.parse(requests[2].data)).toEqual({ title: 'Changed' })
-  expect(requests[6].data).toBeUndefined()
+  expect(requests[2].headers?.['Idempotency-Key']).toBe('idem-key-1')
+  expect(requests[7].data).toBeUndefined()
 })
 
 it('calls GET /stream/api/streams with pagination, optional categoryId, and no sort parameter', async () => {

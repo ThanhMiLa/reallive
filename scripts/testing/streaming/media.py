@@ -38,31 +38,60 @@ def main():
     state = args.state_dir.resolve()
     values = json.loads((state / 'fixtures.json').read_text())
     path = quote(values['path'], safe='/')
+    ingest_path = quote(values['ingestPath'], safe='/') if 'ingestPath' in values else None
     if args.command == 'probe':
         status, _ = request(state, 'GET', '/v3/config/paths/list')
         assert status == 200, 'Control API did not accept api JWT: ' + str(status)
         for action in ['publish', 'read']:
+            token_path = values.get('ingestPath', values['path']) if action == 'publish' else values['path']
             status, _ = request(state, 'GET', '/v3/config/paths/list',
-                                token=fixture.issue(state, action, values['path'], 300))
+                                token=fixture.issue(state, action, token_path, 300))
             assert status in [401, 403], 'Control API accepted ' + action + ' JWT'
         print('PASS: Control API accepts api JWT and rejects publish/read JWTs')
     elif args.command == 'create':
-        status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
-        if status == 404:
-            status, _ = request(state, 'POST', '/v3/config/paths/add/' + path,
-                                {'source': 'publisher', 'overridePublisher': False})
-        assert status == 200, 'Provision path failed: ' + str(status)
-        print('Exact fixture path is configured: ' + values['path'])
+        if ingest_path and 'relayReadToken' in values:
+            status, _ = request(state, 'GET', '/v3/config/paths/get/' + ingest_path)
+            if status == 404:
+                status, _ = request(state, 'POST', '/v3/config/paths/add/' + ingest_path,
+                                    {'source': 'publisher', 'overridePublisher': False,
+                                     'runOnRead': '', 'runOnUnread': ''})
+            assert status == 200, 'Provision ingest path failed: ' + str(status)
+            playback_status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
+            if playback_status == 404:
+                relay_url = 'rtmp://127.0.0.1:1935/' + values['ingestPath'] + '?token=' + values['relayReadToken']
+                playback_status, _ = request(state, 'POST', '/v3/config/paths/add/' + path,
+                                             {'source': relay_url, 'sourceOnDemand': False,
+                                              'runOnOnline': '', 'runOnOffline': ''})
+            assert playback_status == 200, 'Provision playback path failed: ' + str(playback_status)
+            print('Exact fixture ingest/playback paths are configured: ' + values['ingestPath'] + ' -> ' + values['path'])
+        else:
+            status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
+            if status == 404:
+                status, _ = request(state, 'POST', '/v3/config/paths/add/' + path,
+                                    {'source': 'publisher', 'overridePublisher': False})
+            assert status == 200, 'Provision path failed: ' + str(status)
+            print('Exact fixture path is configured: ' + values['path'])
     elif args.command == 'info':
         status, value = request(state, 'GET', '/v3/paths/get/' + path)
-        print(json.dumps({'status': status, 'path': safe_source(value) if value else None}))
+        payload = {'status': status, 'path': safe_source(value) if value else None}
+        if ingest_path:
+            ingest_status, ingest_value = request(state, 'GET', '/v3/paths/get/' + ingest_path)
+            payload['ingestStatus'] = ingest_status
+            payload['ingestPath'] = safe_source(ingest_value) if ingest_value else None
+        print(json.dumps(payload))
     else:
         status, _ = request(state, 'DELETE', '/v3/config/paths/delete/' + path)
         assert status in [200, 404], 'Delete path failed: ' + str(status)
         status, _ = request(state, 'GET', '/v3/config/paths/get/' + path)
         assert status == 404, 'Path configuration still exists'
-        status, value = request(state, 'GET', '/v3/paths/get/' + path)
-        if status == 200 and value.get('source'):
+        kick_path = ingest_path or path
+        if ingest_path:
+            status, _ = request(state, 'DELETE', '/v3/config/paths/delete/' + ingest_path)
+            assert status in [200, 404], 'Delete ingest path failed: ' + str(status)
+            status, _ = request(state, 'GET', '/v3/config/paths/get/' + ingest_path)
+            assert status == 404, 'Ingest path configuration still exists'
+        status, value = request(state, 'GET', '/v3/paths/get/' + kick_path)
+        if status == 200 and value.get('source') and value['source'].get('type') in ['rtmpConn', 'rtmpsConn']:
             source = value['source']
             protocol = {'rtmpConn': 'rtmp', 'rtmpsConn': 'rtmps'}[source['type']]
             status, _ = request(state, 'POST', '/v3/' + protocol + '/conns/kick/' + source['id'])

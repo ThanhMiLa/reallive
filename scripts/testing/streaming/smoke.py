@@ -82,21 +82,25 @@ def safe_media_url(base, reference, path):
 
 def run(state):
     require(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'FFmpeg/ffprobe are required for protocol checks')
+    ingest_path = 'ingest/' + str(uuid4())
+    escaped_ingest = quote(ingest_path, safe='/')
     path = 'live/' + str(uuid4())
     escaped = quote(path, safe='/')
-    publish = fixture.issue(state, 'publish', path, 86400)
+    publish = fixture.issue(state, 'publish', ingest_path, None)
+    relay_read = fixture.issue(state, 'read', ingest_path, None, subject='relay-internal')
     read = fixture.issue(state, 'read', path, 900)
     playback = 'http://localhost:8898/' + path + '/index.m3u8'
     checks = []
     process = None
-    created = False
+    created_ingest = False
+    created_playback = False
 
     def passed(name, **details):
         checks.append(dict(name=name, passed=True, **details))
         print('PASS: ' + name, flush=True)
 
     def source():
-        status, value = media.request(state, 'GET', '/v3/paths/get/' + escaped)
+        status, value = media.request(state, 'GET', '/v3/paths/get/' + escaped_ingest)
         return value if status == 200 and value.get('online') and value.get('source') else None
 
     def callback(kind, source_id):
@@ -104,11 +108,12 @@ def run(state):
         if events.exists():
             for line in events.read_text().splitlines():
                 event = json.loads(line)
-                if event['path'] == path and event['eventType'] == kind and event['sourceId'] == source_id:
+                require(event['path'] != path, 'Unexpected lifecycle hook event for playback path')
+                if event['path'] == ingest_path and event['eventType'] == kind and event['sourceId'] == source_id:
                     return event
         return None
 
-    def rejected(token, output_path=path):
+    def rejected(token, output_path=ingest_path):
         # MediaMTX delays auth failures; a 2s output can finish before FFmpeg notices rejection.
         candidate = publisher(output_path, token, duration=8)
         try:
@@ -122,21 +127,28 @@ def run(state):
     try:
         status, _ = media.request(state, 'GET', '/v3/config/paths/list')
         require(status == 200, 'Control API api token failed')
-        for action in ['publish', 'read']:
-            status, _ = media.request(state, 'GET', '/v3/config/paths/list', token=fixture.issue(state, action, path, 300))
+        for action, token_path in [('publish', ingest_path), ('read', path)]:
+            status, _ = media.request(state, 'GET', '/v3/config/paths/list', token=fixture.issue(state, action, token_path, 300))
             require(status in [401, 403], 'Control API accepted client token')
         passed('control-api-permission-separation')
 
+        status, _ = media.request(state, 'POST', '/v3/config/paths/add/' + escaped_ingest,
+                                  {'source': 'publisher', 'overridePublisher': False,
+                                   'runOnRead': '', 'runOnUnread': ''})
+        require(status == 200, 'Exact ingest path creation failed')
+        created_ingest = True
+        relay_url = 'rtmp://127.0.0.1:1935/' + ingest_path + '?token=' + relay_read
         status, _ = media.request(state, 'POST', '/v3/config/paths/add/' + escaped,
-                                  {'source': 'publisher', 'overridePublisher': False})
-        require(status == 200, 'Exact path creation failed')
-        created = True
-        status, value = media.request(state, 'GET', '/v3/paths/get/' + escaped)
+                                  {'source': relay_url, 'sourceOnDemand': False,
+                                   'runOnOnline': '', 'runOnOffline': ''})
+        require(status == 200, 'Exact playback path creation failed')
+        created_playback = True
+        status, value = media.request(state, 'GET', '/v3/paths/get/' + escaped_ingest)
         require(status == 200 and not value['online'] and value['source'] is None,
                 'Configured path incorrectly reports online without media')
         passed('provisioning-alone-is-not-online')
 
-        process = publisher(path, publish)
+        process = publisher(ingest_path, publish)
         first = wait_for(source)
         first_id = first['source']['id']
         event = wait_for(lambda: callback('ONLINE', first_id))
@@ -145,7 +157,7 @@ def run(state):
         require(len(first['tracks']) == 2, 'Expected audio and video tracks')
         passed('publish-h264-aac-and-online-hook', sourceId=first_id, sourceType=event['sourceType'], tracks=first['tracks'])
 
-        status, _ = media.request(state, 'GET', '/v3/config/paths/get/' + escaped)
+        status, _ = media.request(state, 'GET', '/v3/config/paths/get/' + escaped_ingest)
         require(status == 200 and source()['source']['id'] == first_id, 'Path inspection changed live source')
         rejected(publish)
         require(source()['source']['id'] == first_id, 'Second publisher replaced original source')
@@ -233,39 +245,42 @@ def run(state):
 
         for name, token in {'missing': None, 'read-action': read,
                             'wrong-signature': fixture.corrupt_signature(publish),
-                            'wrong-path': fixture.issue(state, 'publish', 'live/' + str(uuid4()), 900),
-                            'expired': fixture.issue(state, 'publish', path, -1)}.items():
+                            'wrong-path': fixture.issue(state, 'publish', 'ingest/' + str(uuid4()), None),
+                            'expired': fixture.issue(state, 'publish', ingest_path, -1)}.items():
             rejected(token)
             require(not source(), 'Invalid Publish JWT created source: ' + name)
-        unknown_path = 'live/' + str(uuid4())
-        rejected(fixture.issue(state, 'publish', unknown_path, 900), unknown_path)
+        unknown_path = 'ingest/' + str(uuid4())
+        rejected(fixture.issue(state, 'publish', unknown_path, None), unknown_path)
         passed('publish-rejects-missing-action-path-signature-expiry-and-unregistered-path')
 
-        process = publisher(path, publish)
+        process = publisher(ingest_path, publish)
         second = wait_for(source)
         second_id = second['source']['id']
         require(second_id != first_id, 'Reconnect reused connection ID')
         wait_for(lambda: callback('ONLINE', second_id))
         passed('reconnect-same-jwt-and-path-new-source', sourceId=second_id)
 
-        status, _ = media.request(state, 'DELETE', '/v3/config/paths/delete/' + escaped)
+        status, _ = media.request(state, 'DELETE', '/v3/config/paths/delete/' + escaped_ingest)
         require(status == 200, 'Path delete while publishing failed')
-        status, _ = media.request(state, 'GET', '/v3/config/paths/get/' + escaped)
+        status, _ = media.request(state, 'GET', '/v3/config/paths/get/' + escaped_ingest)
         require(status == 404, 'Deleted path configuration still exists')
         wait_for(lambda: not source())
         wait_for(lambda: callback('OFFLINE', second_id))
         stop(process)
         process = None
-        fixture.verify(state, publish, 'publish', path)
+        fixture.verify(state, publish, 'publish', ingest_path)
         rejected(publish)
         require(not source(), 'Old valid JWT reopened deleted path')
         passed('delete-live-path-stops-source-and-rejects-still-valid-old-jwt')
         return checks
     finally:
         stop(process)
-        if created:
+        if created_playback:
             status, _ = media.request(state, 'DELETE', '/v3/config/paths/delete/' + escaped)
-            require(status in [200, 404], 'Fixture smoke path cleanup failed')
+            require(status in [200, 404], 'Fixture playback path cleanup failed')
+        if created_ingest:
+            status, _ = media.request(state, 'DELETE', '/v3/config/paths/delete/' + escaped_ingest)
+            require(status in [200, 404], 'Fixture ingest path cleanup failed')
 
 
 def main():

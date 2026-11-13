@@ -2,20 +2,25 @@ package com.reallive.streamservice.stream.service;
 
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.SignedJWT;
+import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.MediaTestSupport;
-import com.reallive.streamservice.client.channel.ChannelClient;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.stream.adapter.media.MediaJwtIssuer;
+import com.reallive.streamservice.stream.adapter.media.MediaPathConfiguration;
+import com.reallive.streamservice.stream.adapter.media.MediaPathStatus;
 import com.reallive.streamservice.stream.adapter.media.MediaServerAdapter;
-import com.reallive.streamservice.stream.dto.CreateSessionCommand;
-import com.reallive.streamservice.stream.dto.MediaOfflineCommand;
-import com.reallive.streamservice.stream.dto.MediaOnlineCommand;
+import com.reallive.streamservice.stream.dto.MediaIngestEventCommand;
+import com.reallive.streamservice.stream.dto.StreamPublishContext;
+import com.reallive.streamservice.stream.dto.request.SaveStreamSetupRequest;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+import com.reallive.streamservice.stream.repository.ChannelStreamConfigRepository;
+import com.reallive.streamservice.stream.repository.ChannelStreamCredentialRepository;
+import com.reallive.streamservice.stream.repository.StreamMediaOperationRepository;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.repository.StreamStatusHistoryRepository;
 import org.junit.jupiter.api.AfterAll;
@@ -26,14 +31,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.test.web.servlet.MockMvc;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
@@ -41,6 +40,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -54,7 +54,9 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -62,8 +64,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -75,22 +84,27 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
     private static final Instant BASE = Instant.parse("2026-10-29T03:00:00Z");
 
     @Autowired private MockMvc mvc;
+    @Autowired private StreamSetupService setupService;
     @Autowired private StreamSessionService sessionService;
     @Autowired private StreamPlaybackService playbackService;
+    @Autowired private StreamMediaLifecycleService lifecycleService;
+    @Autowired private StreamMediaOperationWorker operationWorker;
     @Autowired private StreamSessionClosureService closureService;
-    @Autowired private StreamSessionDomainService domain;
     @Autowired private StreamSessionRepository sessions;
     @Autowired private StreamStatusHistoryRepository history;
+    @Autowired private StreamMediaOperationRepository operations;
+    @Autowired private ChannelStreamCredentialRepository credentials;
+    @Autowired private ChannelStreamConfigRepository configs;
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private MutableClock clock;
+    @MockitoBean private StreamEligibilityService eligibility;
     @MockitoBean private MediaServerAdapter media;
     @MockitoSpyBean private ChannelClient channelAccess;
     @MockitoSpyBean private MediaJwtIssuer issuer;
 
-    @BeforeEach
-    void allowViewerChannelAccess() {
-        doNothing().when(channelAccess).requireViewAccess(any(), any());
-    }
+    private final Set<UUID> configuredIngests = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> activePlaybacks = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, MediaPathStatus> activeIngestSources = new ConcurrentHashMap<>();
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -103,26 +117,71 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
     }
 
     @BeforeEach
-    void prepareMediaStub() {
+    void prepareStubs() {
+        history.deleteAll();
+        operations.deleteAll();
+        sessions.deleteAll();
+        credentials.deleteAll();
+        configs.deleteAll();
         clock.now = BASE;
-        when(media.getPath(any())).thenReturn(Optional.empty());
-        when(media.getSource(any())).thenReturn(Optional.empty());
+        configuredIngests.clear();
+        activePlaybacks.clear();
+        activeIngestSources.clear();
+        doNothing().when(channelAccess).requireViewAccess(any(), any());
+        doAnswer(inv -> {
+            configuredIngests.add(inv.getArgument(0));
+            return null;
+        }).when(media).ensureIngestPath(any());
+        doAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            configuredIngests.remove(id);
+            activeIngestSources.remove(id);
+            return null;
+        }).when(media).deleteIngestPath(any());
+        when(media.getIngestPath(any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            return configuredIngests.contains(id)
+                    ? Optional.of(new MediaPathConfiguration("ingest/" + id, "publisher", false))
+                    : Optional.empty();
+        });
+        when(media.getIngestSource(any())).thenAnswer(inv ->
+                Optional.ofNullable(activeIngestSources.get(inv.getArgument(0))));
+        doAnswer(inv -> {
+            activePlaybacks.add(inv.getArgument(0));
+            return null;
+        }).when(media).ensurePlaybackPath(any(), any(), any());
+        doAnswer(inv -> {
+            activePlaybacks.remove(inv.getArgument(0));
+            return null;
+        }).when(media).deletePlaybackPath(any());
+        when(media.getPlaybackPath(any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            return activePlaybacks.contains(id)
+                    ? Optional.of(new MediaPathConfiguration("live/" + id, "rtmp://127.0.0.1/...", false))
+                    : Optional.empty();
+        });
+        when(media.getPlaybackSource(any())).thenAnswer(inv -> {
+            UUID id = inv.getArgument(0);
+            return activePlaybacks.contains(id)
+                    ? Optional.of(new MediaPathStatus("live/" + id, true, UUID.randomUUID(), MediaSourceType.RTMP_SOURCE))
+                    : Optional.empty();
+        });
     }
 
     @Test
-    void internalChatContextPermitsAnonymousAccessAndReturnsCurrentState() throws Exception {
-        UUID id = createSession();
+    void internalChatContextPermitsAnonymousAccessAndReturnsCurrentLiveState() throws Exception {
+        UUID id = createLiveSession().sessionId();
         String path = "/internal/api/streams/" + id + "/chat-context";
         mvc.perform(get(path))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.sessionId").value(id.toString()))
-                .andExpect(jsonPath("$.result.status").value("READY"));
+                .andExpect(jsonPath("$.result.status").value("LIVE"));
     }
 
     @Test
     void playbackRejectsCurrentChannelViewBansBeforeIssuingCredentials() {
-        UUID id = createSession();
-        goLive(id);
+        UUID id = createLiveSession().sessionId();
+        clearInvocations(issuer);
         doThrow(new AppException(ErrorCode.ACCESS_DENIED)).when(channelAccess)
                 .requireViewAccess(any(), any());
         error(ErrorCode.ACCESS_DENIED, () -> playbackService.access(id, UUID.randomUUID()));
@@ -131,8 +190,11 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
 
     @Test
     void metadataReadsEveryLifecycleStateWithoutIssuingCredentialsOrChangingHistory() {
-        UUID id = createSession();
-        assertMetadata(id, StreamSessionStatus.READY, StreamVisibility.PUBLIC);
+        LiveFixture fixture = createLiveSession();
+        UUID id = fixture.sessionId();
+        clearInvocations(issuer, media);
+
+        assertMetadata(id, StreamSessionStatus.LIVE, StreamVisibility.PUBLIC);
         assertEquals(1, historyCount(id));
 
         sessionService.metadata(id);
@@ -140,17 +202,14 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(1, historyCount(id));
         verifyNoInteractions(issuer, media);
 
-        goLive(id);
-        assertMetadata(id, StreamSessionStatus.LIVE, StreamVisibility.PUBLIC);
+        disconnect(fixture.ingestKeyId(), fixture.sourceId());
+        assertMetadata(id, StreamSessionStatus.RECONNECTING, StreamVisibility.PUBLIC);
         assertEquals(2, historyCount(id));
 
-        disconnect(id, currentSource(id));
-        assertMetadata(id, StreamSessionStatus.RECONNECTING, StreamVisibility.PUBLIC);
-        assertEquals(3, historyCount(id));
-
-        assertEquals(StreamSessionStatus.ENDED, closureService.end(id, ownerOf(id), null).status());
+        clock.now = clock.now.plusSeconds(60);
+        assertTrue(closureService.expireReconnectIfDue(id));
         assertMetadata(id, StreamSessionStatus.ENDED, StreamVisibility.PUBLIC);
-        assertEquals(4, historyCount(id));
+        assertEquals(3, historyCount(id));
         verifyNoInteractions(issuer);
     }
 
@@ -158,16 +217,16 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
     void metadataRejectsMissingSessionsAndVisibilityOutsideTheViewingScope() {
         error(ErrorCode.STREAM_SESSION_NOT_FOUND, () -> sessionService.metadata(UUID.randomUUID()));
 
-        UUID id = createSession();
+        UUID id = createLiveSession().sessionId();
         updateVisibility(id, StreamVisibility.PRIVATE);
         error(ErrorCode.ACCESS_DENIED, () -> sessionService.metadata(id));
     }
 
     @Test
-    void playbackAccessIssuesAnExactReadJwtAndLeavesTheSessionUnchanged() throws Exception {
-        UUID id = createSession();
-        goLive(id);
+    void playbackAccessIssuesAnExactReadJwtWithoutIngestAccessAndLeavesSessionUnchanged() throws Exception {
+        UUID id = createLiveSession().sessionId();
         UUID viewer = UUID.randomUUID();
+        clearInvocations(issuer, media);
         var before = sessions.findById(id).orElseThrow();
         int historyBefore = historyCount(id);
 
@@ -204,61 +263,69 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
         UUID missing = UUID.randomUUID();
         error(ErrorCode.STREAM_SESSION_NOT_FOUND, () -> playbackService.access(missing, UUID.randomUUID()));
 
-        UUID ready = createSession();
-        error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(ready, UUID.randomUUID()));
-
-        goLive(ready);
+        LiveFixture first = createLiveSession();
         UUID viewer = UUID.randomUUID();
-        assertNotNull(playbackService.access(ready, viewer));
+        assertNotNull(playbackService.access(first.sessionId(), viewer));
 
-        UUID privateSession = createSession();
-        goLive(privateSession);
-        updateVisibility(privateSession, StreamVisibility.PRIVATE);
-        error(ErrorCode.ACCESS_DENIED, () -> playbackService.access(privateSession, viewer));
+        LiveFixture privateFixture = createLiveSession();
+        updateVisibility(privateFixture.sessionId(), StreamVisibility.PRIVATE);
+        error(ErrorCode.ACCESS_DENIED, () -> playbackService.access(privateFixture.sessionId(), viewer));
 
-        disconnect(ready, currentSource(ready));
-        error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(ready, viewer));
-        closureService.end(ready, ownerOf(ready), null);
-        error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(ready, viewer));
+        disconnect(first.ingestKeyId(), first.sourceId());
+        error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(first.sessionId(), viewer));
 
-        UUID ended = createSession();
-        goLive(ended);
-        closureService.end(ended, ownerOf(ended), null);
-        error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(ended, viewer));
+        clock.now = clock.now.plusSeconds(60);
+        assertTrue(closureService.expireReconnectIfDue(first.sessionId()));
+        error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(first.sessionId(), viewer));
     }
 
     @Test
-    void liveMetadataFollowedByCommittedEndMakesTheNextPlaybackRequestFail() {
-        UUID id = createSession();
-        goLive(id);
+    void liveMetadataFollowedByCommittedEndMakesNextPlaybackRequestFail() {
+        LiveFixture fixture = createLiveSession();
+        UUID id = fixture.sessionId();
         assertEquals(StreamSessionStatus.LIVE, sessionService.metadata(id).status());
 
-        closureService.end(id, ownerOf(id), null);
+        disconnect(fixture.ingestKeyId(), fixture.sourceId());
+        clock.now = clock.now.plusSeconds(60);
+        assertTrue(closureService.expireReconnectIfDue(id));
 
         assertEquals(StreamSessionStatus.ENDED, sessionService.metadata(id).status());
         error(ErrorCode.STREAM_SESSION_STATE_INVALID, () -> playbackService.access(id, UUID.randomUUID()));
     }
 
-    private UUID createSession() {
-        var command = new CreateSessionCommand(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                UUID.randomUUID(), "Playback stream", UUID.randomUUID());
-        return domain.createOrGetSession(command).session().getId();
+    private LiveFixture createLiveSession() {
+        UUID ownerUserId = UUID.randomUUID();
+        UUID streamerId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
+        when(eligibility.requireChannelContext(ownerUserId))
+                .thenReturn(new StreamPublishContext(ownerUserId, streamerId, channelId, null));
+        when(eligibility.requirePublishContext(ownerUserId, categoryId))
+                .thenReturn(new StreamPublishContext(ownerUserId, streamerId, channelId, categoryId));
+
+        setupService.saveSetup(ownerUserId, new SaveStreamSetupRequest("Playback stream", categoryId));
+        operationWorker.processDueOperations();
+
+        UUID ingestKeyId = configs.findById(channelId).orElseThrow().getCurrentIngestKeyId();
+        UUID sourceId = UUID.randomUUID();
+        activeIngestSources.put(ingestKeyId,
+                new MediaPathStatus("ingest/" + ingestKeyId, true, sourceId, MediaSourceType.RTMP_CONN));
+
+        lifecycleService.onOnline(new MediaIngestEventCommand(
+                ingestKeyId, sourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(),
+                clock.now.atZone(ZoneOffset.UTC).toLocalDateTime()));
+        operationWorker.processDueOperations();
+
+        UUID sessionId = sessions.findSlotOccupyingByChannelId(channelId).orElseThrow().getId();
+        return new LiveFixture(ownerUserId, channelId, ingestKeyId, sourceId, sessionId);
     }
 
-    private void goLive(UUID id) {
-        domain.onMediaOnline(new MediaOnlineCommand(id, UUID.randomUUID(), MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
-    }
-
-    private void disconnect(UUID id, UUID sourceId) {
-        domain.onMediaOffline(new MediaOfflineCommand(id, sourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
-    }
-
-    private UUID currentSource(UUID id) {
-        return sessions.findById(id).orElseThrow().getMediaSourceId();
-    }
-
-    private UUID ownerOf(UUID id) {
-        return sessions.findById(id).orElseThrow().getOwnerUserId();
+    private void disconnect(UUID ingestKeyId, UUID sourceId) {
+        activeIngestSources.remove(ingestKeyId);
+        lifecycleService.onOffline(new MediaIngestEventCommand(
+                ingestKeyId, sourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(),
+                clock.now.atZone(ZoneOffset.UTC).toLocalDateTime()));
+        operationWorker.processDueOperations();
     }
 
     private void updateVisibility(UUID id, StreamVisibility visibility) {
@@ -274,7 +341,7 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(id, metadata.id());
         assertEquals(status, metadata.status());
         assertEquals(visibility, metadata.visibility());
-        assertEquals(BASE, metadata.serverTime());
+        assertEquals(clock.now, metadata.serverTime());
         assertNotNull(metadata.title());
     }
 
@@ -285,6 +352,14 @@ class StreamPlaybackPostgresTest extends PostgresIntegrationTestSupport {
     private void error(ErrorCode code, Executable action) {
         assertEquals(code, assertThrows(AppException.class, action).getErrorCode());
     }
+
+    private record LiveFixture(
+            UUID ownerUserId,
+            UUID channelId,
+            UUID ingestKeyId,
+            UUID sourceId,
+            UUID sessionId
+    ) {}
 
     @TestConfiguration
     static class TimeConfiguration {

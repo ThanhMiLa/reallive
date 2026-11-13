@@ -410,35 +410,17 @@ describe('WatchStreamPage', () => {
     expect(mocks.access).not.toHaveBeenCalled()
   })
 
-  it('handles READY -> LIVE -> RECONNECTING -> LIVE -> ENDED lifecycle transitions and does not re-issue token on repeated LIVE polls', async () => {
-    mocks.metadata.mockResolvedValue({
-      ...liveMetadata,
-      status: 'READY',
-      startedAt: null,
-    })
+  it('handles LIVE -> RECONNECTING -> LIVE -> ENDED lifecycle transitions and does not re-issue token on repeated LIVE polls', async () => {
+    mocks.metadata.mockResolvedValue(liveMetadata)
 
     mount()
 
-    // 1. READY: shows waiting message, does not call playback-access
-    expect(
-      await screen.findByText('Stream has not started yet'),
-    ).toBeTruthy()
-    expect(mocks.access).not.toHaveBeenCalled()
-    expect(mocks.hls).toHaveLength(0)
-    expect(within(screen.getByRole('group', { name: 'Current viewers' })).getByText('0')).toBeTruthy()
-
-    // 2. READY -> LIVE: opens player and calls playback-access once
-    act(() => {
-      client.setQueryData(
-        ['stream', 'metadata', 'viewer-1', SESSION_ID],
-        liveMetadata,
-      )
-    })
+    // 1. LIVE: opens player and calls playback-access once
     expect(await screen.findByLabelText('Live stream player')).toBeTruthy()
     await waitFor(() => expect(mocks.access).toHaveBeenCalledTimes(1))
     expect(mocks.hls).toHaveLength(1)
 
-    // 3. Repeated LIVE poll: does NOT recreate player or call playback-access again
+    // 2. Repeated LIVE poll: does NOT recreate player or call playback-access again
     act(() => {
       client.setQueryData(['stream', 'metadata', 'viewer-1', SESSION_ID], {
         ...liveMetadata,
@@ -448,7 +430,7 @@ describe('WatchStreamPage', () => {
     expect(mocks.access).toHaveBeenCalledTimes(1)
     expect(mocks.hls).toHaveLength(1)
 
-    // 4. LIVE -> RECONNECTING: stops player and shows reconnecting message
+    // 3. LIVE -> RECONNECTING: stops player and shows reconnecting message
     const firstHls = mocks.hls[0]
     act(() => {
       client.setQueryData(['stream', 'metadata', 'viewer-1', SESSION_ID], {
@@ -462,7 +444,7 @@ describe('WatchStreamPage', () => {
     ).toBeTruthy()
     expect(firstHls.destroy).toHaveBeenCalledTimes(1)
 
-    // 5. RECONNECTING -> LIVE: reopens player and requests fresh playback-access
+    // 4. RECONNECTING -> LIVE: reopens player and requests fresh playback-access
     act(() => {
       client.setQueryData(
         ['stream', 'metadata', 'viewer-1', SESSION_ID],
@@ -473,7 +455,7 @@ describe('WatchStreamPage', () => {
     await waitFor(() => expect(mocks.access).toHaveBeenCalledTimes(2))
     expect(mocks.hls).toHaveLength(2)
 
-    // 6. LIVE -> ENDED: stops player and shows ended state
+    // 5. LIVE -> ENDED: stops player and shows ended state
     const secondHls = mocks.hls[1]
     act(() => {
       client.setQueryData(['stream', 'metadata', 'viewer-1', SESSION_ID], {

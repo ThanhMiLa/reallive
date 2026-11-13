@@ -18,17 +18,25 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import tools.jackson.databind.ObjectMapper;
-import static org.hamcrest.Matchers.*;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = MediaJwksController.class, properties = "auth.cookie.access-token.name=access_token")
-@Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
+@Import({SecurityConfig.class, MediaCallbackSecurityConfiguration.class, CustomJwtDecoder.class,
+        JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         MediaConfiguration.class, StreamClockConfig.class, MediaJwtIssuerImpl.class})
 class MediaSecurityTest {
     @Autowired private MockMvc mvc;
@@ -52,11 +60,14 @@ class MediaSecurityTest {
     }
 
     @Test
-    void wrongMethodsChildrenAndBusinessPathsRemainProtected() throws Exception {
+    void wrongMethodsChildrenAndLegacyEventRoutesRemainProtected() throws Exception {
         mvc.perform(post("/api/media/jwks")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/media/jwks/other")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/media/events")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/media/events")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/media/events/other")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/internal/api/media-events")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/internal/api/media-events").header("X-Internal-Token", "wrong-token"))
+                .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams")).andExpect(status().isUnauthorized());
         mvc.perform(get("/error")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/media/jwks").cookie(new Cookie("access_token", "broken"))).andExpect(status().isUnauthorized());
@@ -66,19 +77,25 @@ class MediaSecurityTest {
     void validSuppliedCookieStillRequiresAvailableAuthorities() throws Exception {
         var media = issuer.issueRead(UUID.randomUUID(), UUID.randomUUID());
         when(authorities.read(any())).thenThrow(new AppException(ErrorCode.AUTH_STATE_UNAVAILABLE));
-        // Downstream decoders trust Gateway signature validation; this test exercises the Redis boundary only.
         mvc.perform(get("/api/media/jwks").cookie(new Cookie("access_token", media.value())))
                 .andExpect(status().isServiceUnavailable());
         verify(authorities).read(any());
     }
 
     @Test
-    void directMediaCallbackReachesEndpointWithoutAccountCookie() throws Exception {
-        byte[] body = mapper.writeValueAsBytes(Map.of("eventId", UUID.randomUUID(), "eventType", "ONLINE",
-                "path", "live/" + UUID.randomUUID(), "sourceId", UUID.randomUUID(), "sourceType", "rtmpConn",
-                "occurredAt", Instant.now()));
-        // Direct media callback is permitted without account cookie; in phase 2 missing controller reaches 404
-        mvc.perform(post("/api/media/events").contentType("application/json").content(body))
+    void internalMediaCallbackWithValidTokenBypassesCookieAuth() throws Exception {
+        byte[] body = mapper.writeValueAsBytes(Map.of(
+                "eventId", UUID.randomUUID(),
+                "eventType", "ONLINE",
+                "path", "ingest/" + UUID.randomUUID(),
+                "sourceId", UUID.randomUUID(),
+                "sourceType", "rtmpConn",
+                "occurredAt", Instant.now()
+        ));
+        mvc.perform(post("/internal/api/media-events")
+                        .header("X-Internal-Token", MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
+                        .contentType("application/json")
+                        .content(body))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(authorities);
     }

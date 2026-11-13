@@ -63,10 +63,12 @@ class StreamPresenceQueriesPostgresTest extends PostgresIntegrationTestSupport {
     @Test
     void batchStatusProjectionUsesOneSqlStatementAndDoesNotLoadEntities() {
         var saved = repository.saveAllAndFlush(IntStream.range(0, 104)
-                .mapToObj(index -> session(StreamSessionStatus.READY)).toList());
-        var ended = session(StreamSessionStatus.READY);
+                .mapToObj(index -> session(StreamSessionStatus.RECONNECTING)).toList());
+        var ended = session(StreamSessionStatus.RECONNECTING);
         ended.setStatus(StreamSessionStatus.ENDED);
         ended.setEndedAt(LocalDateTime.now(ZoneOffset.UTC));
+        ended.setDisconnectedAt(null);
+        ended.setReconnectDeadlineAt(null);
         ended.setMediaPathState(MediaPathState.CLOSED);
         ended = repository.saveAndFlush(ended);
         var ids = new ArrayList<>(saved.stream().map(StreamSessionEntity::getId).toList());
@@ -80,7 +82,7 @@ class StreamPresenceQueriesPostgresTest extends PostgresIntegrationTestSupport {
             assertEquals(105, snapshots.size());
             var statuses = snapshots.stream().collect(Collectors.toMap(snapshot -> snapshot.id(), snapshot -> snapshot.status()));
             assertEquals(StreamSessionStatus.ENDED, statuses.get(ended.getId()));
-            assertTrue(saved.stream().allMatch(item -> statuses.get(item.getId()) == StreamSessionStatus.READY));
+            assertTrue(saved.stream().allMatch(item -> statuses.get(item.getId()) == StreamSessionStatus.RECONNECTING));
             assertEquals(1, statistics.getPrepareStatementCount(), "Batch lookup must not issue one query per ID");
             assertEquals(0, statistics.getEntityLoadCount(), "Status lookup must select only projection fields");
         } finally {
@@ -113,6 +115,8 @@ class StreamPresenceQueriesPostgresTest extends PostgresIntegrationTestSupport {
 
     private StreamSessionEntity session(StreamSessionStatus status) {
         boolean live = status == StreamSessionStatus.LIVE;
+        boolean reconnecting = status == StreamSessionStatus.RECONNECTING;
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         return StreamSessionEntity.builder()
                 .channelId(UUID.randomUUID())
                 .streamerId(UUID.randomUUID())
@@ -126,7 +130,9 @@ class StreamPresenceQueriesPostgresTest extends PostgresIntegrationTestSupport {
                 .mediaPathState(MediaPathState.OPEN)
                 .mediaSourceId(live ? UUID.randomUUID() : null)
                 .mediaSourceType(live ? MediaSourceType.RTMP_CONN : null)
-                .startedAt(live ? LocalDateTime.now(ZoneOffset.UTC) : null)
+                .startedAt(live || reconnecting ? now.minusMinutes(5) : null)
+                .disconnectedAt(reconnecting ? now : null)
+                .reconnectDeadlineAt(reconnecting ? now.plusSeconds(60) : null)
                 .build();
     }
 }

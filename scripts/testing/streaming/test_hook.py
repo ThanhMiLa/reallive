@@ -34,7 +34,8 @@ class HookTest(unittest.TestCase):
         self.thread.start()
         self.environment = dict(os.environ,
                                 STREAM_MEDIA_CALLBACK_URL='http://127.0.0.1:' + str(self.server.server_port),
-                                MTX_PATH='live/' + str(uuid4()), MTX_SOURCE_ID=str(uuid4()),
+                                STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN='test-internal-callback-token',
+                                MTX_PATH='ingest/' + str(uuid4()), MTX_SOURCE_ID=str(uuid4()),
                                 MTX_SOURCE_TYPE='rtmpConn', MTX_QUERY='token=must-never-be-sent')
         self.process = None
 
@@ -65,13 +66,15 @@ class HookTest(unittest.TestCase):
         self.assertNotIn(b'must-never-be-sent', b''.join(self.bodies) + stdout + stderr)
         self.assertNotIn('MTX_QUERY', event)
 
-    def test_single_shot_failure_does_not_retry(self):
+    def test_transient_failure_retries_three_times_with_identical_event_id(self):
         self.status_code = 503
         self.launch()
         stdout, stderr = self.process.communicate(timeout=5)
         self.assertEqual(1, self.process.returncode)
-        self.assertEqual(1, len(self.bodies))
-        self.assertIn(b'Media callback failed; eventId=', stderr)
+        self.assertEqual(3, len(self.bodies))
+        events = [json.loads(body) for body in self.bodies]
+        self.assertEqual(1, len({event['eventId'] for event in events}))
+        self.assertIn(b'Media callback unavailable; eventId=', stderr)
 
     def test_single_shot_client_error(self):
         self.status_code = 400
@@ -79,15 +82,26 @@ class HookTest(unittest.TestCase):
         stdout, stderr = self.process.communicate(timeout=5)
         self.assertEqual(1, self.process.returncode)
         self.assertEqual(1, len(self.bodies))
-        self.assertIn(b'Media callback failed; eventId=', stderr)
+        self.assertIn(b'Media callback rejected; eventId=', stderr)
 
     def test_invalid_path_fails_without_request(self):
-        bad_env = dict(self.environment, MTX_PATH='invalid/' + str(uuid4()))
+        for bad_path in ['invalid/' + str(uuid4()), 'live/' + str(uuid4())]:
+            with self.subTest(path=bad_path):
+                bad_env = dict(self.environment, MTX_PATH=bad_path)
+                self.launch(env=bad_env)
+                stdout, stderr = self.process.communicate(timeout=5)
+                self.assertEqual(1, self.process.returncode)
+                self.assertEqual(0, len(self.bodies))
+                self.assertIn(b'Media hook failed; reason=invalid-ingest-path', stderr)
+
+    def test_missing_internal_token_fails_without_request(self):
+        bad_env = dict(self.environment)
+        bad_env.pop('STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN', None)
         self.launch(env=bad_env)
         stdout, stderr = self.process.communicate(timeout=5)
         self.assertEqual(1, self.process.returncode)
         self.assertEqual(0, len(self.bodies))
-        self.assertIn(b'Invalid media callback configuration', stderr)
+        self.assertIn(b'Media hook failed; reason=invalid-callback-token', stderr)
 
 
 if __name__ == '__main__':

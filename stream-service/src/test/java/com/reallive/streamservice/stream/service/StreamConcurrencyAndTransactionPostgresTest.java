@@ -1,21 +1,30 @@
 package com.reallive.streamservice.stream.service;
 
-import com.reallive.streamservice.common.exception.AppException;
-import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
-import com.reallive.streamservice.stream.dto.CreateSessionCommand;
-import com.reallive.streamservice.stream.dto.MediaOfflineCommand;
-import com.reallive.streamservice.stream.dto.MediaOnlineCommand;
-import com.reallive.streamservice.stream.dto.SessionCreationResult;
-import com.reallive.streamservice.stream.entity.StreamSessionEntity;
-import com.reallive.streamservice.stream.entity.enums.MediaPathState;
+import com.reallive.streamservice.stream.adapter.media.MediaPage;
+import com.reallive.streamservice.stream.adapter.media.MediaPathConfiguration;
+import com.reallive.streamservice.stream.adapter.media.MediaPathStatus;
+import com.reallive.streamservice.stream.adapter.media.MediaServerAdapter;
+import com.reallive.streamservice.stream.adapter.media.MediaServerInfo;
+import com.reallive.streamservice.stream.dto.MediaEventOutcome;
+import com.reallive.streamservice.stream.dto.MediaIngestEventCommand;
+import com.reallive.streamservice.stream.dto.StreamPublishContext;
+import com.reallive.streamservice.stream.dto.request.SaveStreamSetupRequest;
+import com.reallive.streamservice.stream.entity.StreamMediaOperationEntity;
+import com.reallive.streamservice.stream.entity.StreamMediaRuntimeStateEntity;
+import com.reallive.streamservice.stream.entity.enums.MediaOperationStatus;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
+import com.reallive.streamservice.stream.repository.ChannelStreamConfigRepository;
+import com.reallive.streamservice.stream.repository.ChannelStreamCredentialRepository;
+import com.reallive.streamservice.stream.repository.StreamMediaOperationRepository;
+import com.reallive.streamservice.stream.repository.StreamMediaRuntimeStateRepository;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.repository.StreamStatusHistoryRepository;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
@@ -24,12 +33,11 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.transaction.IllegalTransactionStateException;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -41,19 +49,23 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ImportAutoConfiguration(FlywayAutoConfiguration.class)
@@ -63,20 +75,25 @@ class StreamConcurrencyAndTransactionPostgresTest extends PostgresIntegrationTes
     private static final String SCHEMA = newSchema();
     private static final Instant BASE = Instant.parse("2026-10-25T12:00:00Z");
 
-    @Autowired
-    private StreamSessionDomainService domain;
-    @Autowired
-    private StreamSessionRepository sessions;
-    @Autowired
-    private StreamStatusHistoryRepository history;
-    @Autowired
-    private PlatformTransactionManager transactionManager;
-    @Autowired
-    private JdbcTemplate jdbc;
-    @Autowired
-    private ControlledClock clock;
-    @Autowired
-    private ApplicationContext context;
+    @Autowired private StreamSetupService setupService;
+    @Autowired private StreamMediaLifecycleService lifecycleService;
+    @Autowired private StreamMediaOperationWorker operationWorker;
+    @Autowired private StreamMediaReconciler reconciler;
+    @Autowired private ChannelStreamConfigRepository configs;
+    @Autowired private ChannelStreamCredentialRepository credentials;
+    @Autowired private StreamMediaOperationRepository operations;
+    @Autowired private StreamMediaRuntimeStateRepository runtimeStates;
+    @Autowired private StreamSessionRepository sessions;
+    @Autowired private StreamStatusHistoryRepository history;
+    @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private JdbcTemplate jdbc;
+    @Autowired private ControlledClock clock;
+    @Autowired private ApplicationContext context;
+
+    @MockitoBean private StreamEligibilityService eligibility;
+    @MockitoBean private MediaServerAdapter media;
+
+    private final Set<UUID> activeIngests = ConcurrentHashMap.newKeySet();
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -89,251 +106,198 @@ class StreamConcurrencyAndTransactionPostgresTest extends PostgresIntegrationTes
     }
 
     @BeforeEach
-    void resetClock() {
+    void resetState() {
+        history.deleteAll();
+        operations.deleteAll();
+        sessions.deleteAll();
+        credentials.deleteAll();
+        configs.deleteAll();
+        runtimeStates.deleteAll();
         clock.instant = BASE;
-    }
+        activeIngests.clear();
 
-    @Test
-    void concurrentDifferentRequestsHaveOneWinner() throws Exception {
-        var first = command();
-        var other = new CreateSessionCommand(first.channelId(), first.streamerId(), first.ownerUserId(),
-                first.categoryId(), "Competing stream", UUID.randomUUID());
-        ExecutionException error = assertThrows(ExecutionException.class, () -> concurrentRetry(first, other));
-        AppException conflict = assertInstanceOf(AppException.class, error.getCause());
-        assertEquals(ErrorCode.STREAM_SESSION_ALREADY_ACTIVE, conflict.getErrorCode());
-        assertEquals(1, jdbc.queryForObject("select count(*) from stream_sessions where channel_id=?", Integer.class, first.channelId()));
-    }
-
-    @Test
-    void concurrentSameRequestReturnsWinnerAndPreservesBothMetadataFields() throws Exception {
-        var first = command();
-        var retry = new CreateSessionCommand(first.channelId(), first.streamerId(), first.ownerUserId(),
-                UUID.randomUUID(), "Retry metadata must not overwrite", first.creationRequestId());
-        var result = concurrentRetry(first, retry);
-        assertFalse(result.created());
-        var winner = sessions.findByOwnerUserIdAndCreationRequestId(first.ownerUserId(), first.creationRequestId()).orElseThrow();
-        assertEquals(winner.getId(), result.session().getId());
-        assertEquals(first.title(), result.session().getTitle());
-        assertEquals(first.categoryId(), result.session().getCategoryId());
-        assertEquals(1, history.findByStreamIdOrderByCreatedAtAscIdAsc(winner.getId()).size());
-        assertEquals(LocalDateTime.ofInstant(BASE, ZoneOffset.UTC), history.findByStreamIdOrderByCreatedAtAscIdAsc(winner.getId()).getFirst().getCreatedAt());
-    }
-
-    @Test
-    void concurrentRequestReuseForAnotherChannelReportsRequestConflict() throws Exception {
-        var first = command();
-        var retry = new CreateSessionCommand(UUID.randomUUID(), first.streamerId(), first.ownerUserId(),
-                first.categoryId(), first.title(), first.creationRequestId());
-        ExecutionException error = assertThrows(ExecutionException.class, () -> concurrentRetry(first, retry));
-        assertEquals(ErrorCode.STREAM_CREATION_REQUEST_CONFLICT,
-                assertInstanceOf(AppException.class, error.getCause()).getErrorCode());
-        assertTrue(sessions.findSlotOccupyingByChannelId(retry.channelId()).isEmpty());
-    }
-
-    @Test
-    void creationJoinsEnclosingTransactionAndRollsBackSessionAndHistoryTogether() {
-        var command = command();
-        var id = new AtomicReference<UUID>();
-        assertThrows(IllegalStateException.class, () -> transaction().executeWithoutResult(status -> {
-            var created = domain.createOrGetSession(command);
-            id.set(created.session().getId());
-            assertEquals(1, history.findByStreamIdOrderByCreatedAtAscIdAsc(id.get()).size());
-            throw new IllegalStateException("Abort synchronous use case before commit");
-        }));
-        assertTrue(sessions.findById(id.get()).isEmpty());
-        assertTrue(history.findByStreamIdOrderByCreatedAtAscIdAsc(id.get()).isEmpty());
-        assertTrue(sessions.findSlotOccupyingByChannelId(command.channelId()).isEmpty());
-        assertTrue(domain.createOrGetSession(command).created());
-    }
-
-    @Test
-    void nonCreationConstraintErrorsAreNotMisreportedAsChannelConflicts() {
-        var valid = command();
-        var invalid = new CreateSessionCommand(valid.channelId(), valid.streamerId(), valid.ownerUserId(),
-                valid.categoryId(), "   ", valid.creationRequestId());
-        assertThrows(DataIntegrityViolationException.class, () -> domain.createOrGetSession(invalid));
-        assertTrue(sessions.findSlotOccupyingByChannelId(valid.channelId()).isEmpty());
-    }
-
-    @Test
-    void endRequiresEnclosingTransactionAndRollbackKeepsSlotAndHistory() {
-        var command = command();
-        UUID id = domain.createOrGetSession(command).session().getId();
-        assertThrows(IllegalTransactionStateException.class, () -> domain.endSession(id, command.ownerUserId(), null));
-        assertThrows(IllegalTransactionStateException.class, () -> domain.expireReconnectIfDue(id));
-        assertThrows(IllegalStateException.class, () -> transaction().executeWithoutResult(status -> {
-            sessions.findByIdForUpdate(id).orElseThrow();
-            domain.endSession(id, command.ownerUserId(), "Domain mutation after closure precondition");
-            throw new IllegalStateException("Abort enclosing transaction");
-        }));
-        assertEquals(StreamSessionStatus.READY, sessions.findById(id).orElseThrow().getStatus());
-        assertEquals(MediaPathState.OPEN, sessions.findById(id).orElseThrow().getMediaPathState());
-        assertEquals(1, history.findByStreamIdOrderByCreatedAtAscIdAsc(id).size());
-        assertTrue(sessions.findSlotOccupyingByChannelId(command.channelId()).isPresent());
-    }
-
-    @Test
-    void confirmedEndReleasesSlotAndIsTerminalAndIdempotent() {
-        var command = command();
-        UUID id = domain.createOrGetSession(command).session().getId();
-        transaction().executeWithoutResult(status -> {
-            sessions.findByIdForUpdate(id).orElseThrow();
-            domain.endSession(id, command.ownerUserId(), "Closure already confirmed by caller");
+        doAnswer(call -> {
+            activeIngests.add(call.getArgument(0));
+            return null;
+        }).when(media).ensureIngestPath(any());
+        doAnswer(call -> {
+            activeIngests.remove(call.getArgument(0));
+            return null;
+        }).when(media).deleteIngestPath(any());
+        when(media.getIngestPath(any())).thenAnswer(call -> {
+            UUID id = call.getArgument(0);
+            return activeIngests.contains(id)
+                    ? Optional.of(new MediaPathConfiguration("ingest/" + id, "publisher", false))
+                    : Optional.empty();
         });
-        var ended = sessions.findById(id).orElseThrow();
-        assertEquals(StreamSessionStatus.ENDED, ended.getStatus());
-        assertEquals(MediaPathState.CLOSED, ended.getMediaPathState());
-        clock.advance(Duration.ofMinutes(1));
-        transaction().executeWithoutResult(status -> domain.endSession(id, command.ownerUserId(), "Repeat"));
-        domain.onMediaOnline(new MediaOnlineCommand(id, UUID.randomUUID(), MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
-        domain.onMediaOffline(new MediaOfflineCommand(id, UUID.randomUUID(), MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
-        assertEquals(ended.getEndedAt(), sessions.findById(id).orElseThrow().getEndedAt());
-        assertEquals(2, history.findByStreamIdOrderByCreatedAtAscIdAsc(id).size());
-        assertTrue(sessions.findCurrentByOwnerUserId(command.ownerUserId()).isEmpty());
-        var next = new CreateSessionCommand(command.channelId(), command.streamerId(), command.ownerUserId(),
-                command.categoryId(), "Next session", UUID.randomUUID());
-        assertTrue(domain.createOrGetSession(next).created());
+        when(media.getIngestSource(any())).thenReturn(Optional.empty());
+        when(media.getPlaybackPath(any())).thenReturn(Optional.empty());
+        when(media.getPlaybackSource(any())).thenReturn(Optional.empty());
+        when(media.getServerInfo()).thenReturn(new MediaServerInfo("1.21.2", "2026-10-25T12:00:00Z"));
+        when(media.listConfigurations(anyInt(), anyInt())).thenReturn(new MediaPage<>(0, 1, List.of()));
+        when(media.listPaths(anyInt(), anyInt())).thenReturn(new MediaPage<>(0, 1, List.of()));
     }
 
     @Test
-    void historyWriteFailureRollsBackEndInsteadOfLeavingStateWithoutHistory() {
-        var command = command();
-        UUID id = domain.createOrGetSession(command).session().getId();
-        assertThrows(DataIntegrityViolationException.class, () -> transaction().executeWithoutResult(status ->
-                domain.endSession(id, command.ownerUserId(), "x".repeat(501))));
-        assertEquals(StreamSessionStatus.READY, sessions.findById(id).orElseThrow().getStatus());
-        assertEquals(1, history.findByStreamIdOrderByCreatedAtAscIdAsc(id).size());
+    void concurrentOnlineWebhooksProduceOnlyOneLiveSessionAndCancelDuplicateCandidateAllocation() throws Exception {
+        Owner owner = owner();
+        setupService.saveSetup(owner.user(), new SaveStreamSetupRequest("Race Stream", owner.category()));
+        operationWorker.processDueOperations();
+        UUID ingestKeyId = configs.findById(owner.channel()).orElseThrow().getCurrentIngestKeyId();
+
+        UUID sourceId = UUID.randomUUID();
+        when(media.getIngestSource(ingestKeyId)).thenReturn(Optional.of(
+                new MediaPathStatus("ingest/" + ingestKeyId, true, sourceId, MediaSourceType.RTMP_CONN)));
+        when(media.getPlaybackSource(any())).thenAnswer(call -> Optional.of(
+                new MediaPathStatus("live/" + call.getArgument(0), true, UUID.randomUUID(), MediaSourceType.RTMP_SOURCE)));
+
+        var r1 = lifecycleService.onOnline(new MediaIngestEventCommand(
+                ingestKeyId, sourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
+        var r2 = lifecycleService.onOnline(new MediaIngestEventCommand(
+                ingestKeyId, sourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
+        assertEquals(MediaEventOutcome.ACCEPTED, r1.outcome());
+        assertEquals(MediaEventOutcome.ACCEPTED, r2.outcome());
+
+        var ready = new CountDownLatch(2);
+        var go = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var f1 = executor.submit(() -> { ready.countDown(); go.await(); return operationWorker.processDueOperations(); });
+            var f2 = executor.submit(() -> { ready.countDown(); go.await(); return operationWorker.processDueOperations(); });
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            go.countDown();
+            f1.get(10, TimeUnit.SECONDS);
+            f2.get(10, TimeUnit.SECONDS);
+        }
+
+        assertEquals(1, sessions.count());
+        assertEquals(StreamSessionStatus.LIVE, sessions.findAll().getFirst().getStatus());
+        assertEquals(0, operations.findDueOperationIds(LocalDateTime.now(clock).plusSeconds(1),
+                org.springframework.data.domain.PageRequest.of(0, 10)).size());
     }
 
     @Test
-    void reconnectDeadlineSurvivesReloadAndExpiredOnlineDoesNotFalselyClosePath() {
-        UUID id = domain.createOrGetSession(command()).session().getId();
-        var source = UUID.randomUUID();
-        var online = new MediaOnlineCommand(id, source, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null);
-        domain.onMediaOnline(online);
-        domain.onMediaOnline(online);
-        LocalDateTime started = sessions.findById(id).orElseThrow().getStartedAt();
-        var offline = new MediaOfflineCommand(id, source, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null);
-        domain.onMediaOffline(offline);
-        LocalDateTime deadline = sessions.findById(id).orElseThrow().getReconnectDeadlineAt();
-        clock.advance(Duration.ofSeconds(20));
-        domain.onMediaOffline(offline);
-        assertEquals(deadline, sessions.findById(id).orElseThrow().getReconnectDeadlineAt());
-        clock.advance(Duration.ofSeconds(40));
-        domain.onMediaOnline(new MediaOnlineCommand(id, UUID.randomUUID(), MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
-        var reloaded = sessions.findById(id).orElseThrow();
-        assertEquals(StreamSessionStatus.RECONNECTING, reloaded.getStatus());
-        assertEquals(MediaPathState.OPEN, reloaded.getMediaPathState());
-        assertEquals(deadline, reloaded.getReconnectDeadlineAt());
-        assertEquals(started, reloaded.getStartedAt());
-        assertEquals(3, history.findByStreamIdOrderByCreatedAtAscIdAsc(id).size());
-        transaction().executeWithoutResult(status -> {
-            sessions.findByIdForUpdate(id).orElseThrow();
-            assertTrue(domain.expireReconnectIfDue(id).isPresent());
+    void expiredLeaseOperationIsReclaimedByWorkerAndLegacyTaskInfrastructureIsAbsent() {
+        Owner owner = owner();
+        setupService.saveSetup(owner.user(), new SaveStreamSetupRequest("Lease Recovery", owner.category()));
+        operationWorker.processDueOperations();
+        UUID ingestKeyId = configs.findById(owner.channel()).orElseThrow().getCurrentIngestKeyId();
+
+        UUID sourceId = UUID.randomUUID();
+        when(media.getIngestSource(ingestKeyId)).thenReturn(Optional.of(
+                new MediaPathStatus("ingest/" + ingestKeyId, true, sourceId, MediaSourceType.RTMP_CONN)));
+        when(media.getPlaybackSource(any())).thenAnswer(call -> Optional.of(
+                new MediaPathStatus("live/" + call.getArgument(0), true, UUID.randomUUID(), MediaSourceType.RTMP_SOURCE)));
+
+        lifecycleService.onOnline(new MediaIngestEventCommand(
+                ingestKeyId, sourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
+        StreamMediaOperationEntity onlineOp = operations.findAll().stream()
+                .filter(op -> op.getStatus() == MediaOperationStatus.PENDING)
+                .findFirst().orElseThrow();
+
+        // Simulate crashed worker holding an expired lease
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            StreamMediaOperationEntity op = operations.findByIdForUpdate(onlineOp.getId()).orElseThrow();
+            op.setStatus(MediaOperationStatus.RUNNING);
+            op.setLeaseOwner("crashed-pod");
+            op.setLeaseUntil(LocalDateTime.ofInstant(clock.instant().minusSeconds(5), ZoneOffset.UTC));
+            operations.saveAndFlush(op);
         });
-        assertEquals(MediaPathState.CLOSED, sessions.findById(id).orElseThrow().getMediaPathState());
-        assertEquals(StreamSessionStatus.ENDED, sessions.findById(id).orElseThrow().getStatus());
-    }
 
-    @Test
-    void unauthorizedOwnerCannotMutateSessionAndNoTaskInfrastructureIsLoaded() {
-        var command = command();
-        UUID id = domain.createOrGetSession(command).session().getId();
-        AppException error = assertThrows(AppException.class, () -> transaction().executeWithoutResult(status ->
-                domain.endSession(id, UUID.randomUUID(), null)));
-        assertEquals(ErrorCode.STREAM_SESSION_NOT_OWNED, error.getErrorCode());
-        assertEquals(StreamSessionStatus.READY, sessions.findById(id).orElseThrow().getStatus());
-        assertEquals(0, jdbc.queryForObject("select count(*) from information_schema.tables where table_schema=? and table_name='stream_media_sync_tasks'", Integer.class, SCHEMA));
+        operationWorker.processDueOperations();
+
+        assertEquals(MediaOperationStatus.SUCCEEDED,
+                operations.findById(onlineOp.getId()).orElseThrow().getStatus());
+        assertEquals(1, sessions.count());
+        assertEquals(0, jdbc.queryForObject(
+                "select count(*) from information_schema.tables where table_schema=? and table_name='stream_media_sync_tasks'",
+                Integer.class, SCHEMA));
         assertTrue(Arrays.stream(context.getBeanDefinitionNames())
                 .noneMatch(name -> name.toLowerCase().contains("mediasynctask")));
     }
 
     @Test
-    void pessimisticLockMakesConcurrentOnlineWaitForEndCommit() throws Exception {
-        var command = command();
-        UUID id = domain.createOrGetSession(command).session().getId();
-        var endedButUncommitted = new CountDownLatch(1);
-        var commit = new CountDownLatch(1);
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            var end = executor.submit(() -> transaction().execute(status -> {
-                sessions.findByIdForUpdate(id).orElseThrow();
-                var ended = domain.endSession(id, command.ownerUserId(), "Closure precondition satisfied");
-                endedButUncommitted.countDown();
-                try {
-                    assertTrue(commit.await(15, TimeUnit.SECONDS));
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(exception);
-                }
-                return ended;
-            }));
-            assertTrue(endedButUncommitted.await(10, TimeUnit.SECONDS));
-            var online = executor.submit(() -> domain.onMediaOnline(new MediaOnlineCommand(
-                    id, UUID.randomUUID(), MediaSourceType.RTMP_CONN, UUID.randomUUID(), null)));
-            try {
-                assertTrue(awaitBlockedQuery("%from " + SCHEMA + ".stream_sessions%for%update%"),
-                        "ONLINE must wait for the session row lock held by End");
-                assertFalse(online.isDone());
-            } finally {
-                commit.countDown();
-            }
-            assertEquals(StreamSessionStatus.ENDED, end.get(10, TimeUnit.SECONDS).getStatus());
-            assertEquals(StreamSessionStatus.ENDED, online.get(10, TimeUnit.SECONDS).getStatus());
-        }
-        assertEquals(StreamSessionStatus.ENDED, sessions.findById(id).orElseThrow().getStatus());
-        assertEquals(MediaPathState.CLOSED, sessions.findById(id).orElseThrow().getMediaPathState());
-        assertEquals(2, history.findByStreamIdOrderByCreatedAtAscIdAsc(id).size());
+    void reconcilerDetectsRestartCleansOrphanedPathsBeforeRestoringActiveIngestsAndSynthesizesMissedOffline() {
+        Owner owner = owner();
+        setupService.saveSetup(owner.user(), new SaveStreamSetupRequest("Reconcile Stream", owner.category()));
+        operationWorker.processDueOperations();
+        UUID ingestKeyId = configs.findById(owner.channel()).orElseThrow().getCurrentIngestKeyId();
+
+        UUID liveSourceId = UUID.randomUUID();
+        when(media.getIngestSource(ingestKeyId)).thenReturn(Optional.of(
+                new MediaPathStatus("ingest/" + ingestKeyId, true, liveSourceId, MediaSourceType.RTMP_CONN)));
+        when(media.getPlaybackSource(any())).thenAnswer(call -> Optional.of(
+                new MediaPathStatus("live/" + call.getArgument(0), true, UUID.randomUUID(), MediaSourceType.RTMP_SOURCE)));
+        lifecycleService.onOnline(new MediaIngestEventCommand(
+                ingestKeyId, liveSourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
+        operationWorker.processDueOperations();
+        UUID liveSessionId = sessions.findSlotOccupyingByChannelId(owner.channel()).orElseThrow().getId();
+
+        // Seed previous serverStartedAt and simulate MediaMTX restart dropping ingest + adding orphans
+        runtimeStates.saveAndFlush(StreamMediaRuntimeStateEntity.builder()
+                .id(StreamMediaRuntimeStateEntity.PRIMARY_ID)
+                .serverStartedAt("2026-10-25T11:00:00Z")
+                .lastReconciledAt(LocalDateTime.ofInstant(clock.instant().minusSeconds(60), ZoneOffset.UTC))
+                .updatedAt(LocalDateTime.ofInstant(clock.instant().minusSeconds(60), ZoneOffset.UTC))
+                .build());
+        activeIngests.remove(ingestKeyId);
+        UUID orphanIngest = UUID.randomUUID();
+        UUID orphanSession = UUID.randomUUID();
+
+        when(media.getServerInfo()).thenReturn(new MediaServerInfo("1.21.2", "2026-10-25T12:00:05Z"));
+        when(media.listConfigurations(0, 100)).thenReturn(new MediaPage<>(2, 1, List.of(
+                new MediaPathConfiguration("ingest/" + orphanIngest, "publisher", false),
+                new MediaPathConfiguration("live/" + orphanSession, "rtmp://127.0.0.1:1935/...", false)
+        )));
+        when(media.getIngestSource(ingestKeyId)).thenReturn(Optional.empty());
+        when(media.getPlaybackSource(liveSessionId)).thenReturn(Optional.empty());
+
+        reconciler.reconcileOnce();
+
+        InOrder order = inOrder(media);
+        order.verify(media).deleteIngestPath(orphanIngest);
+        order.verify(media).ensureIngestPath(ingestKeyId);
+        verify(media).deletePlaybackPath(orphanSession);
+
+        // Server restart cannot determine disconnect instant safely -> ends in-flight session
+        operationWorker.processDueOperations();
+        assertEquals(StreamSessionStatus.ENDED, sessions.findById(liveSessionId).orElseThrow().getStatus());
+        assertEquals("Media server restarted", sessions.findById(liveSessionId).orElseThrow().getEndReason());
+        assertEquals("2026-10-25T12:00:05Z",
+                runtimeStates.findById(StreamMediaRuntimeStateEntity.PRIMARY_ID).orElseThrow().getServerStartedAt());
+
+        // Same MediaMTX instance later misses an offline webhook -> reconciler synthesizes PROCESS_OFFLINE -> RECONNECTING
+        UUID nextSourceId = UUID.randomUUID();
+        when(media.getIngestSource(ingestKeyId)).thenReturn(Optional.of(
+                new MediaPathStatus("ingest/" + ingestKeyId, true, nextSourceId, MediaSourceType.RTMP_CONN)));
+        when(media.getPlaybackSource(any())).thenAnswer(call -> Optional.of(
+                new MediaPathStatus("live/" + call.getArgument(0), true, UUID.randomUUID(), MediaSourceType.RTMP_SOURCE)));
+        lifecycleService.onOnline(new MediaIngestEventCommand(
+                ingestKeyId, nextSourceId, MediaSourceType.RTMP_CONN, UUID.randomUUID(), null));
+        operationWorker.processDueOperations();
+        UUID secondSessionId = sessions.findSlotOccupyingByChannelId(owner.channel()).orElseThrow().getId();
+        assertEquals(StreamSessionStatus.LIVE, sessions.findById(secondSessionId).orElseThrow().getStatus());
+
+        when(media.listConfigurations(0, 100)).thenReturn(new MediaPage<>(1, 1, List.of(
+                new MediaPathConfiguration("ingest/" + ingestKeyId, "publisher", false)
+        )));
+        when(media.getIngestSource(ingestKeyId)).thenReturn(Optional.empty());
+        when(media.getPlaybackSource(secondSessionId)).thenReturn(Optional.empty());
+
+        reconciler.reconcileOnce();
+        operationWorker.processDueOperations();
+        assertEquals(StreamSessionStatus.RECONNECTING, sessions.findById(secondSessionId).orElseThrow().getStatus());
     }
 
-    private SessionCreationResult concurrentRetry(CreateSessionCommand first, CreateSessionCommand retry) throws Exception {
-        var inserted = new CountDownLatch(1);
-        var commit = new CountDownLatch(1);
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            var winner = executor.submit(() -> transaction().execute(status -> {
-                var result = domain.createOrGetSession(first);
-                inserted.countDown();
-                try {
-                    assertTrue(commit.await(15, TimeUnit.SECONDS));
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(exception);
-                }
-                return result;
-            }));
-            assertTrue(inserted.await(10, TimeUnit.SECONDS));
-            var second = executor.submit(() -> domain.createOrGetSession(retry));
-            try {
-                assertTrue(awaitBlockedQuery("%insert into " + SCHEMA + ".stream_sessions%"),
-                        "Competing request must reach the unique index before winner commits");
-            } finally {
-                commit.countDown();
-            }
-            assertTrue(winner.get(10, TimeUnit.SECONDS).created());
-            return second.get(10, TimeUnit.SECONDS);
-        }
+    private Owner owner() {
+        Owner owner = new Owner(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(eligibility.requireChannelContext(owner.user()))
+                .thenReturn(new StreamPublishContext(owner.user(), owner.streamer(), owner.channel(), null));
+        when(eligibility.requirePublishContext(owner.user(), owner.category()))
+                .thenReturn(new StreamPublishContext(owner.user(), owner.streamer(), owner.channel(), owner.category()));
+        return owner;
     }
 
-    private boolean awaitBlockedQuery(String queryPattern) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (System.nanoTime() < deadline) {
-            int waiting = jdbc.queryForObject("select count(*) from pg_stat_activity where datname=current_database() and wait_event_type='Lock' and query like ?",
-                    Integer.class, queryPattern);
-            if (waiting > 0) {
-                return true;
-            }
-            LockSupport.parkNanos(Duration.ofMillis(10).toNanos());
-        }
-        return false;
-    }
-
-    private CreateSessionCommand command() {
-        return new CreateSessionCommand(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                UUID.randomUUID(), "Original metadata", UUID.randomUUID());
-    }
-
-    private TransactionTemplate transaction() {
-        return new TransactionTemplate(transactionManager);
-    }
+    private record Owner(UUID user, UUID streamer, UUID channel, UUID category) {}
 
     @TestConfiguration
     static class ClockConfiguration {
@@ -346,17 +310,21 @@ class StreamConcurrencyAndTransactionPostgresTest extends PostgresIntegrationTes
 
     static class ControlledClock extends Clock {
         private volatile Instant instant = BASE;
+
         void advance(Duration duration) {
             instant = instant.plus(duration);
         }
+
         @Override
         public ZoneId getZone() {
             return ZoneOffset.UTC;
         }
+
         @Override
         public Clock withZone(ZoneId zone) {
             return Clock.fixed(instant, zone);
         }
+
         @Override
         public Instant instant() {
             return instant;
