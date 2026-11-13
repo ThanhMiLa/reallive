@@ -6,7 +6,7 @@ import type {
   StreamDiscoveryResponse,
   StreamListParams,
   StreamMetadata,
-  StreamOperation,
+  StreamKeyCredentials,
   StreamSession,
   StreamSetup,
   StreamViewerDetails,
@@ -43,24 +43,9 @@ export const streamApi = {
   saveSetup: async (payload: SaveStreamSetupRequest, signal?: AbortSignal) =>
     (await apiClient.put<ApiResponse<StreamSetup>>(`${base}/me/setup`, payload, { signal })).data
       .result,
-  resetKey: async (idempotencyKey: string, signal?: AbortSignal) =>
-    (
-      await apiClient.post<ApiResponse<StreamOperation>>(
-        `${base}/me/stream-key/reset`,
-        undefined,
-        {
-          headers: { 'Idempotency-Key': idempotencyKey },
-          signal,
-        },
-      )
-    ).data.result,
-  operation: async (operationId: string, signal?: AbortSignal) =>
-    (
-      await apiClient.get<ApiResponse<StreamOperation>>(
-        `${base}/me/operations/${encodeURIComponent(operationId)}`,
-        { signal },
-      )
-    ).data.result,
+  issueKey: async (signal?: AbortSignal) =>
+    (await apiClient.post<ApiResponse<StreamKeyCredentials>>(`${base}/me/stream-key`, undefined, { signal }))
+      .data.result,
   current: async (signal?: AbortSignal) =>
     (await apiClient.get<ApiResponse<StreamSession | null>>(`${base}/me/current`, { signal })).data
       .result,

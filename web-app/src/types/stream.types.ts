@@ -1,16 +1,6 @@
 export type StreamStatus = 'LIVE' | 'RECONNECTING' | 'ENDED'
 
-export type StreamConfigStatus = 'DRAFT' | 'PROVISIONING' | 'ACTIVE' | 'ROTATING' | 'BLOCKED'
-
-export type MediaOperationType =
-  | 'PROVISION_INGEST'
-  | 'PROCESS_ONLINE'
-  | 'PROCESS_OFFLINE'
-  | 'EXPIRE_RECONNECT'
-  | 'RESET_KEY'
-  | 'END_SESSION'
-
-export type MediaOperationStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'CANCELLED'
+export type StreamConfigStatus = 'DRAFT' | 'ACTIVE' | 'BLOCKED'
 
 interface StreamMetadataFields {
   id: string
@@ -54,22 +44,14 @@ export interface StreamSetup {
   categoryId: string | null
   visibility: 'PUBLIC'
   status: StreamConfigStatus
-  generation: number
-  operationId: string | null
-  serverUrl: string | null
-  streamKey: string | null
-  publishReady: boolean
+  hasStreamKey: boolean
   blockedReason: string | null
 }
 
-export interface StreamOperation {
-  operationId: string
-  operationType: MediaOperationType
-  status: MediaOperationStatus
+export interface StreamKeyCredentials {
   channelId: string
-  credentialGeneration: number
-  targetSessionId: string | null
-  lastError: string | null
+  serverUrl: string
+  streamKey: string
 }
 
 export interface StreamChannelSummary {

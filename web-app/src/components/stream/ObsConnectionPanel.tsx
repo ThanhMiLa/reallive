@@ -2,74 +2,46 @@ import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
-import type { StreamSetup } from '@/types/stream.types'
+import type { StreamSetup, StreamKeyCredentials } from '@/types/stream.types'
 
 interface Props {
   setup: StreamSetup
+  credentials: StreamKeyCredentials | null
+  onCredentialsCopied: () => void
   resetPending: boolean
   onRequestReset: () => void
 }
 
-export function ObsConnectionPanel({ setup, resetPending, onRequestReset }: Props) {
+export function ObsConnectionPanel({ setup, credentials, onCredentialsCopied, resetPending, onRequestReset }: Props) {
   const [showKey, setShowKey] = useState(false)
 
   const copy = async (value: string, label: string) => {
     try {
       await navigator.clipboard.writeText(value)
       toast.success(`${label} copied`)
+      if (label === 'Stream key') onCredentialsCopied()
     } catch {
       toast.error(`Could not copy ${label.toLowerCase()}. Select the value and copy it manually.`)
     }
   }
 
-  const ready = setup.status === 'ACTIVE' && setup.publishReady && setup.serverUrl && setup.streamKey
+  const ready = credentials !== null
 
   return (
     <section className="rounded-2xl border border-brand-border bg-brand-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-outfit text-lg font-bold text-white">OBS connection</h2>
-        {setup.generation > 0 && (
-          <span className="rounded-full border border-brand-border px-2.5 py-0.5 text-xs text-gray-400">
-            Key gen #{setup.generation}
-          </span>
-        )}
       </div>
-
-      {setup.status === 'DRAFT' && (
-        <div className="mt-4 rounded-xl border border-brand-border bg-[#0b0b0e] p-4 text-sm text-gray-300">
-          Save a stream title and category above to generate your persistent Server URL and Stream
-          Key.
-        </div>
-      )}
-
-      {(setup.status === 'PROVISIONING' || (setup.status === 'ACTIVE' && !setup.publishReady)) && (
-        <div
-          role="status"
-          className="mt-4 rounded-xl border border-brand-border bg-[#0b0b0e] p-4 text-sm text-gray-300"
-        >
-          Provisioning your ingest path… Your OBS Server URL and Stream Key will appear here
-          shortly.
-        </div>
-      )}
-
-      {setup.status === 'ROTATING' && (
-        <div
-          role="status"
-          className="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200"
-        >
-          Resetting your stream key and ending any active broadcast… Your new Stream Key will appear
-          automatically.
-        </div>
-      )}
-
-      {setup.status === 'BLOCKED' && (
-        <div
-          role="alert"
-          className="mt-4 rounded-xl border border-red-800/80 bg-red-950/30 p-4 text-sm text-red-200"
-        >
-          {setup.blockedReason || 'Streaming access is currently blocked for your channel.'}
-        </div>
-      )}
+      <p className="mt-3 text-sm text-gray-400">
+        {setup.categoryId
+          ? 'Your key works across broadcasts. Copy it when generated; it cannot be shown again.'
+          : 'Save a stream title and category before generating your stream key.'}
+      </p>
+      {setup.status === 'BLOCKED' && <p role="alert">{setup.blockedReason || 'Streaming access is blocked.'}</p>}
+      <Button type="button" className="mt-4" onClick={onRequestReset} isLoading={resetPending}
+        disabled={resetPending || !setup.categoryId || setup.status === 'BLOCKED'}>
+        {setup.hasStreamKey ? 'Generate new stream key' : 'Generate stream key'}
+      </Button>
 
       {ready && (
         <div className="mt-5 space-y-4">
@@ -83,7 +55,7 @@ export function ObsConnectionPanel({ setup, resetPending, onRequestReset }: Prop
             <div className="flex gap-2">
               <input
                 id="obs-server"
-                value={setup.serverUrl!}
+                value={credentials!.serverUrl}
                 readOnly
                 onFocus={(e) => e.currentTarget.select()}
                 className="min-w-0 flex-1 rounded-lg border border-brand-border bg-black px-3 py-2 text-sm text-gray-200"
@@ -92,7 +64,7 @@ export function ObsConnectionPanel({ setup, resetPending, onRequestReset }: Prop
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void copy(setup.serverUrl!, 'Server URL')}
+                onClick={() => void copy(credentials!.serverUrl, 'Server URL')}
               >
                 Copy
               </Button>
@@ -107,7 +79,7 @@ export function ObsConnectionPanel({ setup, resetPending, onRequestReset }: Prop
               <input
                 id="obs-key"
                 type={showKey ? 'text' : 'password'}
-                value={setup.streamKey!}
+                value={credentials!.streamKey}
                 readOnly
                 onFocus={(e) => e.currentTarget.select()}
                 className="min-w-0 flex-1 rounded-lg border border-brand-border bg-black px-3 py-2 text-sm text-gray-200"
@@ -125,28 +97,14 @@ export function ObsConnectionPanel({ setup, resetPending, onRequestReset }: Prop
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void copy(setup.streamKey!, 'Stream key')}
+                onClick={() => void copy(credentials!.streamKey, 'Stream key')}
               >
                 Copy
               </Button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            <p className="text-xs leading-5 text-gray-400">
-              Your stream key is permanent across broadcasts until you reset it.
-            </p>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              isLoading={resetPending}
-              disabled={resetPending}
-              onClick={onRequestReset}
-            >
-              Reset stream key
-            </Button>
-          </div>
+          <p className="text-xs text-gray-400">Copy the key into OBS. These credentials disappear after copying the key or leaving this page.</p>
         </div>
       )}
 

@@ -82,6 +82,8 @@ function Dashboard({ userId }: { userId: string }) {
     refreshMetadata,
     saveSetup,
     resetStreamKey,
+    credentials,
+    dismissCredentials,
   } = useStreamManager(userId)
 
   if (setup.isPending)
@@ -124,31 +126,15 @@ function Dashboard({ userId }: { userId: string }) {
     ? formatDuration((Date.parse(session.reconnectDeadlineAt) - serverNow) / 1000).slice(3)
     : null
 
-  const offlineHeading =
-    streamConfig.status === 'DRAFT'
-      ? 'Complete stream setup'
-      : streamConfig.status === 'PROVISIONING'
-        ? 'Preparing your stream setup'
-        : streamConfig.status === 'ROTATING'
-          ? 'Resetting stream key'
-          : streamConfig.status === 'BLOCKED'
-            ? 'Streaming unavailable'
-            : ended || lastEndedAt
-              ? 'Stream ended · Waiting for OBS'
-              : 'Waiting for OBS'
-
-  const offlineDescription =
-    streamConfig.status === 'DRAFT'
-      ? 'Save your stream title and category to generate your permanent OBS credentials.'
-      : streamConfig.status === 'PROVISIONING'
-        ? 'Setting up your ingest path. Your stream key will be ready shortly.'
-        : streamConfig.status === 'ROTATING'
-          ? 'Issuing a new stream key and retiring the previous one.'
-          : streamConfig.status === 'BLOCKED'
-            ? streamConfig.blockedReason || 'Streaming access is currently blocked.'
-            : ended || lastEndedAt
-              ? `Previous broadcast ended ${new Date(session?.endedAt || lastEndedAt!).toLocaleString()}. Start streaming in OBS when you are ready for a new session.`
-              : 'Start streaming in OBS to go live and view your broadcast preview.'
+  const offlineHeading = streamConfig.status === 'BLOCKED' ? 'Streaming unavailable'
+    : !streamConfig.hasStreamKey ? 'Complete stream setup'
+      : ended || lastEndedAt ? 'Stream ended · Waiting for OBS' : 'Waiting for OBS'
+  const offlineDescription = streamConfig.status === 'BLOCKED'
+    ? streamConfig.blockedReason || 'Streaming access is currently blocked.'
+    : !streamConfig.hasStreamKey ? 'Save your stream information, then generate a stream key for OBS.'
+      : ended || lastEndedAt
+        ? `Previous broadcast ended ${new Date(session?.endedAt || lastEndedAt!).toLocaleString()}. Start streaming in OBS when ready.`
+        : 'Start streaming in OBS to go live automatically.'
 
   return (
     <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -267,8 +253,10 @@ function Dashboard({ userId }: { userId: string }) {
 
             <ObsConnectionPanel
               setup={streamConfig}
-              resetPending={pending === 'reset' || streamConfig.status === 'ROTATING'}
-              onRequestReset={() => setResetDialogOpen(true)}
+              credentials={credentials}
+              onCredentialsCopied={dismissCredentials}
+              resetPending={pending === 'key'}
+              onRequestReset={() => streamConfig.hasStreamKey ? setResetDialogOpen(true) : void resetStreamKey()}
             />
           </div>
 
@@ -308,7 +296,7 @@ function Dashboard({ userId }: { userId: string }) {
 
         {resetDialogOpen && (
           <ResetKeyDialog
-            pending={pending === 'reset'}
+            pending={pending === 'key'}
             isStreaming={activeSession}
             onClose={() => setResetDialogOpen(false)}
             onConfirm={() => void resetStreamKey()}

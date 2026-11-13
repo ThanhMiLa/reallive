@@ -133,7 +133,7 @@ export function StreamInfoForm({
             {pending
               ? 'Saving…'
               : configStatus === 'DRAFT'
-                ? 'Save & get stream key'
+                ? 'Save changes'
                 : 'Save changes'}
           </Button>
         </div>
