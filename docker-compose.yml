@@ -1,6 +1,6 @@
 # Requires Docker Compose 2.23.1+ for inline MongoDB initialization.
 # Copy .env.example to .env and media-worker/.env.example to media-worker/.env.
-# Set passwords/internal tokens, then run: docker compose up -d --wait
+# Set passwords, then run: docker compose up -d --wait
 # Media Server uses the direct Stream Service JWKS/callback; see media-server/README.md.
 name: reallive
 
@@ -20,7 +20,6 @@ services:
       MEDIA_CONTROL_BASE_URL: http://127.0.0.1:9997
       MEDIA_CONTROL_TOKEN_FILE: /run/media-hook/control.jwt
       STREAM_VIEWER_CALLBACK_URL: ${STREAM_VIEWER_CALLBACK_URL:-http://host.docker.internal:8082/stream/internal/api/viewer-events}
-      STREAM_CCU_CALLBACK_TOKEN: ${STREAM_CCU_CALLBACK_TOKEN:-}
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
