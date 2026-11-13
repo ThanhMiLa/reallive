@@ -1,4 +1,16 @@
-export type StreamStatus = 'READY' | 'LIVE' | 'RECONNECTING' | 'ENDED'
+export type StreamStatus = 'LIVE' | 'RECONNECTING' | 'ENDED'
+
+export type StreamConfigStatus = 'DRAFT' | 'PROVISIONING' | 'ACTIVE' | 'ROTATING' | 'BLOCKED'
+
+export type MediaOperationType =
+  | 'PROVISION_INGEST'
+  | 'PROCESS_ONLINE'
+  | 'PROCESS_OFFLINE'
+  | 'EXPIRE_RECONNECT'
+  | 'RESET_KEY'
+  | 'END_SESSION'
+
+export type MediaOperationStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'CANCELLED'
 
 interface StreamMetadataFields {
   id: string
@@ -22,13 +34,6 @@ export interface StreamSession extends StreamMetadataFields {
   publishReady: boolean
 }
 
-export interface PublishCredentials {
-  sessionId: string
-  serverUrl: string
-  streamKey: string
-  publishExpiresAt: string
-}
-
 export interface PlaybackAccess {
   sessionId: string
   playbackUrl: string
@@ -41,13 +46,30 @@ export interface StreamDetails {
   categoryId: string
 }
 
-export interface CreateStreamRequest extends StreamDetails {
-  requestId: string
+export type SaveStreamSetupRequest = StreamDetails
+
+export interface StreamSetup {
+  channelId: string
+  title: string | null
+  categoryId: string | null
+  visibility: 'PUBLIC'
+  status: StreamConfigStatus
+  generation: number
+  operationId: string | null
+  serverUrl: string | null
+  streamKey: string | null
+  publishReady: boolean
+  blockedReason: string | null
 }
 
-export interface CreateStreamResponse {
-  session: StreamSession
-  publishCredentials: PublishCredentials
+export interface StreamOperation {
+  operationId: string
+  operationType: MediaOperationType
+  status: MediaOperationStatus
+  channelId: string
+  credentialGeneration: number
+  targetSessionId: string | null
+  lastError: string | null
 }
 
 export interface StreamChannelSummary {
