@@ -99,23 +99,10 @@ class MediaMtxAuthenticationIT {
                                 "occurredAt",
                                 Instant.now()));
         String callbackUrl = "http://127.0.0.1:" + streamPort + "/stream/internal/api/media-events";
-        assertEquals(
-                401,
-                http.send(
-                                HttpRequest.newBuilder(URI.create(callbackUrl))
-                                        .header("Content-Type", "application/json")
-                                        .POST(HttpRequest.BodyPublishers.ofByteArray(event))
-                                        .timeout(Duration.ofSeconds(5))
-                                        .build(),
-                                HttpResponse.BodyHandlers.discarding())
-                        .statusCode());
         HttpResponse<String> callbackResponse =
                 http.send(
                         HttpRequest.newBuilder(URI.create(callbackUrl))
                                 .header("Content-Type", "application/json")
-                                .header(
-                                        "X-Internal-Token",
-                                        MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                                 .POST(HttpRequest.BodyPublishers.ofByteArray(event))
                                 .timeout(Duration.ofSeconds(5))
                                 .build(),

@@ -13,6 +13,7 @@ import fixture
 class HookTest(unittest.TestCase):
     def setUp(self):
         self.bodies = []
+        self.callback_tokens = []
         self.received = threading.Event()
         self.status_code = 200
         owner = self
@@ -24,6 +25,7 @@ class HookTest(unittest.TestCase):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers['Content-Length']))
                 owner.bodies.append(body)
+                owner.callback_tokens.append(self.headers.get('X-Internal-Token'))
                 self.send_response(owner.status_code)
                 self.send_header('Content-Length', '0')
                 self.end_headers()
@@ -34,7 +36,6 @@ class HookTest(unittest.TestCase):
         self.thread.start()
         self.environment = dict(os.environ,
                                 STREAM_MEDIA_CALLBACK_URL='http://127.0.0.1:' + str(self.server.server_port),
-                                STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN='test-internal-callback-token',
                                 MTX_PATH='ingest/' + str(uuid4()), MTX_SOURCE_ID=str(uuid4()),
                                 MTX_SOURCE_TYPE='rtmpConn', MTX_QUERY='token=must-never-be-sent')
         self.process = None
@@ -94,14 +95,11 @@ class HookTest(unittest.TestCase):
                 self.assertEqual(0, len(self.bodies))
                 self.assertIn(b'Media hook failed; reason=invalid-ingest-path', stderr)
 
-    def test_missing_internal_token_fails_without_request(self):
-        bad_env = dict(self.environment)
-        bad_env.pop('STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN', None)
-        self.launch(env=bad_env)
-        stdout, stderr = self.process.communicate(timeout=5)
-        self.assertEqual(1, self.process.returncode)
-        self.assertEqual(0, len(self.bodies))
-        self.assertIn(b'Media hook failed; reason=invalid-callback-token', stderr)
+    def test_internal_callback_needs_no_credentials(self):
+        self.launch()
+        self.process.communicate(timeout=5)
+        self.assertEqual(0, self.process.returncode)
+        self.assertEqual([None], self.callback_tokens)
 
 
 if __name__ == '__main__':

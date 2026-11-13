@@ -90,7 +90,7 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(65537, int.from_bytes(fixture.unb64url(key['e']), 'big'))
         self.assertGreaterEqual(int.from_bytes(fixture.unb64url(key['n']), 'big').bit_length(), 2048)
 
-    def send_event(self, body, internal_token=fixture.DEFAULT_CALLBACK_TOKEN):
+    def send_event(self, body, internal_token=None):
         headers = {'Content-Type': 'application/json'}
         if internal_token is not None:
             headers['X-Internal-Token'] = internal_token
@@ -107,10 +107,10 @@ class FixtureTest(unittest.TestCase):
                            'sourceId': str(uuid4()), 'sourceType': 'rtmpConn',
                            'occurredAt': '2026-10-24T00:00:00Z'}).encode()
 
-    def test_callback_requires_internal_token(self):
+    def test_callback_accepts_no_token_and_ignores_legacy_token(self):
         body = self.event_body()
-        self.assertEqual(401, self.send_event(body, internal_token=None)[0])
-        self.assertEqual(401, self.send_event(body, internal_token='wrong-token')[0])
+        self.assertEqual(200, self.send_event(body, internal_token=None)[0])
+        self.assertEqual(200, self.send_event(body, internal_token='ignored')[0])
 
     def test_callback_and_duplicate_are_recorded_once(self):
         body = self.event_body()

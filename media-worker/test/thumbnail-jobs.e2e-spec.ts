@@ -13,7 +13,6 @@ import {
   type WorkerConfig,
 } from '../src/common/config/worker-config';
 
-const INTERNAL_TOKEN = 'test-internal-token-0123456789abcdef';
 const MEDIAMTX_BASE_URL = 'http://media-server:8888';
 const BATCH_PATH = '/internal/api/thumbnail-jobs/batch';
 const FIXTURES = join(
@@ -40,7 +39,6 @@ function setEnvironment(overrides: NodeJS.ProcessEnv): void {
   }
   Object.assign(process.env, {
     NODE_ENV: 'test',
-    MEDIA_WORKER_INTERNAL_TOKEN: INTERNAL_TOKEN,
     MEDIA_WORKER_MEDIAMTX_BASE_URL: MEDIAMTX_BASE_URL,
     MEDIA_WORKER_MAX_BATCH_SIZE: '2',
     MEDIA_WORKER_MAX_BODY_BYTES: '8192',
@@ -67,9 +65,9 @@ async function createApplication(
   return app;
 }
 
-function authorizedPost(
+function internalPost(
   app: NestExpressApplication,
-  token: string | null = INTERNAL_TOKEN,
+  token: string | null = null,
 ) {
   const agent = request(app.getHttpServer())
     .post(BATCH_PATH)
@@ -89,33 +87,20 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
     await app.close();
   });
 
-  it('returns 401 when the internal token is missing', async () => {
-    const response = await authorizedPost(app, null)
-      .send(validBatch)
-      .expect(401);
-
-    expect(response.body).toMatchObject({
-      statusCode: 401,
-      code: 'INVALID_INTERNAL_TOKEN',
-    });
+  it('accepts the request without an internal token and reaches the queue', async () => {
+    const response = await internalPost(app).send(validBatch).expect(503);
+    expect(response.body.code).toBe('QUEUE_UNAVAILABLE');
   });
 
-  it('returns 401 when the internal token is wrong', async () => {
-    const response = await authorizedPost(
-      app,
-      'wrong-internal-token-0123456789abcdef',
-    )
-      .send(validBatch)
-      .expect(401);
-
-    expect(response.body).toMatchObject({
-      statusCode: 401,
-      code: 'INVALID_INTERNAL_TOKEN',
-    });
+  it('ignores legacy credentials and still validates the batch', async () => {
+    const response = await internalPost(app, 'ignored')
+      .set('Authorization', 'Bearer malformed')
+      .send(fixture('thumbnail-jobs-batch.invalid-job-id.json')).expect(400);
+    expect(response.body.code).toBe('VALIDATION_FAILED');
   });
 
   it('returns 400 for an invalid job UUID', async () => {
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send(fixture('thumbnail-jobs-batch.invalid-job-id.json'))
       .expect(400);
 
@@ -126,7 +111,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('returns 400 for invalid timestamps', async () => {
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send(fixture('thumbnail-jobs-batch.invalid-timestamp.json'))
       .expect(400);
 
@@ -150,7 +135,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
         const batch = structuredClone(validBatch);
         batch.jobs[0][field] = timestamp;
 
-        const response = await authorizedPost(app).send(batch).expect(400);
+        const response = await internalPost(app).send(batch).expect(400);
 
         expect(response.body).toMatchObject({
           statusCode: 400,
@@ -170,7 +155,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
       batch.jobs[0].readExpiresAt = timestamp;
       batch.jobs[0].jobDeadlineAt = timestamp;
 
-      const response = await authorizedPost(app).send(batch).expect(503);
+      const response = await internalPost(app).send(batch).expect(503);
 
       expect(response.body.code).toBe('QUEUE_UNAVAILABLE');
     },
@@ -191,7 +176,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
         ).href;
       }
 
-      const response = await authorizedPost(localApp).send(batch).expect(503);
+      const response = await internalPost(localApp).send(batch).expect(503);
 
       expect(response.body.code).toBe('QUEUE_UNAVAILABLE');
     } finally {
@@ -200,7 +185,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('returns 400 for missing fields and wrong types', async () => {
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send(fixture('thumbnail-jobs-batch.invalid-schema.json'))
       .expect(400);
 
@@ -211,7 +196,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('returns 400 for unknown fields', async () => {
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send({
         ...validBatch,
         unexpected: true,
@@ -225,7 +210,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('returns 400 for a playback URL outside the configured MediaMTX origin', async () => {
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send(fixture('thumbnail-jobs-batch.invalid-playback-url.json'))
       .expect(400);
 
@@ -240,7 +225,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
       ...validBatch.jobs[0],
       jobId: '55555555-5555-4555-8555-555555555555',
     };
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send({ jobs: [...validBatch.jobs, thirdJob] })
       .expect(400);
 
@@ -251,7 +236,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('returns 413 before validation when the body is too large', async () => {
-    const response = await authorizedPost(app)
+    const response = await internalPost(app)
       .send({
         jobs: validBatch.jobs,
         padding: 'x'.repeat(9000),
@@ -265,7 +250,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('returns 400 for malformed JSON', async () => {
-    const response = await authorizedPost(app).send('{"jobs": [').expect(400);
+    const response = await internalPost(app).send('{"jobs": [').expect(400);
 
     expect(response.body).toMatchObject({
       statusCode: 400,
@@ -274,7 +259,7 @@ describe('thumbnail worker HTTP contract (Step 1)', () => {
   });
 
   it('validates a valid batch but does not fake queue acceptance', async () => {
-    const response = await authorizedPost(app).send(validBatch).expect(503);
+    const response = await internalPost(app).send(validBatch).expect(503);
 
     expect(response.body).toMatchObject({
       statusCode: 503,

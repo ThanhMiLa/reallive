@@ -4,7 +4,6 @@ import { loadWorkerConfig } from '../common/config/worker-config';
 import type { ThumbnailResult } from '../common/contracts/thumbnail-contract';
 import { ThumbnailCallbackClientImpl } from './thumbnail-callback.client';
 
-const TOKEN = 'callback-token-0123456789abcdefg';
 const PATH = '/stream/internal/api/thumbnail-results';
 
 interface CapturedRequest {
@@ -48,11 +47,9 @@ function result(): ThumbnailResult {
   };
 }
 
-function config(baseUrl: string, withToken = true) {
+function config(baseUrl: string) {
   return loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     STREAM_SERVICE_BASE_URL: baseUrl,
-    ...(withToken ? { STREAM_SERVICE_INTERNAL_TOKEN: TOKEN } : {}),
   });
 }
 
@@ -176,11 +173,10 @@ describe('ThumbnailCallbackClient', () => {
     expect(requests[0]).toMatchObject({
       method: 'POST',
       url: PATH,
-      token: TOKEN,
+      token: undefined,
     });
     expect(requests[0].contentType).toContain('application/json');
     expect(JSON.parse(requests[0].body)).toEqual(payload);
-    expect(requests[0].body).not.toContain(TOKEN);
     await callback.onApplicationShutdown();
   });
 
@@ -282,12 +278,11 @@ describe('ThumbnailCallbackClient', () => {
     await callback.onApplicationShutdown();
   });
 
-  it('rejects sending when the callback token is missing', async () => {
-    const callback = new ThumbnailCallbackClientImpl(config(origin, false));
-    await expect(callback.send(result())).rejects.toThrow(
-      'CALLBACK_NOT_CONFIGURED',
-    );
-    expect(requests).toHaveLength(0);
+  it('sends callbacks without internal credentials', async () => {
+    const callback = new ThumbnailCallbackClientImpl(config(origin));
+    await expect(callback.send(result())).resolves.toEqual({ outcome: 'APPLIED' });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].token).toBeUndefined();
     await callback.onApplicationShutdown();
   });
 });

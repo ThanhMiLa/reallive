@@ -58,7 +58,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     REDIS_HOST: redis.getHost(),
     REDIS_PORT: String(redis.getMappedPort(6379)),
     MEDIA_WORKER_QUEUE_PREFIX: `thumbnail-test-${randomUUID()}`,
@@ -229,7 +228,6 @@ test('returns unavailable after Redis disconnects', async () => {
     .withExposedPorts(6379)
     .start();
   const localConfig = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'x'.repeat(32),
     REDIS_HOST: other.getHost(),
     REDIS_PORT: String(other.getMappedPort(6379)),
     MEDIA_WORKER_QUEUE_PREFIX: `offline-${randomUUID()}`,
@@ -270,7 +268,7 @@ test('HTTP API confirms Redis enqueue and duplicate ID with 202', async () => {
     );
     const response = await request(app.getHttpServer())
       .post('/internal/api/thumbnail-jobs/batch')
-      .set('X-Internal-Token', config.http.internalToken)
+
       .send({ jobs: [a] })
       .expect(202);
     expect(response.body).toEqual({
@@ -280,7 +278,7 @@ test('HTTP API confirms Redis enqueue and duplicate ID with 202', async () => {
     expect((await inspect.getJob(a.jobId))?.data).toEqual(a);
     const repeated = await request(app.getHttpServer())
       .post('/internal/api/thumbnail-jobs/batch')
-      .set('X-Internal-Token', config.http.internalToken)
+
       .send({ jobs: [a] })
       .expect(202);
     expect(repeated.body.acceptedJobIds).toEqual([a.jobId]);

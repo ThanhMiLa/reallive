@@ -109,7 +109,6 @@ afterAll(async () => {
 
 test('captures and validates JPEG through an authenticated HLS server', async () => {
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: base,
     MEDIA_WORKER_TEMP_DIR: directory,
   });
@@ -145,7 +144,6 @@ test('captures and validates JPEG through an authenticated HLS server', async ()
 
 test('rejects expired jobs and invalid media source before running ffmpeg', async () => {
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: base,
     MEDIA_WORKER_TEMP_DIR: directory,
   });
@@ -176,7 +174,6 @@ test('times out on a stalled HLS source and removes its temporary directory', as
     throw new Error('missing address');
   const origin = `http://127.0.0.1:${address.port}`;
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: origin,
     MEDIA_WORKER_TEMP_DIR: directory,
   });
@@ -229,7 +226,6 @@ test('CLI SIGTERM waits for FFmpeg exit and cleanup, and token is absent from ar
     env: {
       ...process.env,
       NODE_ENV: 'test',
-      MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
       MEDIA_WORKER_TEMP_DIR: root,
       MEDIA_WORKER_MEDIAMTX_BASE_URL: origin,
       MEDIA_WORKER_FFMPEG_TIMEOUT_MS: '15000',
@@ -299,7 +295,6 @@ test('CLI SIGTERM waits for FFmpeg exit and cleanup, and token is absent from ar
 
 test('captures portrait and landscape concurrently into separate directories', async () => {
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: base,
     MEDIA_WORKER_TEMP_DIR: directory,
   });
@@ -334,7 +329,6 @@ test('captures portrait and landscape concurrently into separate directories', a
 
 test('handles ffmpeg nonzero exit and filesystem failures without leaving a job directory', async () => {
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: base,
     MEDIA_WORKER_TEMP_DIR: directory,
   });
@@ -371,7 +365,6 @@ test('rejects corrupt JPEG output and cleans it', async () => {
   );
   await chmod(fake, 0o700);
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: base,
     MEDIA_WORKER_TEMP_DIR: directory,
     MEDIA_WORKER_FFMPEG_PATH: fake,
@@ -404,7 +397,6 @@ test('rejects corrupt JPEG output and cleans it', async () => {
 
 test('fails without retaining output if the HLS server disconnects during segment loading', async () => {
   const config = loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_MEDIAMTX_BASE_URL: base,
     MEDIA_WORKER_TEMP_DIR: directory,
   });

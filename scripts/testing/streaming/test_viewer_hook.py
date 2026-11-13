@@ -107,7 +107,6 @@ class ViewerHookTest(unittest.TestCase):
                                 MEDIA_CONTROL_BASE_URL=self.control_base,
                                 MEDIA_CONTROL_TOKEN_FILE=str(self.token_file),
                                 STREAM_VIEWER_CALLBACK_URL=self.callback_url,
-                                STREAM_CCU_CALLBACK_TOKEN='fixture-internal-token-do-not-log',
                                 MTX_PATH='live/' + self.session_id,
                                 MTX_READER_ID=self.reader_id,
                                 MTX_READER_TYPE='hlsSession',
@@ -142,7 +141,7 @@ class ViewerHookTest(unittest.TestCase):
             self.assertNotIn(value, b''.join(request['body'] for request in self.callback_requests))
         return stdout, stderr
 
-    def test_read_enriches_identity_and_sends_one_authenticated_callback(self):
+    def test_read_enriches_identity_and_sends_uncredentialed_internal_callback(self):
         self.launch()
         self.finish()
         self.assertEqual([{'path': '/v3/hls/sessions/get/' + self.reader_id,
@@ -150,7 +149,7 @@ class ViewerHookTest(unittest.TestCase):
         self.assertEqual(1, len(self.callback_requests))
         callback = self.callback_requests[0]
         self.assertEqual('/stream/internal/api/viewer-events', callback['path'])
-        self.assertEqual('fixture-internal-token-do-not-log', callback['token'])
+        self.assertIsNone(callback['token'])
         self.assertIsNone(callback['authorization'])
         event = json.loads(callback['body'])
         self.assertEqual({'eventId', 'eventType', 'sessionId', 'readerId', 'readerType', 'occurredAt', 'userId'}, set(event))
@@ -178,13 +177,13 @@ class ViewerHookTest(unittest.TestCase):
         self.assertEqual([], self.control_requests + self.callback_requests)
 
     def test_non_hls_reader_is_ignored(self):
-        self.launch(environment=dict(self.environment, MTX_READER_TYPE='rtmpConn', STREAM_CCU_CALLBACK_TOKEN=''))
+        self.launch(environment=dict(self.environment, MTX_READER_TYPE='rtmpConn'))
         self.finish()
         self.assertEqual([], self.control_requests + self.callback_requests)
 
     def test_invalid_ids_path_and_callback_configuration_do_not_make_requests(self):
         for changes in [dict(MTX_PATH='wrong/' + self.session_id), dict(MTX_PATH='live/not-a-uuid'),
-                        dict(MTX_READER_ID='not-a-uuid'), dict(STREAM_CCU_CALLBACK_TOKEN=''),
+                        dict(MTX_READER_ID='not-a-uuid'),
                         dict(STREAM_VIEWER_CALLBACK_URL='http://user:secret@127.0.0.1/callback')]:
             with self.subTest(changes=list(changes)):
                 self.launch(environment=dict(self.environment, **changes))

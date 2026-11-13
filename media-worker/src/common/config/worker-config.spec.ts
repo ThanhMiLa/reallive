@@ -1,11 +1,8 @@
 import { ConfigurationError, loadWorkerConfig } from './worker-config';
 
-const INTERNAL_TOKEN = 'test-internal-token-0123456789abcdef';
-
 function baseEnv(): NodeJS.ProcessEnv {
   return {
     NODE_ENV: 'test',
-    MEDIA_WORKER_INTERNAL_TOKEN: INTERNAL_TOKEN,
     MEDIA_WORKER_MEDIAMTX_BASE_URL: 'http://media-server:8888',
   };
 }
@@ -27,7 +24,6 @@ describe('loadWorkerConfig', () => {
     expect(config.environment).toBe('test');
     expect(config.http).toMatchObject({
       port: 8090,
-      internalToken: INTERNAL_TOKEN,
       mediamtxBaseUrl: 'http://media-server:8888',
       maxBatchSize: 50,
       maxBodyBytes: 262_144,
@@ -93,7 +89,6 @@ describe('loadWorkerConfig', () => {
       MEDIA_WORKER_R2_BUCKET: 'thumbnails',
       MEDIA_WORKER_R2_ACCESS_KEY_ID: 'fixture-access-key',
       MEDIA_WORKER_R2_SECRET_ACCESS_KEY: 'fixture-secret-key',
-      STREAM_SERVICE_INTERNAL_TOKEN: 'stream-internal-token-0123456789abcdef',
       REDIS_PASSWORD: 'fixture-redis-password',
     });
 
@@ -119,25 +114,13 @@ describe('loadWorkerConfig', () => {
       accessKeyId: 'fixture-access-key',
       secretAccessKey: 'fixture-secret-key',
     });
-    expect(config.callback.internalToken).toBe(
-      'stream-internal-token-0123456789abcdef',
-    );
   });
 
-  it('requires a sufficiently long internal token', () => {
-    const missing = issuesFrom({
-      ...baseEnv(),
-      MEDIA_WORKER_INTERNAL_TOKEN: '',
-    });
-    const short = issuesFrom({
-      ...baseEnv(),
-      MEDIA_WORKER_INTERNAL_TOKEN: 'too-short',
-    });
-
-    expect(missing).toContain('MEDIA_WORKER_INTERNAL_TOKEN is required');
-    expect(short).toContain(
-      'MEDIA_WORKER_INTERNAL_TOKEN must be at least 32 characters',
-    );
+  it('starts without internal service credentials', () => {
+    expect(() => loadWorkerConfig(baseEnv())).not.toThrow();
+    const config = loadWorkerConfig(baseEnv());
+    expect(config.http).not.toHaveProperty('internalToken');
+    expect(config.callback).not.toHaveProperty('internalToken');
   });
 
   it('requires the processor flag to be true or false', () => {
@@ -229,7 +212,7 @@ describe('loadWorkerConfig', () => {
     });
   });
 
-  it('requires complete R2 and callback configuration when the consumer is enabled', () => {
+  it('requires complete R2 configuration when the consumer is enabled', () => {
     const issues = issuesFrom({
       ...baseEnv(),
       MEDIA_WORKER_PROCESSOR_ENABLED: 'true',
@@ -238,29 +221,15 @@ describe('loadWorkerConfig', () => {
     expect(issues).toContain(
       'MEDIA_WORKER_R2_ENDPOINT, MEDIA_WORKER_R2_BUCKET, MEDIA_WORKER_R2_ACCESS_KEY_ID and MEDIA_WORKER_R2_SECRET_ACCESS_KEY are required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
     );
-    expect(issues).toContain(
-      'STREAM_SERVICE_INTERNAL_TOKEN is required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
-    );
-  });
-
-  it('rejects a callback token shorter than 32 characters even when the consumer is disabled', () => {
-    expect(
-      issuesFrom({
-        ...baseEnv(),
-        STREAM_SERVICE_INTERNAL_TOKEN: 'too-short',
-      }),
-    ).toContain(
-      'STREAM_SERVICE_INTERNAL_TOKEN must be at least 32 characters',
-    );
   });
 
   it('does not include secret values in configuration errors', () => {
-    const secret = 'super-secret-internal-token-0123456789';
+    const secret = 'super-secret-r2-access-key-0123456789';
     const error = (() => {
       try {
         loadWorkerConfig({
           ...baseEnv(),
-          MEDIA_WORKER_INTERNAL_TOKEN: secret,
+          MEDIA_WORKER_R2_SECRET_ACCESS_KEY: secret,
           MEDIA_WORKER_MAX_BATCH_SIZE: '0',
         });
       } catch (caught) {

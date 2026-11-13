@@ -33,7 +33,7 @@ class ThumbnailConfigurationTest {
 
     @Test
     void enabledThumbnailRejectsInvalidConfigurationAtStartup() {
-        runner.withPropertyValues("stream.thumbnail.enabled=true")
+        runner.withPropertyValues("stream.thumbnail.enabled=true", "stream.thumbnail.interval=0s")
                 .run(
                         context -> {
                             assertThat(context).hasFailed();
@@ -47,8 +47,7 @@ class ThumbnailConfigurationTest {
     @Test
     void enabledThumbnailWithValidConfigurationCreatesBothSchedulers() {
         runner.withPropertyValues(
-                        "stream.thumbnail.enabled=true",
-                        "stream.thumbnail.internal-token=test-internal-token-0123456789abcdef")
+                        "stream.thumbnail.enabled=true")
                 .run(
                         context -> {
                             assertThat(context).hasNotFailed();
@@ -77,7 +76,6 @@ class ThumbnailConfigurationTest {
     void callbackEnabledRejectsAnUnsafePublicBaseUrl() {
         runner.withPropertyValues(
                         "stream.thumbnail.callback-enabled=true",
-                        "stream.thumbnail.callback-internal-token=test-internal-token-0123456789abcdef",
                         "stream.thumbnail.public-base-url=https://thumbnails.example.com/?token=secret")
                 .run(
                         context -> {
@@ -94,7 +92,6 @@ class ThumbnailConfigurationTest {
         runner.withPropertyValues(
                         "stream.thumbnail.enabled=false",
                         "stream.thumbnail.callback-enabled=true",
-                        "stream.thumbnail.callback-internal-token=test-internal-token-0123456789abcdef",
                         "stream.thumbnail.public-base-url=https://thumbnails.example.com/base/",
                         "stream.thumbnail.max-jpeg-bytes=5242880")
                 .run(

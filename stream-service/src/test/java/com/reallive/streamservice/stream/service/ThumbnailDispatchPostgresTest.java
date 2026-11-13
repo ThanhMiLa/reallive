@@ -74,7 +74,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ThumbnailDispatchPostgresTest extends PostgresIntegrationTestSupport {
 
     private static final String SCHEMA = newSchema();
-    private static final String TOKEN = "test-internal-token-0123456789abcdef";
+
     private static final Instant BASE = Instant.parse("2026-11-05T12:00:00Z");
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ExecutorService SERVER_EXECUTOR = Executors.newCachedThreadPool();
@@ -98,7 +98,6 @@ class ThumbnailDispatchPostgresTest extends PostgresIntegrationTestSupport {
         registry.add("stream.thumbnail.job-deadline", () -> "240s");
         registry.add("stream.thumbnail.worker-base-url", () -> workerBase());
         registry.add("stream.thumbnail.internal-hls-base-url", () -> "http://media-server:8888");
-        registry.add("stream.thumbnail.internal-token", () -> TOKEN);
         registry.add("stream.thumbnail.worker-connect-timeout", () -> "500ms");
         registry.add("stream.thumbnail.worker-read-timeout", () -> "500ms");
     }
@@ -173,7 +172,7 @@ class ThumbnailDispatchPostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(1, sent);
         assertEquals(1, REQUESTS.get());
         Captured captured = CAPTURED.getFirst();
-        assertEquals(TOKEN, captured.internalToken());
+        assertNull(captured.internalToken());
         assertTrue(captured.contentType().startsWith("application/json"));
         assertEquals(1, captured.batch().jobs().size());
         JobPayload job = captured.batch().jobs().getFirst();

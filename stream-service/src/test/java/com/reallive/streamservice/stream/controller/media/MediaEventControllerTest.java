@@ -13,7 +13,7 @@ import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.common.security.CustomJwtDecoder;
 import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
-import com.reallive.streamservice.common.security.MediaCallbackSecurityConfiguration;
+import com.reallive.streamservice.common.security.InternalEndpointSecurityConfiguration;
 import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.dto.MediaEventOutcome;
@@ -33,6 +33,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import tools.jackson.databind.ObjectMapper;
 
+import jakarta.servlet.http.Cookie;
+
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -42,7 +44,7 @@ import java.util.UUID;
         properties = {"auth.cookie.access-token.name=access_token"})
 @Import({
     SecurityConfig.class,
-    MediaCallbackSecurityConfiguration.class,
+    InternalEndpointSecurityConfiguration.class,
     MediaConfiguration.class,
     CustomJwtDecoder.class,
     JwtAuthenticationEntryPoint.class,
@@ -63,40 +65,30 @@ class MediaEventControllerTest {
     }
 
     @Test
-    void missingOrWrongInternalTokenIsRejectedUnauthorized() throws Exception {
-        byte[] body =
-                mapper.writeValueAsBytes(
-                        Map.of(
-                                "eventId",
-                                UUID.randomUUID(),
-                                "eventType",
-                                "ONLINE",
-                                "path",
-                                "ingest/" + UUID.randomUUID(),
-                                "sourceId",
-                                UUID.randomUUID(),
-                                "sourceType",
-                                "rtmpConn",
-                                "occurredAt",
-                                Instant.now()));
+    void callbackDoesNotRequireServiceOrAccountCredentials() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        when(lifecycleService.onOnline(any()))
+                .thenReturn(new MediaEventResponse(null, eventId, MediaEventOutcome.IGNORED, null));
+        byte[] body = mapper.writeValueAsBytes(Map.of(
+                "eventId", eventId, "eventType", "ONLINE",
+                "path", "ingest/" + UUID.randomUUID(), "sourceId", UUID.randomUUID(),
+                "sourceType", "rtmpConn", "occurredAt", Instant.now()));
 
-        mvc.perform(
-                        post("/internal/api/media-events")
-                                .contentType("application/json")
-                                .content(body))
-                .andExpect(status().isUnauthorized());
-        mvc.perform(
-                        post("/internal/api/media-events")
-                                .header("X-Internal-Token", "invalid-token")
-                                .contentType("application/json")
-                                .content(body))
-                .andExpect(status().isUnauthorized());
-
-        verifyNoInteractions(lifecycleService, authorities);
+        mvc.perform(post("/internal/api/media-events")
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk());
+        mvc.perform(post("/internal/api/media-events")
+                        .header("X-Internal-Token", "ignored")
+                        .header("Authorization", "Bearer malformed")
+                        .cookie(new Cookie("access_token", "malformed"))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk());
+        verify(lifecycleService, times(2)).onOnline(any());
+        verifyNoInteractions(authorities);
     }
 
     @Test
-    void onlineEventReturnsAcceptedWithNullableSessionBeforeWorkerRuns() throws Exception {
+    void onlineEventReturnsIgnoredOrAppliedWithNullableSession() throws Exception {
         UUID ingestKeyId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
         UUID sourceId = UUID.randomUUID();
@@ -122,9 +114,6 @@ class MediaEventControllerTest {
 
         mvc.perform(
                         post("/internal/api/media-events")
-                                .header(
-                                        "X-Internal-Token",
-                                        MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                                 .contentType("application/json")
                                 .content(body))
                 .andExpect(status().isOk())
@@ -140,7 +129,7 @@ class MediaEventControllerTest {
     }
 
     @Test
-    void offlineEventReturnsAcceptedWithCurrentSessionSnapshot() throws Exception {
+    void offlineEventReturnsCurrentSessionSnapshot() throws Exception {
         UUID streamId = UUID.randomUUID();
         UUID ingestKeyId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
@@ -172,9 +161,6 @@ class MediaEventControllerTest {
 
         mvc.perform(
                         post("/internal/api/media-events")
-                                .header(
-                                        "X-Internal-Token",
-                                        MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                                 .contentType("application/json")
                                 .content(body))
                 .andExpect(status().isOk())
@@ -206,9 +192,6 @@ class MediaEventControllerTest {
 
         mvc.perform(
                         post("/internal/api/media-events")
-                                .header(
-                                        "X-Internal-Token",
-                                        MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                                 .contentType("application/json")
                                 .content(invalidPath))
                 .andExpect(status().isBadRequest())
@@ -232,9 +215,6 @@ class MediaEventControllerTest {
 
         mvc.perform(
                         post("/internal/api/media-events")
-                                .header(
-                                        "X-Internal-Token",
-                                        MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                                 .contentType("application/json")
                                 .content(invalidType))
                 .andExpect(status().isBadRequest())
@@ -266,9 +246,6 @@ class MediaEventControllerTest {
 
         mvc.perform(
                         post("/internal/api/media-events")
-                                .header(
-                                        "X-Internal-Token",
-                                        MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                                 .contentType("application/json")
                                 .content(body))
                 .andExpect(status().isOk())

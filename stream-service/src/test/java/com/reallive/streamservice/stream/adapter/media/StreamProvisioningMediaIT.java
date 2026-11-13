@@ -117,9 +117,6 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
                             "http://host.docker.internal:"
                                     + STREAM_PORT
                                     + "/stream/internal/api/media-events")
-                    .withEnv(
-                            "STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN",
-                            MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                     .withExposedPorts(1935, 8888, 9997);
 
     @Autowired private MediaServerAdapter media;

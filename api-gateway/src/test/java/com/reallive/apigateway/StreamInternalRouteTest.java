@@ -11,10 +11,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.http.HttpMethod;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
@@ -28,6 +31,7 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
@@ -50,6 +54,8 @@ class StreamInternalRouteTest {
     private static final HttpServer STREAM = startStream();
     @Autowired
     private WebTestClient client;
+    @LocalServerPort
+    private int gatewayPort;
     @MockitoBean
     private ReactiveStringRedisTemplate redis;
 
@@ -60,12 +66,8 @@ class StreamInternalRouteTest {
         yaml.setResources(new ClassPathResource("application-dev.yml"));
         Properties configuration = yaml.getObject();
         String routesPrefix = "spring.cloud.gateway.server.webflux.routes[";
-        String streamUri = configuration.stringPropertyNames().stream()
-                .filter(key -> key.startsWith(routesPrefix) && key.endsWith(".id"))
-                .filter(key -> "stream-service".equals(configuration.getProperty(key)))
-                .map(key -> key.substring(0, key.length() - 2) + "uri").findFirst().orElseThrow();
         configuration.stringPropertyNames().stream().filter(key -> key.startsWith(routesPrefix))
-                .forEach(key -> registry.add(key, () -> key.equals(streamUri)
+                .forEach(key -> registry.add(key, () -> key.endsWith(".uri")
                         ? "http://127.0.0.1:" + STREAM.getAddress().getPort() : configuration.getProperty(key)));
     }
 
@@ -84,15 +86,34 @@ class StreamInternalRouteTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void thumbnailCallbackIsNeverRoutedThroughTheGateway(boolean authenticated) throws Exception {
-        var request = client.post().uri("/stream/internal/api/thumbnail-results")
-                .header("X-Internal-Token", "worker-callback-token-0123456789abcdef");
-        if (authenticated) {
-            request.cookie("access_token", accessToken());
+    @CsvSource({
+            "POST, /stream/internal/api/media-events",
+            "POST, /stream/internal/api/viewer-events",
+            "POST, /stream/internal/api/thumbnail-results",
+            "GET, /stream/internal/api/streams/id/chat-context",
+            "GET, /user/internal/api/users/id/chat-profile",
+            "GET, /user/internal/api/streamers/by-user/id/streaming-eligibility",
+            "GET, /channel/internal/api/channels/by-streamer/id/streaming-context",
+            "POST, /channel/internal/api/channels",
+            "POST, /channel/internal/api/categories/validate",
+            "POST, /channel/internal/api/channels/id/chat-access",
+            "POST, /channel/internal/api/channels/livestream-summaries",
+            "PATCH, /channel/internal/api/channels/by-streamer/id/avatar",
+            "GET, /user/internal/api/streamers/by-user/id/active",
+            "GET, /user/internal/api/users/id/category-preferences",
+            "POST, /payment/internal/api/wallets/create/id",
+            "POST, /internal/api/thumbnail-jobs/batch"
+    })
+    void internalEndpointsAreNeverRoutedWithOrWithoutAccountCredentials(String method, String path)
+            throws Exception {
+        for (boolean authenticated : new boolean[] {false, true}) {
+            var request = client.method(HttpMethod.valueOf(method)).uri(path);
+            if (authenticated) {
+                request.cookie("access_token", accessToken());
+            }
+            request.exchange().expectStatus().isNotFound();
+            assertEquals(0, CALLS.get());
         }
-        request.exchange().expectStatus().isNotFound();
-        assertEquals(0, CALLS.get());
     }
 
     @ParameterizedTest
@@ -104,6 +125,19 @@ class StreamInternalRouteTest {
     void everyInternalStreamPathIsRejectedEvenWithValidCredentials(String path) throws Exception {
         client.get().uri(path).cookie("access_token", accessToken())
                 .exchange().expectStatus().isNotFound();
+        assertEquals(0, CALLS.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/stream/api/../internal/api/media-events",
+            "/stream/api/%2e%2e/internal/api/media-events",
+            "/stream/api/..;/internal/api/media-events",
+            "/stream/api/%2e%2e%2finternal/api/media-events"
+    })
+    void ambiguousPathsCannotReachInternalEndpoints(String path) throws Exception {
+        client.post().uri(URI.create("http://localhost:" + gatewayPort + path)).cookie("access_token", accessToken())
+                .exchange().expectStatus().is4xxClientError();
         assertEquals(0, CALLS.get());
     }
 

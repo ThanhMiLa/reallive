@@ -14,7 +14,7 @@ class MediaConfigurationTest {
     private final MediaConfiguration configuration = new MediaConfiguration();
 
     @Test
-    void loadsMatchingKeysInternalTokenAndDefaults() {
+    void loadsMatchingKeysAndDefaults() {
         var properties = MediaTestSupport.properties();
         var keys = configuration.mediaKeyMaterial(properties);
         assertEquals(2048, keys.publicKey().getModulus().bitLength());
@@ -22,7 +22,6 @@ class MediaConfigurationTest {
         assertEquals(Duration.ofMinutes(5), properties.getControlTokenTtl());
         assertEquals("rtmp://localhost:1935/ingest", properties.getRtmpPublicUrl());
         assertFalse(properties.toString().contains(properties.getPrivateKeyBase64()));
-        assertFalse(properties.toString().contains(properties.getCallbackInternalToken()));
         assertFalse(keys.toString().contains(keys.privateKey().getPrivateExponent().toString()));
     }
 
@@ -45,10 +44,6 @@ class MediaConfigurationTest {
                         IllegalStateException.class,
                         () -> configuration.mediaKeyMaterial(badPrivate));
         assertFalse(malformed.getMessage().contains("bad-private-secret-value"));
-
-        var shortToken = MediaTestSupport.properties();
-        shortToken.setCallbackInternalToken("short");
-        assertThrows(IllegalStateException.class, () -> configuration.mediaKeyMaterial(shortToken));
 
         assertThrows(
                 IllegalStateException.class,

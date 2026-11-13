@@ -25,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "stream.thumbnail.scheduler-delay=1h",
         "stream.thumbnail.worker-base-url=http://127.0.0.1:8090",
         "stream.thumbnail.internal-hls-base-url=http://127.0.0.1:8888",
-        "stream.thumbnail.internal-token=test-internal-token-0123456789abcdef",
         "stream.lifecycle.reconnect-sweep-enabled=true",
         "stream.lifecycle.reconnect-sweep-delay=1h"
 })

@@ -11,8 +11,6 @@ import java.util.Base64;
 public final class MediaTestSupport {
 
     public static final KeyPair KEYS = generateKeys();
-    public static final String CALLBACK_INTERNAL_TOKEN =
-            "media-hook-internal-token-0123456789abcdef";
 
     private MediaTestSupport() {}
 
@@ -32,7 +30,6 @@ public final class MediaTestSupport {
                 Base64.getEncoder().encodeToString(KEYS.getPrivate().getEncoded()));
         properties.setPublicKeyBase64(
                 Base64.getEncoder().encodeToString(KEYS.getPublic().getEncoded()));
-        properties.setCallbackInternalToken(CALLBACK_INTERNAL_TOKEN);
         return properties;
     }
 
@@ -40,7 +37,6 @@ public final class MediaTestSupport {
         MediaProperties props = properties();
         registry.add("stream.media.private-key-base64", props::getPrivateKeyBase64);
         registry.add("stream.media.public-key-base64", props::getPublicKeyBase64);
-        registry.add("stream.media.callback-internal-token", props::getCallbackInternalToken);
         registry.add("app.service.user", () -> "http://127.0.0.1:1/user");
         registry.add("app.service.channel", () -> "http://127.0.0.1:1/channel");
     }

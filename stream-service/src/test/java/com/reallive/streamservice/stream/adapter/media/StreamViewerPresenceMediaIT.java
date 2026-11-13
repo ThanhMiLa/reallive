@@ -91,7 +91,7 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
 
     private static final String SCHEMA = newSchema();
     private static final int STREAM_PORT = freePort();
-    private static final String CALLBACK_TOKEN = "ccu-media-integration-callback-token-0123456789";
+
     private static final Path TOKEN_DIRECTORY = tokenDirectory();
     private static final Path REPOSITORY =
             Files.exists(Path.of("media-server/config/mediamtx.yml"))
@@ -141,11 +141,7 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                             "http://host.docker.internal:"
                                     + STREAM_PORT
                                     + "/stream/internal/api/media-events")
-                    .withEnv(
-                            "STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN",
-                            MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
                     .withEnv("STREAM_CCU_ENABLED", "true")
-                    .withEnv("STREAM_CCU_CALLBACK_TOKEN", CALLBACK_TOKEN)
                     .withEnv(
                             "STREAM_VIEWER_CALLBACK_URL",
                             "http://host.docker.internal:"
@@ -181,7 +177,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("spring.data.redis.password", () -> "");
         registry.add("stream.ccu.enabled", () -> "true");
-        registry.add("stream.ccu.callback-token", () -> CALLBACK_TOKEN);
         registry.add("stream.ccu.control-token-directory", TOKEN_DIRECTORY::toString);
         registry.add("stream.ccu.reconcile-delay", () -> "3600000");
         registry.add("stream.ccu.token-publish-delay", () -> "3600000");
@@ -525,7 +520,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                                                 "http://127.0.0.1:"
                                                         + STREAM_PORT
                                                         + "/stream/internal/api/viewer-events"))
-                                .header("X-Internal-Token", CALLBACK_TOKEN)
                                 .header("Content-Type", "application/json")
                                 .timeout(Duration.ofSeconds(5))
                                 .POST(

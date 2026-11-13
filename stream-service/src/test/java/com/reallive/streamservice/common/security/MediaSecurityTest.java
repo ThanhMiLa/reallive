@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = MediaJwksController.class, properties = "auth.cookie.access-token.name=access_token")
-@Import({SecurityConfig.class, MediaCallbackSecurityConfiguration.class, CustomJwtDecoder.class,
+@Import({SecurityConfig.class, InternalEndpointSecurityConfiguration.class, CustomJwtDecoder.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         MediaConfiguration.class, StreamClockConfig.class, MediaJwtIssuerImpl.class})
 class MediaSecurityTest {
@@ -65,9 +65,8 @@ class MediaSecurityTest {
         mvc.perform(get("/api/media/jwks/other")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/media/events")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/media/events")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/internal/api/media-events")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/internal/api/media-events").header("X-Internal-Token", "wrong-token"))
-                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/api/media-events")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/internal/api/media-events/child")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams")).andExpect(status().isUnauthorized());
         mvc.perform(get("/error")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/media/jwks").cookie(new Cookie("access_token", "broken"))).andExpect(status().isUnauthorized());
@@ -83,7 +82,7 @@ class MediaSecurityTest {
     }
 
     @Test
-    void internalMediaCallbackWithValidTokenBypassesCookieAuth() throws Exception {
+    void internalMediaCallbackWithoutTokenBypassesCookieAuth() throws Exception {
         byte[] body = mapper.writeValueAsBytes(Map.of(
                 "eventId", UUID.randomUUID(),
                 "eventType", "ONLINE",
@@ -93,9 +92,12 @@ class MediaSecurityTest {
                 "occurredAt", Instant.now()
         ));
         mvc.perform(post("/internal/api/media-events")
-                        .header("X-Internal-Token", MediaTestSupport.CALLBACK_INTERNAL_TOKEN)
+                        .cookie(new Cookie("access_token", "malformed"))
                         .contentType("application/json")
                         .content(body))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/internal/api/streams/" + UUID.randomUUID() + "/chat-context")
+                        .cookie(new Cookie("access_token", "malformed")))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(authorities);
     }

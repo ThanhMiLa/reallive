@@ -29,7 +29,6 @@ READ_TTL = 5 * 60
 CONTROL_TTL = 5 * 60
 JWKS_PATH = '/stream/api/media/jwks'
 EVENTS_PATH = '/stream/internal/api/media-events'
-DEFAULT_CALLBACK_TOKEN = 'fixture-only-internal-callback-token'
 MAX_BODY = 16384
 
 
@@ -380,11 +379,6 @@ def make_server(state, host='127.0.0.1', port=18082, backend=None):
                     self.respond(400, {'error': 'invalid_fixture_request'})
                 except BackendError as error:
                     self.backend_error(error, 'backend_access_failed')
-                return
-            expected_token = os.environ.get('STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN') or DEFAULT_CALLBACK_TOKEN
-            provided_token = self.headers.get('X-Internal-Token', '')
-            if not hmac.compare_digest(provided_token, expected_token):
-                self.respond(401, {'error': 'unauthorized'})
                 return
             try:
                 event = json.loads(body)

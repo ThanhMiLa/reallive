@@ -184,38 +184,37 @@ class SecurityFilterChainTest {
 
 
     @Test
-    void publicEndpointWithoutCookieRemainsAnonymous() throws Exception {
+    void internalEndpointWithoutCookieRemainsAnonymous() throws Exception {
         mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment"))
                 .andExpect(status().isOk()).andExpect(content().string("anonymous"));
         Mockito.verifyNoInteractions(authAuthoritiesReader);
     }
 
     @Test
-    void publicEndpointWithAccessCookieReceivesJwtIdentity() throws Exception {
+    void internalEndpointIgnoresAccessCookie() throws Exception {
         mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
                         .cookie(new Cookie("payment_access", token("ROLE_USER"))))
-                .andExpect(status().isOk()).andExpect(content().string("00000000-0000-0000-0000-000000000001"));
-        Mockito.verify(authAuthoritiesReader).read(UUID.fromString("00000000-0000-0000-0000-000000000001"));
-    }
-
-    @Test
-    void publicEndpointRejectsMalformedAccessCookie() throws Exception {
-        mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
-                        .cookie(new Cookie("payment_access", "malformed-token")))
-                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
+                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
         Mockito.verifyNoInteractions(authAuthoritiesReader);
     }
 
     @Test
-    void publicEndpointWithUnavailableAuthoritiesReturns503() throws Exception {
+    void internalEndpointIgnoresMalformedAccessCookie() throws Exception {
+        mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
+                        .cookie(new Cookie("payment_access", "malformed-token")))
+                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
+        Mockito.verifyNoInteractions(authAuthoritiesReader);
+    }
+
+    @Test
+    void internalEndpointDoesNotLoadAuthorities() throws Exception {
         String access = token("ROLE_USER");
         Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
                 .thenThrow(new AppException(ErrorCode.AUTH_STATE_UNAVAILABLE));
         mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
                         .cookie(new Cookie("payment_access", access)))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.status").value(503))
-                .andExpect(MockMvcResultMatchers.header().doesNotExist("Set-Cookie"));
+                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
+        Mockito.verifyNoInteractions(authAuthoritiesReader);
     }
 
     private String token(String scope) throws Exception {

@@ -7,16 +7,14 @@ import java.time.Duration;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CcuConfigurationTest {
-    @Test void validatesCredentialAndRenewalWindowBeforeEnabling() {
+    @Test void validatesControlDirectoryAndRenewalWindowBeforeEnabling() {
         var ccu = new CcuProperties();
         var media = new MediaProperties();
         var config = new CcuConfiguration(ccu, media);
         assertDoesNotThrow(config::validate);
         ccu.setEnabled(true);
-        ccu.setControlTokenDirectory(Path.of("/tmp/ccu"));
-        ccu.setCallbackToken(" ".repeat(32));
         assertThrows(IllegalStateException.class, config::validate);
-        ccu.setCallbackToken("valid-ccu-callback-secret-0123456789012345");
+        ccu.setControlTokenDirectory(Path.of("/tmp/ccu"));
         media.setControlTokenTtl(Duration.ofSeconds(30));
         assertThrows(IllegalStateException.class, config::validate);
         media.setControlTokenTtl(Duration.ofMinutes(5));
