@@ -8,7 +8,6 @@ import { useAuthStore } from '@/stores/auth.store'
 import type { ChatMessage, ChatPage } from '@/types/chat.types'
 import type {
   StreamMetadata,
-  StreamOperation,
   StreamSession,
   StreamSetup,
 } from '@/types/stream.types'
@@ -27,8 +26,7 @@ type SocketStub = {
 const mocks = vi.hoisted(() => ({
   setup: vi.fn(),
   saveSetup: vi.fn(),
-  resetKey: vi.fn(),
-  operation: vi.fn(),
+  issueKey: vi.fn(),
   current: vi.fn(),
   metadata: vi.fn(),
   access: vi.fn(),
@@ -156,34 +154,16 @@ vi.mock('hls.js', () => {
 const channelId = '00000000-0000-4000-8000-000000000010'
 const categoryId = '00000000-0000-4000-8000-000000000001'
 const sessionId = '462c912c-ee66-4477-9852-bed13d377297'
-const operationId = '00000000-0000-4000-8000-000000000055'
 
 const draftSetup: StreamSetup = {
-  channelId,
-  title: null,
-  categoryId: null,
-  visibility: 'PUBLIC',
-  status: 'DRAFT',
-  generation: 0,
-  operationId: null,
-  serverUrl: null,
-  streamKey: null,
-  publishReady: false,
-  blockedReason: null,
+  channelId, title: '', categoryId: null, visibility: 'PUBLIC', status: 'DRAFT',
+  hasStreamKey: false, blockedReason: null,
 }
-
 const activeSetup: StreamSetup = {
-  channelId,
-  title: 'Morning',
-  categoryId,
-  visibility: 'PUBLIC',
-  status: 'ACTIVE',
-  generation: 1,
-  operationId: null,
-  serverUrl: 'rtmp://localhost:1935/ingest',
-  streamKey: 'ingest-id-1?token=secret-jwt-1',
-  publishReady: true,
-  blockedReason: null,
+  ...draftSetup, title: 'Morning', categoryId, status: 'ACTIVE', hasStreamKey: true,
+}
+const issuedKey = {
+  channelId, serverUrl: 'rtmp://localhost:1935/ingest', streamKey: 'ingest-id-1?token=secret-jwt-1',
 }
 
 const liveSession: StreamSession = {
@@ -247,6 +227,7 @@ beforeEach(() => {
       dob: null,
     },
   })
+  mocks.issueKey.mockResolvedValue(issuedKey)
   mocks.setup.mockResolvedValue(activeSetup)
   mocks.current.mockResolvedValue(null)
   mocks.categories.mockResolvedValue([
@@ -328,94 +309,6 @@ describe('Stream Manager (persistent stream key)', () => {
     expect(mocks.access).not.toHaveBeenCalled()
   })
 
-  it('guides DRAFT setup, validates inputs, provisions on save, and toggles key visibility without Create/End buttons', async () => {
-    mocks.setup.mockResolvedValueOnce(draftSetup).mockResolvedValue(activeSetup)
-    mocks.saveSetup.mockResolvedValue(activeSetup)
-    mount()
-
-    await screen.findByText(/Save a stream title and category above/i)
-    expect(screen.queryByRole('button', { name: /create stream/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /end stream/i })).toBeNull()
-    expect(screen.queryByLabelText('Stream key')).toBeNull()
-
-    // Blank submission caught locally before network call
-    fireEvent.click(screen.getByRole('button', { name: 'Save & get stream key' }))
-    await screen.findByText('Enter a stream title.')
-    expect(mocks.saveSetup).not.toHaveBeenCalled()
-
-    await screen.findByText('Gaming')
-    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: '  Morning  ' } })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: categoryId } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save & get stream key' }))
-
-    await waitFor(() => expect(mocks.saveSetup).toHaveBeenCalledTimes(1))
-    expect(mocks.saveSetup.mock.calls[0][0]).toEqual({ title: 'Morning', categoryId })
-
-    const keyInput = (await screen.findByLabelText('Stream key')) as HTMLInputElement
-    expect(keyInput.type).toBe('password')
-    expect(keyInput.value).toBe('ingest-id-1?token=secret-jwt-1')
-    expect(screen.getByDisplayValue('rtmp://localhost:1935/ingest')).toBeTruthy()
-    expect(screen.queryByText(/Expires:/i)).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show stream key' }))
-    expect((screen.getByLabelText('Stream key') as HTMLInputElement).type).toBe('text')
-    fireEvent.click(screen.getByRole('button', { name: 'Hide stream key' }))
-    expect((screen.getByLabelText('Stream key') as HTMLInputElement).type).toBe('password')
-  })
-
-  it('shows PROVISIONING, ROTATING, and BLOCKED states and hides credentials until ACTIVE', async () => {
-    mocks.setup.mockResolvedValue({
-      ...draftSetup,
-      title: 'Setup Stream',
-      categoryId,
-      status: 'BLOCKED',
-      generation: 1,
-      blockedReason: 'Account suspended from streaming.',
-    })
-    mount()
-    expect(
-      within(await screen.findByRole('alert')).getByText('Account suspended from streaming.'),
-    ).toBeTruthy()
-    expect(screen.queryByLabelText('Stream key')).toBeNull()
-    cleanup()
-
-    const pendingOp: StreamOperation = {
-      operationId,
-      operationType: 'PROVISION_INGEST',
-      status: 'RUNNING',
-      channelId,
-      credentialGeneration: 1,
-      targetSessionId: null,
-      lastError: null,
-    }
-    mocks.setup.mockResolvedValue({
-      ...draftSetup,
-      title: 'Setup Stream',
-      categoryId,
-      status: 'PROVISIONING',
-      generation: 1,
-      operationId,
-    })
-    mocks.operation.mockResolvedValue(pendingOp)
-    mount()
-    expect(await screen.findByText(/Provisioning your ingest path/i)).toBeTruthy()
-    expect(screen.queryByLabelText('Stream key')).toBeNull()
-    cleanup()
-
-    mocks.setup.mockResolvedValue({
-      ...draftSetup,
-      title: 'Setup Stream',
-      categoryId,
-      status: 'ROTATING',
-      generation: 2,
-      operationId,
-    })
-    mocks.operation.mockResolvedValue({ ...pendingOp, operationType: 'RESET_KEY', credentialGeneration: 2 })
-    mount()
-    expect(await screen.findByText(/Resetting your stream key/i)).toBeTruthy()
-    expect(screen.queryByLabelText('Stream key')).toBeNull()
-  })
-
   it('auto-detects OBS going live from offline /me/current refetch and displays LIVE preview and chat', async () => {
     mocks.setup.mockResolvedValue(activeSetup)
     mocks.current.mockResolvedValueOnce(null).mockResolvedValue(liveSession)
@@ -469,57 +362,6 @@ describe('Stream Manager (persistent stream key)', () => {
     expect(hls.destroy).toHaveBeenCalled()
   })
 
-  it('resets stream key with confirmation modal and Idempotency-Key and transitions to new key', async () => {
-    const gen2Setup: StreamSetup = {
-      ...activeSetup,
-      generation: 2,
-      streamKey: 'ingest-id-2?token=secret-jwt-2',
-    }
-    const resetOpRunning: StreamOperation = {
-      operationId,
-      operationType: 'RESET_KEY',
-      status: 'PENDING',
-      channelId,
-      credentialGeneration: 2,
-      targetSessionId: sessionId,
-      lastError: null,
-    }
-    const resetOpDone: StreamOperation = { ...resetOpRunning, status: 'SUCCEEDED' }
-    const endedLive: StreamSession = { ...liveSession, status: 'ENDED', endedAt: '2026-10-30T00:20:00Z' }
-
-    mocks.current.mockResolvedValueOnce(liveSession).mockResolvedValue(null)
-    mocks.metadata.mockResolvedValue({ ...liveSession, currentViewerCount: 1 })
-    mocks.setup.mockResolvedValueOnce(activeSetup).mockResolvedValueOnce({
-      ...draftSetup,
-      title: 'Morning',
-      categoryId,
-      status: 'ROTATING',
-      generation: 2,
-      operationId,
-    }).mockResolvedValue(gen2Setup)
-    mocks.resetKey.mockResolvedValue(resetOpRunning)
-    mocks.operation.mockResolvedValueOnce(resetOpDone)
-
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'Reset stream key' }))
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText(/active broadcast will end immediately/i)).toBeTruthy()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Reset stream key' }))
-
-    await waitFor(() => expect(mocks.resetKey).toHaveBeenCalledTimes(1))
-    expect(typeof mocks.resetKey.mock.calls[0][0]).toBe('string')
-    expect(mocks.resetKey.mock.calls[0][0].length).toBeGreaterThan(8)
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    await waitFor(() =>
-      expect((screen.getByLabelText('Stream key') as HTMLInputElement).value).toBe(
-        'ingest-id-2?token=secret-jwt-2',
-      ),
-    )
-    expect(mocks.toast).toHaveBeenCalledWith('Stream key reset. Update OBS with your new key.')
-    expect(endedLive.status).toBe('ENDED')
-  })
-
   it('discards delayed playback access after the session ends', async () => {
     mocks.current.mockResolvedValue(liveSession)
     mocks.metadata.mockResolvedValue(liveSession)
@@ -568,52 +410,6 @@ describe('Stream Manager (persistent stream key)', () => {
       })
     })
     expect(input.value).toBe('Unsaved Draft Title')
-  })
-
-  it('ignores stale saveSetup responses from an older generation after reset advances generation', async () => {
-    const delayedSave = deferred<StreamSetup>()
-    mocks.setup.mockResolvedValue(activeSetup)
-    mocks.saveSetup.mockReturnValue(delayedSave.promise)
-    mount()
-
-    const input = (await screen.findByLabelText('Stream title')) as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'Old Gen Edit' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(mocks.saveSetup).toHaveBeenCalledTimes(1))
-
-    const gen2Setup: StreamSetup = {
-      ...activeSetup,
-      generation: 2,
-      title: 'Reset Era Title',
-      streamKey: 'ingest-id-2?token=secret-jwt-2',
-    }
-    mocks.setup.mockResolvedValue(gen2Setup)
-    act(() => {
-      client.setQueryData(['stream', 'setup', 'owner'], gen2Setup)
-    })
-
-    await act(async () => {
-      delayedSave.resolve({ ...activeSetup, generation: 1, title: 'Old Gen Edit' })
-      await delayedSave.promise
-    })
-
-    expect(client.getQueryData(['stream', 'setup', 'owner'])).toEqual(gen2Setup)
-    expect(mocks.toast).not.toHaveBeenCalledWith('Stream information saved')
-  })
-
-  it('reports clipboard failure rather than a false success', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
-    })
-    mount()
-    await screen.findByLabelText('Stream key')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[1])
-    await waitFor(() =>
-      expect(mocks.toast).toHaveBeenCalledWith(
-        expect.stringContaining('Could not copy stream key'),
-      ),
-    )
   })
 
   it('refetches metadata when playback access returns 409', async () => {
@@ -699,29 +495,6 @@ describe('Stream Manager (persistent stream key)', () => {
     expect(document.activeElement).toBe(input)
   })
 })
-
-it('refreshes ACTIVE setup until ingest recovery reveals the key', async () => {
-  mocks.setup.mockResolvedValueOnce({ ...activeSetup, publishReady: false, operationId })
-    .mockResolvedValue(activeSetup)
-  mocks.operation.mockResolvedValue({
-    operationId,
-    operationType: 'PROVISION_INGEST',
-    status: 'SUCCEEDED',
-    channelId,
-    credentialGeneration: 1,
-    targetSessionId: null,
-    lastError: null,
-  })
-  mount()
-  await waitFor(() => expect(client.getQueryData(['stream', 'setup', 'owner']))
-    .toHaveProperty('publishReady', false))
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 4000)) })
-  expect(mocks.current.mock.calls.length).toBeGreaterThan(1)
-  expect(mocks.setup.mock.calls.length).toBeGreaterThan(1)
-  expect(mocks.operation).toHaveBeenCalled()
-  expect(screen.getByLabelText('Stream key')).toBeTruthy()
-}, 10000)
-
 it('reopens playback after a fatal temporary HLS error with unchanged LIVE metadata', async () => {
   mocks.current.mockResolvedValue(liveSession)
   mount()
@@ -738,21 +511,6 @@ it('reopens playback after a fatal temporary HLS error with unchanged LIVE metad
   expect(mocks.access).toHaveBeenCalledTimes(2)
   expect(mocks.hls).toHaveLength(2)
 }, 10000)
-
-it('removes permanent credentials from the application cache on logout', async () => {
-  mount()
-  const { queryClient: applicationClient } = await import('@/lib/query-client')
-  const { authApi } = await import('@/api/auth.api')
-  const logout = vi.spyOn(authApi, 'logout').mockResolvedValue({
-    status: 200, code: 0, message: 'Logged out', result: undefined,
-  })
-  applicationClient.setQueryData(['stream', 'setup', 'owner'], activeSetup)
-  await act(async () => { await useAuthStore.getState().logout() })
-  expect(applicationClient.getQueryData(['stream', 'setup', 'owner'])).toBeUndefined()
-  applicationClient.clear()
-  logout.mockRestore()
-})
-
 it('clears permanent credentials when the authenticated owner changes', async () => {
   mount()
   const { queryClient: applicationClient } = await import('@/lib/query-client')
@@ -776,4 +534,66 @@ it('cancels a scheduled HLS reopen when the preview unmounts', async () => {
   view.unmount()
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1200)) })
   expect(mocks.access).toHaveBeenCalledTimes(1)
+})
+
+it('saves metadata separately and reveals a newly issued key only until copied', async () => {
+  mocks.setup.mockResolvedValue({ ...draftSetup, title: 'Morning', categoryId })
+  mocks.saveSetup.mockResolvedValue({ ...draftSetup, title: 'Changed', categoryId })
+  mount()
+  const title = await screen.findByLabelText('Stream title')
+  fireEvent.change(title, { target: { value: 'Changed' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() => expect(mocks.saveSetup).toHaveBeenCalledTimes(1))
+  expect(mocks.issueKey).not.toHaveBeenCalled()
+  expect(screen.queryByLabelText('Stream key')).toBeNull()
+  mocks.setup.mockResolvedValue(activeSetup)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate stream key' }))
+  const key = await screen.findByLabelText('Stream key') as HTMLInputElement
+  expect(key.type).toBe('password')
+  expect(key.value).toBe(issuedKey.streamKey)
+  expect(JSON.stringify(client.getQueryCache().getAll().map((query) => query.state.data)))
+    .not.toContain('secret-jwt-1')
+  Object.defineProperty(navigator, 'clipboard', { configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) } })
+  fireEvent.click(within(key.parentElement!).getByRole('button', { name: 'Copy' }))
+  await waitFor(() => expect(screen.queryByLabelText('Stream key')).toBeNull())
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+})
+
+it('never reveals an existing key on reload and requires confirmation to generate another', async () => {
+  mount()
+  await screen.findByRole('button', { name: 'Generate new stream key' })
+  expect(screen.queryByLabelText('Stream key')).toBeNull()
+  expect(mocks.issueKey).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Generate new stream key' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reset stream key' }))
+  await screen.findByDisplayValue(issuedKey.streamKey)
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+  cleanup()
+  mount()
+  await screen.findByRole('button', { name: 'Generate new stream key' })
+  expect(screen.queryByLabelText('Stream key')).toBeNull()
+})
+
+it('keeps one-time credentials visible when copying fails', async () => {
+  mocks.setup.mockResolvedValue({ ...activeSetup, hasStreamKey: false })
+  Object.defineProperty(navigator, 'clipboard', { configurable: true,
+    value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } })
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: 'Generate stream key' }))
+  const key = await screen.findByLabelText('Stream key')
+  fireEvent.click(within(key.parentElement!).getByRole('button', { name: 'Copy' }))
+  await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Could not copy stream key')))
+  expect(screen.getByLabelText('Stream key')).toBeTruthy()
+})
+
+it('returns a synchronous issuance error without polling or retrying key generation', async () => {
+  mocks.setup.mockResolvedValue({ ...activeSetup, hasStreamKey: false })
+  mocks.issueKey.mockRejectedValue({ isAxiosError: true, response: { status: 503 } })
+  mount()
+  fireEvent.click(await screen.findByRole('button', { name: 'Generate stream key' }))
+  await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('unavailable')))
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+  expect(screen.queryByLabelText('Stream key')).toBeNull()
 })

@@ -7,11 +7,10 @@ import os
 from pathlib import Path
 import re
 import tempfile
-import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-from uuid import UUID, uuid4
+from uuid import UUID
 
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -61,18 +60,6 @@ def request(base_url, cookie, method, path, body, expected, extra_headers=None):
     return result.get('result'), cache_control
 
 
-def await_setup_ready(base_url, cookie, timeout_seconds=20):
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        setup, cache_control = request(base_url, cookie, 'GET', '/api/streams/me/setup', None, {200})
-        if cache_control != 'no-store':
-            raise RuntimeError('Setup response must use Cache-Control: no-store')
-        if setup.get('status') == 'ACTIVE' and setup.get('publishReady') and setup.get('streamKey'):
-            return setup
-        time.sleep(0.25)
-    raise RuntimeError('Stream setup did not become ACTIVE and publishReady')
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-url', default='http://127.0.0.1:8888/stream')
@@ -99,10 +86,10 @@ def main():
     if save_cc != 'no-store':
         raise RuntimeError('Save setup response must use Cache-Control: no-store')
 
-    setup = await_setup_ready(base_url, cookie)
+    setup, _ = request(base_url, cookie, 'POST', '/api/streams/me/stream-key', None, {200})
     if '?token=' not in setup['streamKey']:
         raise RuntimeError('Invalid persistent streamKey format')
-    ingest_key_id = str(UUID(setup['streamKey'].split('?token=', 1)[0]))
+    UUID(setup['streamKey'].split('?token=', 1)[0])
 
     current, _ = request(base_url, cookie, 'GET', '/api/streams/me/current', None, {200})
     if current is not None and any(field in json.dumps(current) for field in ('streamKey', 'token=')):
@@ -110,38 +97,22 @@ def main():
 
     updated, _ = request(base_url, cookie, 'PUT', '/api/streams/me/setup',
                            {'title': args.update_title, 'categoryId': str(args.category_id)}, {200})
-    if updated['title'] != args.update_title or updated['streamKey'] != setup['streamKey']:
+    if updated['title'] != args.update_title or 'streamKey' in updated:
         raise RuntimeError('Updating metadata unexpectedly changed persistent stream key')
 
-    reset_op, reset_cc = request(base_url, cookie, 'POST', '/api/streams/me/stream-key/reset', None, {202},
-                                 extra_headers={'Idempotency-Key': str(uuid4())})
-    if reset_cc != 'no-store':
-        raise RuntimeError('Reset response must use Cache-Control: no-store')
-    op_id = str(UUID(reset_op['operationId']))
-
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline:
-        op, _ = request(base_url, cookie, 'GET', '/api/streams/me/operations/' + op_id, None, {200})
-        if op.get('status') == 'SUCCEEDED':
-            break
-        if op.get('status') == 'CANCELLED':
-            raise RuntimeError('Reset operation was cancelled')
-        time.sleep(0.25)
-    else:
-        raise RuntimeError('Reset operation did not finish in time')
-
-    rotated = await_setup_ready(base_url, cookie)
+    rotated, _ = request(base_url, cookie, 'POST', '/api/streams/me/stream-key', None, {200})
+    metadata, _ = request(base_url, cookie, 'GET', '/api/streams/me/setup', None, {200})
+    if 'streamKey' in metadata or 'serverUrl' in metadata:
+        raise RuntimeError('Setup response must not expose credentials')
     if rotated['streamKey'] == setup['streamKey']:
         raise RuntimeError('Stream key reset did not issue a new persistent key')
 
     write_private(args.credentials_file, {
         'channelId': rotated['channelId'],
-        'generation': rotated['generation'],
         'serverUrl': rotated['serverUrl'],
         'streamKey': rotated['streamKey'],
     })
-    print('PASS: setup/save/current/reset/operations verified; channelId=' + str(rotated['channelId'])
-          + ' prevIngestKey=' + ingest_key_id + ' generation=' + str(rotated['generation']))
+    print('PASS: setup/save/current/one-time issue/rotation verified; channelId=' + str(rotated['channelId']))
     print('OBS credentials saved privately to ' + str(args.credentials_file))
 
 
