@@ -19,7 +19,7 @@ com.reallive.streamservice/
 
 New streaming features belong under a business module such as `stream`, with its own `controller`, `service`, `service.impl`, `repository`, `entity`, `mapper` and `dto.request` / `dto.response` packages as needed. Media Server, Kafka and viewer Redis integrations belong under that module's `adapter`; calls to User Service or Channel Service belong under its `client`.
 
-Security follows the [Auth State contract](../docs/contracts/Auth%20State.md). Gateway validates JWT signatures, lifetime, token type, revocation and account status. Stream Service reads the forwarded access-token cookie and loads current authorities from Redis on each authenticated request, ignoring JWT scope. Backend ports are restricted to trusted callers in this model. Business endpoints require authentication. The exact `GET /api/media/jwks` route is `permitAll`, and `POST /internal/api/media-events` uses constant-time `X-Internal-Token` authentication (`InternalCallbackTokenFilter`).
+Security follows the [Auth State contract](../docs/contracts/Auth%20State.md). Gateway validates JWT signatures, lifetime, token type, revocation and account status. Stream Service reads the forwarded access-token cookie and loads current authorities from Redis on each authenticated request, ignoring JWT scope. Backend ports are restricted to trusted callers in this model. Business endpoints require authentication. The exact `GET /api/media/jwks` route is `permitAll`, and internal service endpoints use a separate `permitAll` filter chain with no account JWT or internal-token verification. Matchers are scoped to the supported paths and HTTP methods; Gateway does not route these paths.
 
 Authentication and authorization failures use `ApiResponse` with HTTP 401/403. Missing, corrupt or unavailable Redis authorities return HTTP 503 without clearing cookies. Application errors, invalid requests and database failures also use the common response envelope.
 
@@ -41,7 +41,7 @@ The development profile defaults to `http://localhost:8082/stream`, PostgreSQL a
 ./mvnw clean verify
 ```
 
-Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontainers for Flyway, persistence and concurrency checks. Docker is required. Redis authorities are mocked; test media keys and callback secrets are generated in memory, so application credentials are not required. The real-MediaMTX integration tests (`MediaMtxAuthenticationIT`, `StreamProvisioningMediaIT`, `StreamViewerPresenceMediaIT`) are opt-in as described below.
+Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontainers for Flyway, persistence and concurrency checks. Docker is required. Redis authorities are mocked; test media keys are generated in memory, so application credentials are not required. The real-MediaMTX integration tests (`MediaMtxAuthenticationIT`, `StreamProvisioningMediaIT`, `StreamViewerPresenceMediaIT`) are opt-in as described below.
 
 ## Synchronous persistent stream keys (V6)
 
@@ -53,7 +53,7 @@ See [architecture and workflow](../docs/architecture/Streaming%20Architecture%20
 - Copying the key or leaving the manager clears its local UI state. GET/Save/reload never return a previous key. Keys already configured in OBS continue working across sessions until replacement.
 - Media callbacks POST `/stream/internal/api/media-events` process ONLINE/OFFLINE synchronously and return `200` APPLIED/IGNORED. OBS Start creates LIVE only after playback is ready; Stop starts a 60s grace. The reconnect scheduler expires sessions directly.
 - Three business tables: channel_stream_configs, stream_sessions, stream_status_history. No credential/token persistence, operation queue, media recovery worker, runtime-state table, advisory lock or lease. Config row locks precede session locks and remain held through bounded Control API calls.
-- RSA keys must remain stable. Configure `STREAM_MEDIA_PRIVATE_KEY_BASE64`, `STREAM_MEDIA_PUBLIC_KEY_BASE64` and `STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN` (32+ non-whitespace characters), RTMP/HLS/Control URLs. AES credential encryption is no longer required.
+- RSA keys must remain stable. Configure `STREAM_MEDIA_PRIVATE_KEY_BASE64`, `STREAM_MEDIA_PUBLIC_KEY_BASE64`, RTMP/HLS/Control URLs. AES credential encryption is no longer required.
 - Media errors return immediately; there is no automatic retry/recovery after crash or MediaMTX restart. DB rollback cannot undo media changes. An interrupted operation may require a fresh key request or manual path cleanup.
 
 ### Migration and verification
@@ -69,7 +69,7 @@ The opt-in suites use isolated PostgreSQL/Redis/MediaMTX and FFmpeg, not the run
 
 ## Livestream thumbnail callbacks
 
-`POST /stream/internal/api/thumbnail-results` accepts thumbnail results directly from Media Worker, outside Gateway routes. Enable it independently with `STREAM_THUMBNAIL_CALLBACK_ENABLED=true`; set `STREAM_SERVICE_INTERNAL_TOKEN` to the Worker's callback secret, `R2_PUBLIC_BASE_URL` to the thumbnail bucket's public URL and optionally `STREAM_THUMBNAIL_MAX_JPEG_BYTES` (default 5242880). Account cookies do not authenticate this endpoint.
+`POST /stream/internal/api/thumbnail-results` accepts thumbnail results directly from Media Worker, outside Gateway routes. Enable it independently with `STREAM_THUMBNAIL_CALLBACK_ENABLED=true`; set `R2_PUBLIC_BASE_URL` to the thumbnail bucket's public URL and optionally `STREAM_THUMBNAIL_MAX_JPEG_BYTES` (default 5242880). This internal endpoint accepts calls without credentials and ignores account cookies.
 
 The backend locks the session row, checks the current waiting job ID, deadline and LIVE state, then atomically stores the URL/object key, UTC `thumbnail_updated_at` and SUCCEEDED status. Job ID and deadline are retained. Responses are plain `{"outcome":"APPLIED"}` or `{"outcome":"IGNORED"}`. No R2 request is made inside the transaction.
 

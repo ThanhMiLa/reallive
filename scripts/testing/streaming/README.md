@@ -198,6 +198,6 @@ Stop Streaming trong OBS, đóng path trên trang, sau đó:
 python3 scripts/testing/streaming/stack.py down
 ```
 
-Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service (`/stream/internal/api/media-events` với `X-Internal-Token`) và vòng đời DB/service đồng bộ thật thuộc backend, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service (`/stream/internal/api/media-events`, không cần token nội bộ) và vòng đời DB/service đồng bộ thật thuộc backend, không coi fixture là backend nghiệp vụ hoàn chỉnh.
 
 V6 owner smoke: setup/save → POST `/api/streams/me/stream-key` → current → save → POST cấp lại key. Không có polling operation hay idempotency header; credential chỉ có trong response POST. GET setup không trả key.
