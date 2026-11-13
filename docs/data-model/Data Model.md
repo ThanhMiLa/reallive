@@ -254,66 +254,118 @@ Composite Index:
 
 ### 3.1 Tables
 
-Thiết kế MVP cập nhật ngày 2026-10-25 theo [plan xử lý đồng bộ](../Implement%20Plan/Streaming%20MVP%20Phase%201%20Implementation%20Plan.md): Stream Service có hai bảng `stream_sessions` và `stream_status_history`. Backend gọi MediaMTX trực tiếp và chờ kết quả; không dùng bảng task hoặc worker retry.
+Thiết kế cập nhật theo migration **V4** (thumbnail dispatch) và **V5** ([Refactor livestream: Stream Key cố định](../implement-plan/Streaming%20Persistent%20Key%20Refactor%20Plan.md)): Stream Service quản lý cấu hình phát cố định theo kênh (`channel_stream_configs`), từng thế hệ credential mã hóa (`channel_stream_credentials`), phiên phát tách playback (`stream_sessions`), lịch sử trạng thái (`stream_status_history`), hàng đợi/tiến trình media bền vững (`stream_media_operations`) và runtime state của MediaMTX (`stream_media_runtime_state`). Migrations V1–V4 được giữ nguyên làm lịch sử schema; V5 chặn migration nếu còn session `READY`/`LIVE`/`RECONNECTING` đang hoạt động.
 
-Các bảng và constraint dưới đây mô tả schema sau V3: V2 bỏ bảng task, V3 bỏ cột version của session. V1/V2 được giữ nguyên làm lịch sử migration. Migration mới chỉ được kiểm chứng trên PostgreSQL test cô lập, chưa áp dụng vào database ứng dụng; xem [kết quả Giai đoạn 1](../testing/Streaming%20MVP%20Tests.md).
-
-#### 3.1.1 stream_sessions
+#### 3.1.1 channel_stream_configs
 
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Stream session ID, path `live/{id}` |
-| channel_id | UUID | NOT NULL | INDEX | Channel ID from Channel Service |
-| streamer_id | UUID | NOT NULL | INDEX | Streamer ID from User Service |
-| owner_user_id | UUID | NOT NULL | INDEX | Owner user identifier |
-| category_id | UUID | NOT NULL | INDEX | Category ID from Channel Service |
-| title | VARCHAR(255) | NOT NULL | - | Stream title, non-blank |
-| visibility | VARCHAR(30) | NOT NULL | INDEX | `PUBLIC, PRIVATE, UNLISTED` |
-| status | VARCHAR(30) | NOT NULL | INDEX | `READY, LIVE, RECONNECTING, ENDED` |
-| playback_path | VARCHAR(500) | UNIQUE, NOT NULL | UNIQUE | HLS playback path `/live/{id}/index.m3u8` |
-| creation_request_id | UUID | NOT NULL | UNIQUE Composite | Owner creation request identifier for deduplication |
-| media_path_state | VARCHAR(30) | NOT NULL | - | `OPEN, CLOSED`; confirmed media path state when the transaction commits |
-| media_source_id | UUID | - | - | Active media publisher connection identifier |
-| media_source_type | VARCHAR(30) | - | - | `rtmpConn, rtmpsConn` |
-| disconnected_at | TIMESTAMP | - | - | Timestamp when current media connection disconnected |
-| reconnect_deadline_at | TIMESTAMP | - | INDEX | Reconnect deadline timestamp |
-| started_at | TIMESTAMP | - | INDEX | Actual stream first start time |
-| ended_at | TIMESTAMP | - | - | Stream end time |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Created time |
+| channel_id | UUID | PK, NOT NULL | Primary | Channel ID from Channel Service |
+| streamer_id | UUID | UNIQUE, NOT NULL | UNIQUE | Streamer ID from User Service |
+| owner_user_id | UUID | UNIQUE, NOT NULL | UNIQUE | Owner user identifier |
+| title | VARCHAR(255) | NOT NULL | - | Saved channel stream title |
+| category_id | UUID | - | - | Saved category ID (nullable while `DRAFT`) |
+| visibility | VARCHAR(30) | NOT NULL, DEFAULT `'PUBLIC'` | - | Fixed `'PUBLIC'` |
+| status | VARCHAR(30) | NOT NULL | - | `DRAFT, PROVISIONING, ACTIVE, ROTATING, BLOCKED` |
+| current_ingest_key_id | UUID | UNIQUE | UNIQUE | Active/provisioning ingest key UUID |
+| current_credential_generation | BIGINT | NOT NULL, DEFAULT `0` | - | Monotonic credential generation counter (`>= 0`) |
+| media_revision | BIGINT | NOT NULL, DEFAULT `0` | - | Media intent revision counter (`>= 0`) |
+| blocked_reason | VARCHAR(500) | - | - | Non-null reason only when `status = 'BLOCKED'` |
+| created_at | TIMESTAMP | NOT NULL | - | Created time |
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
 
 Constraints:
 
-- `UNIQUE (owner_user_id, creation_request_id)`
-- `CHECK (length(btrim(title)) > 0)`
-- `CHECK (length(btrim(playback_path)) > 0)`
+- `UNIQUE (owner_user_id)`, `UNIQUE (streamer_id)`, `UNIQUE (current_ingest_key_id)`
+- `CHECK (status = 'DRAFT' OR length(btrim(title)) > 0)`
+- `CHECK (visibility = 'PUBLIC')`
+- `CHECK (status IN ('DRAFT', 'PROVISIONING', 'ACTIVE', 'ROTATING', 'BLOCKED'))`
+- `CHECK (status = 'BLOCKED' OR blocked_reason IS NULL)`
+- `CHECK ((status IN ('DRAFT', 'BLOCKED') AND current_ingest_key_id IS NULL AND current_credential_generation = 0) OR (status <> 'DRAFT' AND category_id IS NOT NULL AND current_ingest_key_id IS NOT NULL AND current_credential_generation > 0))`
+
+#### 3.1.2 channel_stream_credentials
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Credential row ID |
+| channel_id | UUID | FK, NOT NULL | INDEX Composite | References `channel_stream_configs(channel_id)`, ON DELETE CASCADE |
+| generation | BIGINT | NOT NULL | UNIQUE Composite | Positive generation (`> 0`) |
+| ingest_key_id | UUID | UNIQUE, NOT NULL | UNIQUE | Random ingest UUID for `ingest/{ingest_key_id}` |
+| status | VARCHAR(30) | NOT NULL | INDEX Composite | `PENDING, ACTIVE, REVOKED` |
+| encrypted_publish_jwt | TEXT | NOT NULL | - | AES-256-GCM encrypted permanent Publish JWT (`ingest/{ingest_key_id}`) |
+| encrypted_relay_read_jwt | TEXT | NOT NULL | - | AES-256-GCM encrypted internal permanent Relay Read JWT (`ingest/{ingest_key_id}`) |
+| issued_at | TIMESTAMP | NOT NULL | - | Credential issuance timestamp |
+| activated_at | TIMESTAMP | - | - | Activation timestamp (required when `ACTIVE`) |
+| revoked_at | TIMESTAMP | - | - | Revocation timestamp (required when `REVOKED`) |
+| revocation_reason | VARCHAR(500) | - | - | Reason when revoked |
+| created_at | TIMESTAMP | NOT NULL | - | Created time |
+| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
+
+Constraints & Indexes:
+
+- `UNIQUE (channel_id, generation)`, `UNIQUE (ingest_key_id)`
+- `UNIQUE INDEX uq_channel_stream_credentials_non_revoked ON channel_stream_credentials (channel_id) WHERE status IN ('PENDING', 'ACTIVE')`
+- `INDEX idx_channel_stream_credentials_channel_status ON channel_stream_credentials (channel_id, status, generation DESC)`
+- Credential `REVOKED` không bao giờ được kích hoạt lại.
+
+#### 3.1.3 stream_sessions
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Stream session ID, playback path `live/{id}` |
+| channel_id | UUID | NOT NULL | INDEX | Channel ID from Channel Service |
+| streamer_id | UUID | NOT NULL | INDEX | Streamer ID from User Service |
+| owner_user_id | UUID | NOT NULL | INDEX | Owner user identifier |
+| category_id | UUID | NOT NULL | INDEX | Category ID from Channel Service |
+| title | VARCHAR(255) | NOT NULL | - | Stream title snapshot, non-blank |
+| visibility | VARCHAR(30) | NOT NULL | INDEX | `PUBLIC, PRIVATE, UNLISTED` (`PUBLIC` used in MVP) |
+| status | VARCHAR(30) | NOT NULL | INDEX | V5 active/new states: `LIVE, RECONNECTING, ENDED` (`READY` history forbidden for new inserts) |
+| playback_path | VARCHAR(500) | UNIQUE, NOT NULL | UNIQUE | HLS playback path `/live/{id}/index.m3u8` |
+| creation_request_id | UUID | - | UNIQUE Composite | Legacy nullable request ID (kept nullable after V5) |
+| ingest_key_id | UUID | FK | Partial INDEX | References `channel_stream_credentials(ingest_key_id)` (nullable for legacy history) |
+| media_path_state | VARCHAR(30) | NOT NULL | - | Playback path state: `OPEN, CLOSED` |
+| media_source_id | UUID | - | - | Active OBS ingest publisher connection UUID |
+| media_source_type | VARCHAR(30) | - | - | `rtmpConn, rtmpsConn` |
+| disconnected_at | TIMESTAMP | - | - | Timestamp when OBS publisher disconnected |
+| reconnect_deadline_at | TIMESTAMP | - | Partial INDEX | Reconnect grace deadline (`occurredAt + 60s`) |
+| started_at | TIMESTAMP | - | INDEX | Actual stream first start time |
+| ended_at | TIMESTAMP | - | - | Stream end time |
+| end_requested | BOOLEAN | NOT NULL, DEFAULT `FALSE` | - | Prevents delayed ONLINE from reviving closing/resetting sessions |
+| end_requested_at | TIMESTAMP | - | - | Timestamp when closure/reset requested session end |
+| end_reason | VARCHAR(500) | - | - | Reason for requested closure |
+| thumbnail_url | VARCHAR(1000) | - | - | Current R2 thumbnail URL (V4) |
+| thumbnail_object_key | VARCHAR(500) | - | - | Current R2 thumbnail object key (V4) |
+| thumbnail_updated_at | TIMESTAMP | - | Partial INDEX | Last successful thumbnail commit time (V4) |
+| thumbnail_job_id | UUID | - | - | Latest thumbnail job ID (V4) |
+| thumbnail_job_status | VARCHAR(30) | - | Partial INDEX | `PENDING_DISPATCH, ACCEPTED, SUCCEEDED, FAILED` (V4) |
+| thumbnail_job_deadline_at | TIMESTAMP | - | Partial INDEX | Waiting thumbnail job deadline (V4) |
+| created_at | TIMESTAMP | NOT NULL | INDEX | Created time |
+| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
+
+Constraints & Indexes:
+
+- `UNIQUE (owner_user_id, creation_request_id)` (multiple `NULL`s allowed in PostgreSQL)
+- `CHECK (length(btrim(title)) > 0)`, `CHECK (length(btrim(playback_path)) > 0)`
 - `CHECK (visibility IN ('PUBLIC', 'PRIVATE', 'UNLISTED'))`
-- `CHECK (status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
+- `CHECK (status IN ('LIVE', 'RECONNECTING', 'ENDED'))`
 - `CHECK (media_path_state IN ('OPEN', 'CLOSED'))`
 - `CHECK (media_source_type IS NULL OR media_source_type IN ('rtmpConn', 'rtmpsConn'))`
 - `CHECK (status <> 'RECONNECTING' OR (disconnected_at IS NOT NULL AND reconnect_deadline_at IS NOT NULL))`
 - `CHECK (status <> 'LIVE' OR (started_at IS NOT NULL AND media_source_id IS NOT NULL AND media_source_type IS NOT NULL AND reconnect_deadline_at IS NULL))`
 - `CHECK ((status = 'ENDED' AND ended_at IS NOT NULL) OR (status <> 'ENDED' AND ended_at IS NULL))`
-- `CHECK ((status IN ('READY', 'LIVE', 'RECONNECTING') AND media_path_state = 'OPEN') OR (status = 'ENDED' AND media_path_state = 'CLOSED'))`
+- `CHECK ((status = 'LIVE' AND media_path_state = 'OPEN') OR (status = 'RECONNECTING' AND media_path_state IN ('OPEN', 'CLOSED')) OR (status = 'ENDED' AND media_path_state = 'CLOSED'))`
+- `CHECK ((end_requested = FALSE AND end_requested_at IS NULL AND end_reason IS NULL) OR (end_requested = TRUE AND end_requested_at IS NOT NULL))`
+- `UNIQUE INDEX uq_stream_sessions_channel_slot ON stream_sessions (channel_id) WHERE status IN ('LIVE', 'RECONNECTING')`
+- `INDEX idx_stream_sessions_ingest_key_id ON stream_sessions (ingest_key_id) WHERE ingest_key_id IS NOT NULL`
+- Thumbnail partial indexes (V4): `idx_stream_sessions_thumbnail_due`, `idx_stream_sessions_thumbnail_pending_dispatch`, `idx_stream_sessions_thumbnail_job_deadline`
 
-Indexes:
+Quy tắc khóa & vòng đời (V5):
 
-- `UNIQUE INDEX uq_stream_sessions_channel_slot ON stream_sessions (channel_id) WHERE status IN ('READY', 'LIVE', 'RECONNECTING')`
-- `INDEX (visibility, status, started_at DESC, id ASC)`
-- `INDEX (owner_user_id, created_at DESC, id DESC)`
-- `INDEX (status, reconnect_deadline_at) WHERE status = 'RECONNECTING'`
-- `INDEX (channel_id)`
-- `INDEX (streamer_id)`
-- `INDEX (category_id)`
+- Thứ tự khóa chuẩn cho mọi thao tác lifecycle/media: khóa hàng `channel_stream_configs` trước (`PESSIMISTIC_WRITE`), sau đó mới khóa `stream_sessions`; không giữ database transaction mở trong lúc gọi HTTP sang MediaMTX hoặc User/Channel Service.
+- Không tạo session trước ở `READY`: session mới được ghi `LIVE` chỉ sau khi xác nhận `ingest/{ingestKeyId}` đang phát, hậu kiểm eligibility và `live/{sessionId}` đã sẵn sàng.
+- `media_path_state` phản ánh playback path `live/{sessionId}` (có thể đóng tạm `CLOSED` trong khi `RECONNECTING`).
 
-Quy tắc ghi dữ liệu đồng bộ:
-
-- Dùng pessimistic locking (`PESSIMISTIC_WRITE`) trong cùng transaction cho mọi thao tác cập nhật session hiện có; không dùng cột version hoặc JPA @Version. Unique index vẫn bảo vệ Create khi chưa có row để khóa.
-- Create reserve slot bằng row READY/OPEN chưa commit, gọi MediaMTX mở path và chờ thành công rồi commit session/history; lỗi media rollback thay đổi DB.
-- End hoặc hết hạn reconnect gọi MediaMTX đóng path trước, thành công mới commit ENDED/CLOSED cùng history và giải phóng slot channel. Nếu lời gọi media lỗi thì rollback thay đổi DB, giữ trạng thái/slot trước thao tác.
-- MVP chỉ tạo stream PUBLIC; PRIVATE/UNLISTED được giữ trong enum cho thiết kế mở rộng.
-
-#### 3.1.2 stream_status_history
+#### 3.1.4 stream_status_history
 
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
@@ -326,21 +378,68 @@ Quy tắc ghi dữ liệu đồng bộ:
 | media_event_id | UUID | - | UNIQUE Partial | Media callback event ID for deduplication |
 | created_at | TIMESTAMP | NOT NULL | INDEX | Transition time |
 
-Constraints:
+Constraints & Indexes:
 
 - `CHECK (previous_status IS NULL OR previous_status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
 - `CHECK (status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
-
-Indexes:
-
 - `INDEX (stream_id, created_at ASC, id ASC)`
 - `UNIQUE INDEX uq_stream_status_history_media_event_id ON stream_status_history (media_event_id) WHERE media_event_id IS NOT NULL`
 
+#### 3.1.5 stream_media_operations
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Durable operation ID |
+| channel_id | UUID | FK, NOT NULL | INDEX Composite | References `channel_stream_configs(channel_id)`, ON DELETE CASCADE |
+| credential_generation | BIGINT | NOT NULL | - | Generation fencing value (`>= 0`) |
+| media_revision | BIGINT | NOT NULL | - | Media revision fencing value (`>= 0`) |
+| operation_type | VARCHAR(40) | NOT NULL | Partial UNIQUE | `PROVISION_INGEST, PROCESS_ONLINE, PROCESS_OFFLINE, CLOSE_PLAYBACK, END_SESSION, RESET_KEY` |
+| status | VARCHAR(30) | NOT NULL | Partial UNIQUE/INDEX | `PENDING, RUNNING, SUCCEEDED, CANCELLED` |
+| target_session_id | UUID | - | - | Target playback session UUID |
+| candidate_session_id | UUID | - | Partial UNIQUE | Fixed session UUID pre-allocated for new session creation retry safety |
+| target_ingest_key_id | UUID | - | - | Target ingest key UUID |
+| target_source_id | UUID | - | - | Target MediaMTX publisher source UUID |
+| target_source_type | VARCHAR(30) | - | - | `rtmpConn, rtmpsConn` |
+| deduplication_key | VARCHAR(200) | - | UNIQUE Partial | Event UUID, idempotency key, or reconciler dedup key |
+| payload | TEXT | - | - | Sanitized JSON metadata (no raw JWTs) |
+| last_error | VARCHAR(500) | - | - | Sanitized last failure reason |
+| attempt_count | INTEGER | NOT NULL, DEFAULT `0` | - | Retry attempt counter |
+| next_attempt_at | TIMESTAMP | NOT NULL | Partial INDEX | Next scheduled retry timestamp |
+| lease_until | TIMESTAMP | - | - | Worker lease expiration (`60s`) |
+| lease_owner | VARCHAR(100) | - | - | Worker instance identifier holding lease |
+| started_at | TIMESTAMP | - | - | First execution start time |
+| completed_at | TIMESTAMP | - | - | Completion or cancellation timestamp |
+| created_at | TIMESTAMP | NOT NULL | INDEX | Created time |
+| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
+
+Constraints & Indexes:
+
+- `UNIQUE INDEX uq_stream_media_operations_dedup ON stream_media_operations (channel_id, operation_type, deduplication_key) WHERE deduplication_key IS NOT NULL`
+- `UNIQUE INDEX uq_stream_media_operations_event_dedup ON stream_media_operations (deduplication_key) WHERE operation_type IN ('PROCESS_ONLINE', 'PROCESS_OFFLINE') AND deduplication_key IS NOT NULL`
+- `UNIQUE INDEX uq_stream_media_operations_one_candidate_session ON stream_media_operations (channel_id) WHERE candidate_session_id IS NOT NULL AND status IN ('PENDING', 'RUNNING')`
+- `UNIQUE INDEX uq_stream_media_operations_active_provision ON stream_media_operations (channel_id) WHERE operation_type = 'PROVISION_INGEST' AND status IN ('PENDING', 'RUNNING')`
+- `UNIQUE INDEX uq_stream_media_operations_active_reset ON stream_media_operations (channel_id) WHERE operation_type = 'RESET_KEY' AND status IN ('PENDING', 'RUNNING')`
+- `INDEX idx_stream_media_operations_due ON stream_media_operations (next_attempt_at ASC, created_at ASC, id ASC) WHERE status IN ('PENDING', 'RUNNING')`
+
+#### 3.1.6 stream_media_runtime_state
+
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | VARCHAR(50) | PK, NOT NULL | Primary | Singleton key for MediaMTX runtime state |
+| server_started_at | VARCHAR(100) | - | - | Last observed MediaMTX server startup timestamp from Control API |
+| last_reconciled_at | TIMESTAMP | - | - | Last completed reconciliation pass timestamp |
+| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
+
 ### 3.2 Relationships
 
+- `channels (Channel Service)` 1 — 1 `channel_stream_configs`
+- `streamers (User Service)` 1 — 1 `channel_stream_configs`
+- `channel_stream_configs` 1 — N `channel_stream_credentials`
+- `channel_stream_configs` 1 — N `stream_media_operations`
 - `channels (Channel Service)` 1 — N `stream_sessions`
 - `streamers (User Service)` 1 — N `stream_sessions`
 - `categories (Channel Service)` 1 — N `stream_sessions`
+- `channel_stream_credentials` 1 — N `stream_sessions` (via nullable `ingest_key_id`)
 - `stream_sessions` 1 — N `stream_status_history`
 
 ---

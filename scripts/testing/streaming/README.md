@@ -115,8 +115,8 @@ Yêu cầu: Stream Service, Gateway và MediaMTX đang chạy; HLS allow-origin 
 
 ### Chuẩn bị
 
-1. Đăng nhập web app qua Gateway (`http://localhost:8888`) bằng account test.
-2. Tạo session PUBLIC, cho OBS phát để MediaMTX báo nguồn online và backend chuyển session sang `LIVE`.
+1. Đăng nhập web app qua Gateway (`http://localhost:8888`) bằng account test (hoặc kiểm tra luồng setup/reset key qua `provisioning.py`).
+2. Vào **Stream Manager**, lưu Title + Category (`PUT /stream/api/streams/me/setup`) để cấp Stream Key cố định, sau đó cho OBS Start Streaming bằng `serverUrl` (`.../ingest`) và `streamKey` (`{ingestKeyId}?token={PublishJWT}`) để backend tự tạo session và chuyển `LIVE`.
 3. Lấy đúng header `Cookie` của account từ DevTools → Network, chỉ dán một dòng vào file ngoài Git:
 
    ```sh
@@ -177,12 +177,12 @@ python3 scripts/testing/streaming/acceptance.py --access-source backend --sessio
 
 Không truyền lựa chọn nào thì CLI giữ chế độ nghiệm thu M0. Truyền session ID mà thiếu `--access-source backend` sẽ bị từ chối thay vì âm thầm kiểm tra session M0. Các OBS record cũ bị gắn nhầm session A không thể suy ra lại B: cần ghi nhận lại cho session đúng, không tự đổi lịch sử.
 
-Trong backend mode, các nút tạo/xóa path và copy key M0 bị tắt. Kết thúc buổi phát backend bằng End API với account owner rồi ghi nhận OBS/key cũ bị từ chối; không dùng nút xóa path M0 để kết thúc session backend.
+Trong backend mode, các nút tạo/xóa path và copy key M0 bị tắt. Kết thúc buổi phát backend bằng **Stop Streaming** trên OBS (chờ hết grace 60 giây) hoặc bấm **Reset Stream Key** trên Stream Manager, rồi ghi nhận OBS/key cũ bị từ chối; không dùng nút xóa path M0 để kết thúc session backend.
 
 ### Case âm tính và expiry
 
 - Không có cookie hoặc cookie hết hạn: GET metadata phải trả 401; fixture báo lỗi an toàn, không in cookie.
-- Session `READY`/`RECONNECTING`/`ENDED`: POST trả 409; session PRIVATE trả 403.
+- Session `RECONNECTING`/`ENDED`: POST trả 409; session PRIVATE trả 403.
 - Token thiếu/sai path/sai chữ ký/hết hạn trên **phiên HLS mới** phải bị MediaMTX từ chối (401/403). Có thể dùng các case token fixture cho phần HLS; happy case bắt buộc dùng Read JWT backend cấp.
 - Read JWT mặc định hết hạn sau 5 phút. Kiểm tra bằng cách mở phiên HLS mới sau khi hết hạn; không coi phiên HLS đang mở là bị thu hồi ngay, vì đây là hành vi của MediaMTX cần ghi nhận riêng.
 
@@ -190,7 +190,7 @@ Không đánh dấu STR-505/M5 hoàn tất nếu chưa có xác nhận account t
 
 ## Dừng fixture
 
-Với backend mode: nếu muốn kết thúc buổi phát, dùng End API của session backend, rồi dừng fixture bằng Ctrl+C. Quy trình `stack.py down` dưới đây chỉ dành cho stack thử nghiệm M0.
+Với backend mode: dừng OBS (chờ hết grace 60s hoặc reset key nếu cần), rồi dừng fixture bằng Ctrl+C. Quy trình `stack.py down` dưới đây chỉ dành cho stack thử nghiệm M0.
 
 Stop Streaming trong OBS, đóng path trên trang, sau đó:
 
@@ -198,4 +198,4 @@ Stop Streaming trong OBS, đóng path trên trang, sau đó:
 python3 scripts/testing/streaming/stack.py down
 ```
 
-Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service và vòng đời DB thật được triển khai ở giai đoạn 2–4, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service (`/stream/internal/api/media-events` với `X-Internal-Token`) và vòng đời DB/worker/reconciler thật thuộc backend, không coi fixture là backend nghiệp vụ hoàn chỉnh.

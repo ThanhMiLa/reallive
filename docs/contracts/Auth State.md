@@ -43,13 +43,14 @@ All paths below are relative to `/stream/api/streams`. The `STREAMER` role recei
 
 | Endpoint | Method authorization |
 |---|---|
-| `POST /` | Both `STREAM_CREATE` and `STREAM_PUBLISH`, because creation also returns publish credentials |
+| `GET /me/setup` | `STREAM_VIEW_OWN` and `STREAM_PUBLISH` |
+| `PUT /me/setup` | `STREAM_UPDATE` and `STREAM_PUBLISH` |
+| `POST /me/stream-key/reset` | `STREAM_PUBLISH` |
+| `GET /me/operations/{operationId}` | `STREAM_VIEW_OWN` |
 | `GET /me/current` | `STREAM_VIEW_OWN` |
 | `GET /{sessionId}` | Authentication only; no dedicated permission |
+| `GET /{sessionId}/details` | Authentication only; no dedicated permission |
 | `POST /{sessionId}/playback-access` | Authentication only; no dedicated permission |
-| `PATCH /{sessionId}` | `STREAM_UPDATE` |
-| `POST /{sessionId}/publish-credentials` | `STREAM_PUBLISH` |
-| `POST /{sessionId}/end` | `STREAM_END` |
 
 Controller method authorization rejects missing permissions before calling business services. Session ownership, public visibility, lifecycle state and streaming eligibility remain service-level checks; possessing a permission does not bypass them.
 

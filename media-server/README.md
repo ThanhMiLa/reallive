@@ -23,7 +23,7 @@ Tên module/service là `media-server`; phần mềm bên trong vẫn là MediaM
 
 Backend thật (JWKS/callback gọi trực tiếp Stream Service):
 
-Chuẩn bị key/DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media trước khi gọi Create API. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
+Chuẩn bị key RSA, `STREAM_MEDIA_CREDENTIAL_ENCRYPTION_KEY`, `STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`, DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media container trước khi lưu cấu hình kênh / phát OBS. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
 
 ```sh
 docker compose up -d --build --wait media-server
@@ -41,18 +41,19 @@ Có thể dùng `python3 scripts/testing/streaming/stack.py up --anonymous-regis
 
 Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 8898 và Control API 9997. Tất cả port local chỉ bind `127.0.0.1`. Port HLS trong container là 8888; không chiếm Gateway 8888 trên host.
 
-- Cấu hình `paths: {}` không có catch-all; chỉ exact path được tạo qua Control API mới nhận publish.
+- Cấu hình `paths: {}` không có catch-all; chỉ exact path `ingest/{ingestKeyId}` và `live/{sessionId}` được tạo qua Control API mới hoạt động.
+- Tách hai đường dẫn: OBS publish vào `ingest/{ingestKeyId}` (tắt `runOnRead`/`runOnUnread`), và Stream Service cấu hình `live/{sessionId}` kéo RTMP nội bộ từ `rtmp://127.0.0.1:1935/ingest/{ingestKeyId}?token={RelayReadJWT}` với `sourceOnDemand: false` và tắt `runOnOnline`/`runOnOffline` để tránh vòng lặp hook.
 - `overridePublisher: false`; publish/read/api đều dùng JWT, không có action được bỏ qua xác thực.
-- Root mặc định trỏ JWKS/callback trực tiếp tới Stream Service tại `host.docker.internal:8082`, không qua Gateway; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
-- Khai báo `STREAM_MEDIA_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` ở root theo `.env.example`. Compose đọc ba biến bắt buộc này và map sang env của container; không giữ URL mặc định trong Compose.
-- Local MVP không yêu cầu callback HMAC/secret. Không in `docker compose config` đầy đủ vì có thể làm lộ env của service khác; dùng `config --quiet`.
-- Healthcheck kiểm tra listener RTMP/HLS/Control API. Backend thật dùng provisioning integration test; `media.py probe` dùng fixture riêng. Không suy ra auth pass chỉ từ container healthy.
+- Root mặc định trỏ JWKS và internal media callback trực tiếp tới Stream Service tại `host.docker.internal:8082` (`/stream/api/media/jwks` và `/stream/internal/api/media-events`), không qua Gateway; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
+- Khai báo `STREAM_MEDIA_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`, `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` ở root theo `.env.example`.
+- `media_hook.py` gửi header `X-Internal-Token` chứa `STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN` về `/stream/internal/api/media-events`, dùng timeout request 2s, timeout tổng 10s và tối đa 3 lần thử cho lỗi tạm thời (`409`, `429`, `5xx`, lỗi mạng) với cùng `eventId`. Không in `docker compose config` đầy đủ vì có thể làm lộ token/env của service khác; dùng `config --quiet`.
+- Healthcheck kiểm tra listener RTMP/HLS/Control API. Backend thật dùng integration test với `MediaMTX 1.21.2`; `media.py probe` dùng fixture riêng. Không suy ra auth pass chỉ từ container healthy.
 - Stream Service gọi Control API qua `STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997` khi chạy trên host. Timeout connect/request mặc định 2s/5s. Khi bật CCU, hook cũng nhận một Control API JWT qua file riêng. Khi chạy backend trong Docker, đổi URL theo network/service name tương ứng.
 - Production cần HTTPS/RTMPS và network/secret riêng; cấu hình local này chưa là bằng chứng production pass.
 
-Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Path tạo qua API có thể mất khi MediaMTX restart; MVP chưa tự phục hồi từ DB hoặc đối soát. Khi mất path, current báo publishReady=false và API cấp credential trả 503; cần kiểm tra/xử lý thủ công.
+Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Sau khi MediaMTX restart, `StreamMediaReconciler` trong Stream Service dọn path mồ côi/revoked, kết thúc session cũ nếu không xác định được khoảng ngắt an toàn và khôi phục các ingest path `ACTIVE`.
 
-Giai đoạn 4 đã hoàn tất hook callback single-shot (`media_hook.py` với timeout 10s, exit code 0/1) và tích hợp lifecycle handler đầy đủ trên Stream Service (`POST /api/media/events`): ONLINE chuyển `LIVE`, OFFLINE chuyển `RECONNECTING` (grace 60s), và API End `POST /api/streams/{id}/end` đóng path/ngắt nguồn đồng bộ. Xem [Phase 4 Implementation Plan](../docs/Implement%20Plan/Streaming%20MVP%20Phase%204%20Implementation%20Plan.md) và [Kết quả kiểm chứng](../docs/testing/Streaming%20MVP%20Tests.md).
+Vòng đời persistent stream key hiện xử lý bất đồng bộ qua `POST /stream/internal/api/media-events`, worker PostgreSQL (`stream_media_operations`) và reconciler tự phục hồi; các endpoint cũ `/api/streams`, `/publish-credentials`, `/end` và `/api/media/events` đã được gỡ bỏ theo [Persistent Key Refactor Plan](../docs/implement-plan/Streaming%20Persistent%20Key%20Refactor%20Plan.md).
 
 ## Hook đếm CCU
 

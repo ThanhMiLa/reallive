@@ -19,13 +19,13 @@ com.reallive.streamservice/
 
 New streaming features belong under a business module such as `stream`, with its own `controller`, `service`, `service.impl`, `repository`, `entity`, `mapper` and `dto.request` / `dto.response` packages as needed. Media Server, Kafka and viewer Redis integrations belong under that module's `adapter`; calls to User Service or Channel Service belong under its `client`.
 
-Security follows the [Auth State contract](../docs/contracts/Auth%20State.md). Gateway validates JWT signatures, lifetime, token type, revocation and account status. Stream Service reads the forwarded access-token cookie and loads current authorities from Redis on each authenticated request, ignoring JWT scope. Backend ports are restricted to trusted callers in this model. Business endpoints require authentication. The exact GET JWKS and POST media callback routes use the separate media security rules described below.
+Security follows the [Auth State contract](../docs/contracts/Auth%20State.md). Gateway validates JWT signatures, lifetime, token type, revocation and account status. Stream Service reads the forwarded access-token cookie and loads current authorities from Redis on each authenticated request, ignoring JWT scope. Backend ports are restricted to trusted callers in this model. Business endpoints require authentication. The exact `GET /api/media/jwks` route is `permitAll`, and `POST /internal/api/media-events` uses constant-time `X-Internal-Token` authentication (`InternalCallbackTokenFilter`).
 
 Authentication and authorization failures use `ApiResponse` with HTTP 401/403. Missing, corrupt or unavailable Redis authorities return HTTP 503 without clearing cookies. Application errors, invalid requests and database failures also use the common response envelope.
 
 ## Development
 
-Copy `stream-service/.env.example` to `stream-service/.env`, set `STREAM_DB_PASSWORD`, `REDIS_PASSWORD` and the `STREAM_MEDIA_*` keys, then export the variables or load the file through the IDE run configuration. Spring Boot does not automatically load `.env` files.
+Copy `stream-service/.env.example` to `stream-service/.env`, set `STREAM_DB_PASSWORD`, `REDIS_PASSWORD` and the `STREAM_MEDIA_*` secrets/keys, then export the variables or load the file through the IDE run configuration. Spring Boot does not automatically load `.env` files.
 
 The development profile defaults to `http://localhost:8082/stream`, PostgreSQL at `localhost:5434/reallive_stream`, Redis at `localhost:6379` (database `0`) and Kafka at `localhost:9092`. Redis must match the instance and logical database used by User Service and Gateway.
 
@@ -33,7 +33,7 @@ The development profile defaults to `http://localhost:8082/stream`, PostgreSQL a
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-`application-dev.yaml` includes the database, JPA/Flyway, Redis, Kafka producer, access-token cookie and downstream service settings. Flyway is enabled and Hibernate validates the schema. Migrations V1–V3 under `src/main/resources/db/migration` produce the two-table session/history schema. Media authentication and the synchronous Control API adapter are configured; see the phase 3 section below.
+`application-dev.yaml` includes the database, JPA/Flyway, Redis, Kafka producer, access-token cookie and downstream service settings. Flyway is enabled and Hibernate validates the schema. Migrations V1–V5 under `src/main/resources/db/migration` maintain the schema (V4 adds thumbnail scheduling; V5 adds persistent channel configs, encrypted credentials, durable media operations, and runtime state).
 
 ## Validation
 
@@ -41,109 +41,74 @@ The development profile defaults to `http://localhost:8082/stream`, PostgreSQL a
 ./mvnw clean verify
 ```
 
-Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontainers for Flyway, persistence and concurrency checks. Docker is required. Redis authorities are mocked; test media keys are generated in memory, so application credentials are not required. The direct Stream Service/MediaMTX check is opt-in as described below.
+Tests use H2 for HTTP/application checks and isolated PostgreSQL 17 Testcontainers for Flyway, persistence and concurrency checks. Docker is required. Redis authorities are mocked; test media keys and AES secrets are generated in memory, so application credentials are not required. The real-MediaMTX integration tests (`MediaMtxAuthenticationIT`, `StreamProvisioningMediaIT`, `StreamViewerPresenceMediaIT`) are opt-in as described below.
 
-## Streaming phase 2: eligibility and media authentication
+## Persistent stream keys, media authentication, and recovery (V5)
 
-Phase 1 domain/persistence, phase 2 authentication, phase 3 provisioning and phase 4 synchronous lifecycle/End APIs are implemented.
-Playback-access and frontend integration remain in phases 5–6.
-Session writes use pessimistic row locks; no session version or media-sync task is used.
+Channel streaming uses persistent channel-bound ingest keys and separated per-session playback paths (see [Streaming Persistent Key Refactor Plan](../docs/implement-plan/Streaming%20Persistent%20Key%20Refactor%20Plan.md)):
 
-The service requires stable RSA keys at startup. From repository root:
+- **Ingest path** (`ingest/{ingestKeyId}`): configured as `source: publisher`, `overridePublisher: false`, `runOnRead: ""`, `runOnUnread: ""`. Receives OBS RTMP/RTMPS with a permanent `Publish JWT` (no `exp`).
+- **Playback path** (`live/{sessionId}`): configured with `source: rtmp://127.0.0.1:1935/ingest/{ingestKeyId}?token={RelayReadJWT}`, `sourceOnDemand: false`, `runOnOnline: ""`, `runOnOffline: ""`. Serves HLS (`/live/{sessionId}/index.m3u8`) using short-lived viewer/worker `Read JWT` (5-minute TTL, cannot read `ingest/*`) and runs CCU reader hooks only on playback paths.
+
+### Required cryptographic keys and operational rotation
+
+The service requires stable RS256 keys (`>= 2048` bits), a 32-byte AES-256-GCM encryption key (`STREAM_MEDIA_CREDENTIAL_ENCRYPTION_KEY`), and an internal webhook token (`STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`, 32+ non-whitespace characters) at startup:
 
 ```sh
 ./scripts/dev/generate-stream-media-keys.sh
 export STREAM_MEDIA_PRIVATE_KEY_BASE64="$(openssl pkcs8 -topk8 -nocrypt -in .local/streaming/private.pem -outform DER | base64 | tr -d '\n')"
 export STREAM_MEDIA_PUBLIC_KEY_BASE64="$(openssl pkey -pubin -in .local/streaming/public.pem -outform DER | base64 | tr -d '\n')"
+export STREAM_MEDIA_CREDENTIAL_ENCRYPTION_KEY="$(openssl rand -base64 32 | tr -d '\n')"
 ```
 
-The variables contain Base64 of DER key bytes, without PEM headers. Keep these environment values private and load the other database/Redis settings through `stream-service/.env`. Startup fails with a sanitized message for missing/mismatched RSA keys, keys below
-2048 bits or invalid media URLs/TTLs. Keys are not regenerated
-on restart. See `stream-service/.env.example` for media variables.
+Keep `STREAM_MEDIA_*` variables private and load database/Redis settings through `stream-service/.env`. Startup fails with a sanitized message on missing/mismatched RSA keys, malformed 32-byte AES key, blank/short callback token, or invalid URLs/TTLs. Keys are **never** auto-generated at runtime and must remain stable across restarts. Rotating RS256 signing keys or AES-256-GCM encryption keys is an explicit offline/maintenance operational procedure (dual-publish JWKS / re-encrypt or rotate persisted `channel_stream_credentials` rows cleanly before retiring old key material).
 
-Defaults: Publish JWT 8 hours, Read JWT 5 minutes, Control API JWT 5 minutes; issuer/audience
-`reallive-stream` / `reallive-media`, key ID `stream-rs256-v1`.
+Defaults: Publish JWT & internal RelayRead JWT omit `exp` (persist until revoked/reset); Read JWT & Control API JWT default to 5 minutes; issuer/audience `reallive-stream` / `reallive-media`, key ID `stream-rs256-v1`, public RTMP URL `rtmp://localhost:1935/ingest`, internal RTMP base URL `rtmp://127.0.0.1:1935`.
 
-- `GET /stream/api/media/jwks` on Stream Service (`port 8082`) returns a raw public JWKS without account cookies (`permitAll`).
-  Supplied cookies still follow the existing Auth State contract.
-- `POST /stream/api/media/events` on Stream Service (`port 8082`) accepts direct JSON callbacks from MediaMTX (`permitAll`, without account cookies or HMAC secret for local MVP). Gateway does not expose `/stream/api/media/**`.
-- There is deliberately no lifecycle handler yet: a valid callback currently reaches HTTP 404,
-  while invalid request bodies return 400. No callback is acknowledged as processed with a fake 200.
-- User and Channel clients call the internal eligibility, streaming-context, category validation and
-  bounded batch-summary endpoints synchronously with 2-second connect / 5-second read timeouts and
-  no retries. User/streamer/channel IDs must match; invalid or unavailable upstream responses fail closed.
-
-Default `./mvnw clean verify` now also runs isolated PostgreSQL 17 tests using Testcontainers, so Docker
-is required; application databases, OBS and MediaMTX are not required. Test RSA keys are generated in
-memory and never committed.
+- `GET /stream/api/media/jwks` (`port 8082`) returns the raw public JWKS (`permitAll`).
+- `POST /stream/internal/api/media-events` (`port 8082`) accepts media callbacks from `media_hook.py` authenticated with `X-Internal-Token` (`STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`), deduplicates by `eventId`, persists `PROCESS_ONLINE`/`PROCESS_OFFLINE` operations, and returns `202 Accepted`. Not exposed through API Gateway.
+- User and Channel clients call internal eligibility, streaming-context, category validation, and bounded batch-summary endpoints synchronously (`2s` connect / `5s` read timeouts, no retries).
 
 ### MediaMTX integration verification
 
-Prerequisites: Docker, FFmpeg with H.264/AAC, JDK 21, and the locally built media image. From repository root:
+Prerequisites: Docker, FFmpeg with H.264/AAC, JDK 21, and `reallive-media-server:1.21.2`. From repository root:
 
 ```sh
 docker build -f media-server/docker/Dockerfile -t reallive-media-server:1.21.2 .
 ./stream-service/mvnw -f stream-service/pom.xml -Dtest=MediaMtxAuthenticationIT -Dstream.media.it=true test
+./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamProvisioningMediaIT -Dstream.provisioning.it=true test
+./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamViewerPresenceMediaIT -Dstream.ccu.it=true test
 ```
 
-The explicit integration test starts Stream Service with H2/test keys and
-one disposable MediaMTX container on random ports. MediaMTX fetches JWKS directly from Stream Service. Java-issued
-JWTs are checked against real publish/read/api endpoints; invalid tokens and media JWT account-cookie
-misuse are rejected. Direct callback JSON is checked against Stream Service. RTMP uses a synthetic
-FFmpeg source; no OBS/browser automation is performed. Paths and container are cleaned up.
-The existing application MediaMTX and databases are not reconfigured. This opt-in IT is not part of the
-default Surefire test selection and must be executed before recording phase 2 runtime acceptance.
+These opt-in integration suites run isolated PostgreSQL + Stream HTTP + MediaMTX `1.21.2` + Redis containers on random ports using real hooks and synthetic FFmpeg RTMP publishing (verifying permanent Publish JWTs, internal RTMP pull without hook loops, playback separation, CCU presence, reconnect, and key reset). They are excluded from default `./mvnw clean verify` via `@EnabledIfSystemProperty` and must be run explicitly with those flags.
 
-## Streaming phase 3: synchronous provisioning
+## Owner & public streaming APIs
 
-Owner endpoints (Gateway prefix `/stream`; controller prefix `/api/streams`):
+Owner endpoints (Gateway prefix `/stream`; controller prefix `/api/streams`; all credential/setup/current/playback responses carry `Cache-Control: no-store`):
 
 | Method/path | Behavior |
 |---|---|
-| POST `/stream/api/streams` | Create PUBLIC READY session, provision exact media path and commit before returning OBS credentials; 201 first time, 200 for the same owner/request ID |
-| PATCH `/stream/api/streams/{id}` | Update supplied title/category only; owner and nonterminal session required |
-| GET `/stream/api/streams/me/current` | Active owner session or result null; media readiness/deadline/serverTime without credentials |
-| POST `/stream/api/streams/{id}/publish-credentials` | Fresh Publish JWT for the same session/path after owner, eligibility, state, grace and media checks |
-| POST `/stream/api/streams/{id}/end` | Synchronously delete media path, kick source connection, and commit session to ENDED/CLOSED (idempotent if already ENDED) |
+| GET `/stream/api/streams/me/setup` | `STREAM_VIEW_OWN` + `STREAM_PUBLISH`. Lazy conflict-safe creation of `DRAFT` config (`streamKey = null` until provisioned); returns current setup state (`DRAFT`, `PROVISIONING`, `ACTIVE`, `ROTATING`, `BLOCKED`) and active Publish key when ready |
+| PUT `/stream/api/streams/me/setup` | `STREAM_UPDATE` + `STREAM_PUBLISH`. Validates title/category & eligibility; first valid Save creates generation 1 (`channel_stream_credentials`), `PROVISIONING` status, and `PROVISION_INGEST` op; subsequent Saves update config and active session without changing stream key |
+| POST `/stream/api/streams/me/stream-key/reset` | `STREAM_PUBLISH` + `Idempotency-Key` header -> returns `202 Accepted` (`StreamOperationResponse`). Revokes current key generation, marks active session end-requested, moves config to `ROTATING`, and enqueues `RESET_KEY` |
+| GET `/stream/api/streams/me/operations/{operationId}` | `STREAM_VIEW_OWN`. Returns durable operation progress for provisioning/reset polling |
+| GET `/stream/api/streams/me/current` | `STREAM_VIEW_OWN`. Returns active `LIVE`/`RECONNECTING` session (never returns credentials; `null` when offline) |
+| GET `/stream/api/streams` | Public discovery list of `LIVE` streams (paginated, optional `categoryId`, includes `currentViewerCount`) |
+| GET `/stream/api/streams/{sessionId}` | Session metadata, status, `serverTime`, `reconnectDeadlineAt`, `currentViewerCount` |
+| GET `/stream/api/streams/{sessionId}/details` | Channel & category details for a session |
+| POST `/stream/api/streams/{sessionId}/playback-access` | Authenticated channel-access check -> issues 5m Read JWT limited strictly to `live/{sessionId}` |
 
-Create takes `requestId` (UUID), `title` and `categoryId`. Keep the same request ID after timeout/lost response; replay preserves the original metadata. A different request ID while the channel has an active session returns 409. Create and publish-credentials use `Cache-Control: no-store`. Tokens are not persisted or hashed, and issuing another JWT does not revoke previous tokens.
+Legacy manual-session mappings (`POST /api/streams`, `PATCH /api/streams/{id}`, `POST /api/streams/{id}/publish-credentials`, `POST /api/streams/{id}/end`, and `POST /api/media/events`) are removed.
 
-`MediaServerAdapter` and `MediaJwtIssuer` live under `stream/adapter/media`; their implementations (`MediaMtxAdapter`, `MediaJwtIssuerImpl`) live under `stream/adapter/media/impl`. User/Channel clients stay under `stream/client`. Control API settings:
+## Durable operation worker & reconciliation
 
-```dotenv
-STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997
-STREAM_MEDIA_CONTROL_CONNECT_TIMEOUT=2s
-STREAM_MEDIA_CONTROL_REQUEST_TIMEOUT=5s
-```
-
-Requests block until media success/timeout, with no retry, redirect or background task. The use case owns the write transaction, reserves the channel slot before media I/O and holds session locks through provisioning/credential checks. A media failure returns 503 and rolls back session/history. Missing paths are not restored automatically. Current reports publishReady=false when a path is absent; credential issuance returns 503. Reconnect at/after its stored deadline cannot obtain credentials, even before phase 4 expiry cleanup runs.
-
-`StreamSessionClosureService` provides the synchronous close-before-commit foundation; its HTTP endpoint, callback lifecycle handlers and reconnect scheduler remain phase 4 work. With no lifecycle handler, an actual publisher still leaves DB READY; callback returns 404. Ended sessions cannot receive credentials or be reopened.
-
-Database rollback cannot undo MediaMTX effects. A timeout/crash/failed DB commit can leave an orphaned or missing media path; the MVP requires manual inspection and has no reconciler or automatic restore.
-
-Additional runtime verification (isolated PostgreSQL + Stream HTTP + MediaMTX + synthetic FFmpeg publisher + Python owner smoke script):
-
-```sh
-./stream-service/mvnw -f stream-service/pom.xml -Dtest=StreamProvisioningMediaIT -Dstream.provisioning.it=true test
-```
-
-The OBS method is deliberately opt-in and is skipped by this command. [Phase 3 Test Plan](../docs/testing/Streaming%20MVP%20Phase%203%20Test%20Plan.md) provides the operator-controlled OBS command and full-stack owner smoke instructions. Neither mode opens or controls OBS. M3 awaits the user's OBS acceptance.
-
-## Streaming phase 4: synchronous lifecycle, reconnect sweep and End
-
-- `POST /stream/api/media/events`: Direct webhook endpoint called by MediaMTX `media_hook.py`.
-  - Under pessimistic session lock, inspects real source via Control API `getSource(sessionId)`.
-  - `ONLINE` event transitions `READY` or `RECONNECTING` to `LIVE`, sets `startedAt` on initial live event, and logs history.
-  - `OFFLINE` event transitions `LIVE` to `RECONNECTING` with 60-second grace (`reconnectDeadline = now + 60s`). Duplicate offline calls do not extend or reset deadline.
-  - Events for terminal sessions (`ENDED`) or from obsolete connections are safely ignored (`IGNORED`).
-- Background reconnect sweep:
-  - Enabled via `stream.lifecycle.reconnect-sweep-enabled: true`.
-  - `ReconnectExpirationScheduler` polls expired reconnecting sessions every 1s (`stream.lifecycle.reconnect-sweep-delay: 1s`).
-  - Calls `StreamSessionClosureService.expireReconnectIfDue`, deletes media path, kicks remaining connection, and commits `ENDED/CLOSED`.
-- Synchronous End API:
-  - `POST /stream/api/streams/{sessionId}/end` requires authenticated channel owner.
-  - Deletes media path and kicks source before committing `ENDED/CLOSED`. Idempotent if already ended. Failures rollback DB and return 503.
+- `StreamMediaOperationWorkerImpl` polls PostgreSQL (`stream_media_operations`) every `1s` (`stream.lifecycle.operation-worker-delay`), claims due operations with a `60s` lease and `20s` per-run budget, retries transport/5xx errors with backoff (`1s, 2s, 5s, 10s, max 30s`), locks `channel_stream_configs` before either operation or session rows, and performs MediaMTX/Feign HTTP I/O outside DB transactions.
+- Generation (`credential_generation`), revision (`media_revision`), and `end_requested` checks fence stale callbacks/operations before committing transitions.
+- `ReconnectExpirationScheduler` scans expired `RECONNECTING` sessions every `1s` (`60s` default grace) and drives idempotent closure (`END_SESSION`).
+- Media effects are serialized per channel across the worker, reconciler cleanup and reconnect expiration using PostgreSQL session advisory locks on dedicated connections. Contention defers work instead of blocking a business transaction or consuming its pool. This requires a direct PostgreSQL connection or session pooling; transaction pooling is unsuitable for these locks. Each worker claim also has a unique ownership token checked before commit/retry; successful playback is never treated as an uncommitted candidate for cleanup.
+- Restart recovery advances the observed server-instance watermark only after all old-session closure operations are durable. Reconciliation repair operations have separate cycle IDs so a previous successful repair cannot suppress later repairs. A changed publisher without a reliable OFFLINE timestamp starts a new session.
+- `StreamMediaReconcilerImpl` runs at startup and every `5s` (`stream.lifecycle.reconciler-delay`): detects MediaMTX restarts via `stream_media_runtime_state`, clears revoked ingests and ended/orphaned playback paths before re-registering `ACTIVE` ingests, and synthesizes missed `ONLINE`/`OFFLINE` operations.
+- Micrometer metrics (no tokens in labels): `stream.media.operations.pending`, `stream.media.operations.oldest_age_seconds`, `stream.media.operations.retries`, `stream.media.reconciliation.errors`, `stream.media.callback.delay`, `stream.media.provision.duration`, `stream.media.reset.duration`.
 
 ## Livestream thumbnail callbacks
 
