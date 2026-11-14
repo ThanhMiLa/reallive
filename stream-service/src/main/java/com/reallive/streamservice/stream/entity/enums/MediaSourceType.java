@@ -1,25 +1,29 @@
 package com.reallive.streamservice.stream.entity.enums;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-
-import java.util.Arrays;
 
 @Getter
-@RequiredArgsConstructor
 public enum MediaSourceType {
     RTMP_CONN("rtmpConn"),
-    RTMPS_CONN("rtmpsConn");
+    RTMPS_CONN("rtmpsConn"),
+    RTMP_SOURCE("rtmpSource");
 
     private final String value;
 
+    MediaSourceType(String value) {
+        this.value = value;
+    }
+
+    public boolean isPublisher() {
+        return this == RTMP_CONN || this == RTMPS_CONN;
+    }
+
     public static MediaSourceType fromValue(String value) {
-        if (value == null) {
-            return null;
+        for (MediaSourceType type : values()) {
+            if (type.value.equals(value)) {
+                return type;
+            }
         }
-        return Arrays.stream(values())
-                .filter(type -> type.value.equalsIgnoreCase(value) || type.name().equalsIgnoreCase(value))
-                .findFirst()
-                .orElse(null);
+        return null;
     }
 }
