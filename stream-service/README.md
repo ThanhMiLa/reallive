@@ -88,3 +88,7 @@ session ID, title, status, UTC start time, thumbnail URL and update time, channe
 category IDs, and available channel/category summaries. Thumbnail and summary fields
 can be null. No ordering is guaranteed; pages can change as live sessions change.
 A Channel Service failure returns `503`.
+
+## Internal MediaMTX Control API
+
+MediaMTX excludes action `api` from JWT verification. `MediaMtxAdapter`, `CcuMediaSessions` and `viewer_hook.py` call the Control API without credentials. Control JWT issuance, its TTL, the CCU token publisher, token file and shared credential volume have been removed. Publish, relay read and viewer/worker read tokens still use RS256/JWKS. Keep the Control API on trusted private networking; local Compose publishes it only at `127.0.0.1:9997` and Gateway has no route to it.

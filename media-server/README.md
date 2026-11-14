@@ -43,12 +43,12 @@ Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 
 
 - Cấu hình `paths: {}` không có catch-all; chỉ exact path `ingest/{ingestKeyId}` và `live/{sessionId}` được tạo qua Control API mới hoạt động.
 - Tách hai đường dẫn: OBS publish vào `ingest/{ingestKeyId}` (tắt `runOnRead`/`runOnUnread`), và Stream Service cấu hình `live/{sessionId}` kéo RTMP nội bộ từ `rtmp://127.0.0.1:1935/ingest/{ingestKeyId}?token={RelayReadJWT}` với `sourceOnDemand: false` và tắt `runOnOnline`/`runOnOffline` để tránh vòng lặp hook.
-- `overridePublisher: false`; publish/read/api đều dùng JWT, không có action được bỏ qua xác thực.
+- `overridePublisher: false`; publish/read vẫn dùng JWT; riêng action `api` được bỏ qua xác thực qua `authJWTExclude`. Control API chỉ dành cho localhost/mạng nội bộ.
 - Root mặc định trỏ JWKS và internal media callback trực tiếp tới Stream Service tại `host.docker.internal:8082` (`/stream/internal/api/media/jwks` và `/stream/internal/api/media-events`), không qua Gateway; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
 - Khai báo `STREAM_MEDIA_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` ở root theo `.env.example`.
 - `media_hook.py` gửi callback nội bộ không kèm token về `/stream/internal/api/media-events`, dùng timeout request 2s, timeout tổng 10s và tối đa 3 lần thử cho lỗi tạm thời (`409`, `429`, `5xx`, lỗi mạng) với cùng `eventId`. Không in `docker compose config` đầy đủ vì có thể làm lộ token/env của service khác; dùng `config --quiet`.
 - Healthcheck kiểm tra listener RTMP/HLS/Control API. Backend thật dùng integration test với `MediaMTX 1.21.2`; `media.py probe` dùng fixture riêng. Không suy ra auth pass chỉ từ container healthy.
-- Stream Service gọi Control API qua `STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997` khi chạy trên host. Timeout connect/request mặc định 2s/5s. Khi bật CCU, hook cũng nhận một Control API JWT qua file riêng. Khi chạy backend trong Docker, đổi URL theo network/service name tương ứng.
+- Stream Service gọi Control API qua `STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997` khi chạy trên host. Timeout connect/request mặc định 2s/5s. Khi chạy backend trong Docker, đổi URL theo network/service name tương ứng.
 - Production cần HTTPS/RTMPS và network/secret riêng; cấu hình local này chưa là bằng chứng production pass.
 
 Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Sau MediaMTX restart không tự khôi phục path; streamer cần yêu cầu key mới khi media server đã hoạt động lại.
@@ -57,19 +57,17 @@ Vòng đời persistent stream key hiện xử lý đồng bộ qua `POST /strea
 
 ## Hook đếm CCU
 
-`runOnRead` và `runOnUnread` gọi `viewer_hook.py` trong cùng container. `STREAM_CCU_ENABLED` mặc định `false`; khi tắt, script thoát thành công trước khi đọc credential hoặc gọi HTTP. Hai hook không tự restart script đã kết thúc.
+`runOnRead` và `runOnUnread` gọi `viewer_hook.py` trong cùng container. `STREAM_CCU_ENABLED` mặc định `false`; khi tắt, script thoát thành công trước khi gọi HTTP. Hai hook không tự restart script đã kết thúc.
 
-Khi bật, READ lấy `MTX_PATH`, `MTX_READER_ID`, `MTX_READER_TYPE = hlsSession`, rồi gọi `GET http://127.0.0.1:9997/v3/hls/sessions/get/{readerId}` bằng Control API JWT. Sau khi kiểm tra ID/path và lấy user UUID, script callback `READ` kèm `sessionId`, `readerId`, `userId`. Reader đã mất hoặc technical identity như `media-worker` được bỏ qua. UNREAD chỉ callback session/reader, không tra user qua Control API; backend dùng mapping Redis đã lưu.
+Khi bật, READ lấy `MTX_PATH`, `MTX_READER_ID`, `MTX_READER_TYPE = hlsSession`, rồi gọi `GET http://127.0.0.1:9997/v3/hls/sessions/get/{readerId}` không kèm token. Sau khi kiểm tra ID/path và lấy user UUID, script callback `READ` kèm `sessionId`, `readerId`, `userId`. Reader đã mất hoặc technical identity như `media-worker` được bỏ qua. UNREAD chỉ callback session/reader, không tra user qua Control API; backend dùng mapping Redis đã lưu.
 
 | Biến môi trường | Vai trò |
 |---|---|
 | `STREAM_CCU_ENABLED` | Bật cùng với backend CCU; mặc định `false` |
 | `STREAM_VIEWER_CALLBACK_URL` | URL trực tiếp `/stream/internal/api/viewer-events` của Stream Service |
-| `STREAM_CCU_CONTROL_TOKEN_DIRECTORY` | Khi bật CCU, đặt đường dẫn tuyệt đối tới thư mục host do backend ghi JWT; Compose mount read-only vào `/run/media-hook` |
-| `MEDIA_CONTROL_TOKEN_FILE` | File JWT trong container, Compose đặt `/run/media-hook/control.jwt` |
 | `MEDIA_CONTROL_BASE_URL` | Base URL Control API; Compose đặt `http://127.0.0.1:9997`, test có thể override bằng server port ngẫu nhiên |
 
-Backend cấp JWT quyền `api` vào `control.jwt`, TTL 5 phút và làm mới mỗi phút bằng atomic rename. Mount cả thư mục để script thấy file mới; script đọc lại token mỗi lượt và thử reload một lần khi Control API trả 401. Chỉ mount JWT của hook, không mount key ký JWT. Callback nội bộ không yêu cầu token; Read JWT của player không được dùng làm Control API JWT.
+Backend và hook gọi Control API không cần JWT. Không còn file credential, volume dùng chung hoặc tác vụ làm mới Control JWT. JWT publish/read và xác thực danh tính người xem vẫn được giữ nguyên. Cổng Control API được publish trên `127.0.0.1:9997`; môi trường triển khai cần giới hạn truy cập trong mạng tin cậy.
 
 Mỗi HTTP request chờ tối đa 2 giây, mỗi bước thử tối đa 3 lần và cả lượt hook giới hạn 10 giây. Callback retry giữ nguyên body/event ID, áp dụng cho 409 chờ stream LIVE, 503 hoặc lỗi mạng. Các lỗi client khác kết thúc lượt; script không đi theo redirect. SIGINT/SIGTERM hủy lượt đang xử lý an toàn; callback bị lỡ cần được backend đối soát. Log chỉ chứa lý do đã làm sạch, không chứa token, query hoặc response body.
 

@@ -15,8 +15,8 @@ python3 scripts/testing/streaming/fixture.py serve
 ```
 
 - `prepare` tạo key nếu chưa có; dùng lại key/session ID khi chạy lại, chỉ cấp lại bộ JWT test. Không tự thay một cặp khóa thiếu/mismatched.
-- `fixtures.json` chứa serverUrl/streamKey/playbackUrl và JWT publish/read/api. Các token âm tính gồm sai chữ ký, hết hạn và sai path; token read cũng dùng để thử publish sai quyền.
-- TTL mặc định đồng bộ với quyết định Giai đoạn 2: publish 8h, read 5m, api 5m. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
+- `fixtures.json` chứa serverUrl/streamKey/playbackUrl và JWT publish/read. Các token âm tính gồm sai chữ ký, hết hạn và sai path; token read cũng dùng để thử publish sai quyền.
+- TTL mặc định đồng bộ với quyết định Giai đoạn 2: publish/relay không có exp, read 5m; Control API không yêu cầu JWT. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
 - Key RSA 2048 bit được ký/verify bằng OpenSSL; JWKS chỉ gồm kty/kid/alg/use/n/e. Không có Python dependency ngoài thư viện chuẩn.
 - Không `cat` token/key ra log hoặc commit chúng. Các lệnh trên chỉ in trạng thái và đường dẫn.
 - Dừng fixture bằng Ctrl+C. Dữ liệu callback test lưu ở `.local/streaming/events.jsonl`, không có token/query.
@@ -49,7 +49,7 @@ Nếu build timeout khi lấy metadata public image do Docker credential helper,
 
 Smoke cần FFmpeg/ffprobe có libx264/AAC trên máy chạy test. Đây chỉ là nguồn media tổng hợp để kiểm chứng, không đưa FFmpeg vào container MediaMTX hoặc luồng runtime MVP. Mỗi lần smoke tạo path UUID riêng và dọn đúng path đó; không thay fixture session/path đang dùng với OBS.
 
-12 mục kiểm chứng gồm Control API permission, path chưa có media chưa online, H264/AAC + ONLINE hook, chặn publisher thứ hai, CORS, HLS master/media playlist + init/segment và decode audio/video, token HLS sai, JWT hết hạn giữa phiên HLS, OFFLINE hook, token publish sai, reconnect và xóa path khi LIVE rồi thử JWT cũ còn hạn.
+12 mục kiểm chứng gồm Control API không token, path chưa có media chưa online, H264/AAC + ONLINE hook, chặn publisher thứ hai, CORS, HLS master/media playlist + init/segment và decode audio/video, token HLS sai, JWT hết hạn giữa phiên HLS, OFFLINE hook, token publish sai, reconnect và xóa path khi LIVE rồi thử JWT cũ còn hạn.
 
 Kết quả an toàn ở `.local/streaming/smoke-results.json` không chứa JWT hoặc HLS session URL. Lần chạy mới chuyển report sang RUNNING, lỗi ghi FAIL, chỉ đủ kiểm chứng mới ghi PASS. FFmpeg stderr có thể chứa URL ingest nên chỉ được giữ tạm trong memory và không in ra log.
 
