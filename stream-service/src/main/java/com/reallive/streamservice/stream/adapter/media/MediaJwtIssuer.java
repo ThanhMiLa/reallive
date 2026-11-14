@@ -1,76 +1,64 @@
 package com.reallive.streamservice.stream.adapter.media;
 
-import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
-
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Issues signed MediaMTX JWTs for publishing, playback, media worker reads and control API calls.
- *
- * <p>Every token is signed with the configured RS256 key and shares the configured issuer,
- * audience and key ID. A token grants only the permission required by its caller. This contract
- * does not validate sessions, authorize ownership or persist any state.</p>
+ * Issues signed MediaMTX JWTs for persistent ingest publishing, internal RTMP relay, playback,
+ * and media worker reads.
  */
 public interface MediaJwtIssuer {
 
     /**
-     * Issues a playback token scoped to a session's exact media path.
+     * Issues a permanent RS256 Publish JWT (without {@code exp}) scoped strictly to {@code
+     * ingest/<ingestKeyId>}.
      *
-     * <p>The token subject is the viewer user ID and the only granted permission is read access
-     * to {@code live/<sessionId>}. Its lifetime is the configured read token TTL.</p>
+     * @param ingestKeyId non-null ingest key UUID
+     * @param ownerUserId non-null channel owner user ID used as token subject
+     * @return the signed permanent token with null expiration
+     */
+    MediaToken issuePublish(UUID ingestKeyId, UUID ownerUserId);
+
+    /**
+     * Issues a permanent RS256 internal relay read JWT (without {@code exp}) scoped strictly to
+     * {@code ingest/<ingestKeyId>}.
      *
-     * @param sessionId non-null session UUID identifying the exact media path
-     * @param viewerUserId non-null viewer user ID used as the token subject
+     * @param ingestKeyId non-null ingest key UUID
+     * @return the signed internal relay read token with null expiration
+     */
+    MediaToken issueRelayRead(UUID ingestKeyId);
+
+    /**
+     * Issues a short-lived playback token scoped strictly to {@code live/<sessionId>}.
+     *
+     * @param sessionId non-null session UUID
+     * @param viewerUserId non-null viewer user ID used as token subject
      * @return the signed token and its expiration instant
-     * @throws NullPointerException if sessionId or viewerUserId is null
-     * @throws IllegalStateException if the token cannot be signed
      */
     MediaToken issueRead(UUID sessionId, UUID viewerUserId);
 
     /**
-     * Issues a read-only token for the media worker technical identity.
+     * Issues a short-lived read-only token for the media worker scoped strictly to {@code
+     * live/<sessionId>}.
      *
-     * <p>The token subject is {@code media-worker} and the only granted permission is read access
-     * to {@code live/<sessionId>}. Its lifetime is the configured read token TTL.</p>
-     *
-     * @param sessionId non-null session UUID identifying the exact media path
+     * @param sessionId non-null session UUID
      * @return the signed token and its expiration instant
-     * @throws NullPointerException if sessionId is null
-     * @throws IllegalStateException if the token cannot be signed
      */
     MediaToken issueWorkerRead(UUID sessionId);
 
     /**
-     * Issues a control API token for the Stream Service technical identity.
+     * Formats the OBS stream key from an ingest key UUID and permanent publish JWT.
      *
-     * <p>The token subject is {@code stream-service} and the only granted permission is access to
-     * the MediaMTX control API. Its lifetime is the configured control token TTL.</p>
-     *
-     * @return the signed token and its expiration instant
-     * @throws IllegalStateException if the token cannot be signed
+     * @param ingestKeyId ingest key UUID
+     * @param publishJwt raw publish JWT
+     * @return formatted OBS stream key
      */
-    MediaToken issueControlApi();
-
-    /**
-     * Builds RTMP publish credentials for a session owner.
-     *
-     * <p>The stream key combines the session ID with a newly issued publish token. The response
-     * contains credentials and must not be logged in clear text.</p>
-     *
-     * @param sessionId non-null session UUID identifying the exact media path
-     * @param ownerUserId non-null owner user ID used as the publish token subject
-     * @return credentials containing the configured RTMP base URL, session-scoped stream key and
-     *         publish token expiration instant
-     * @throws NullPointerException if sessionId or ownerUserId is null
-     * @throws IllegalStateException if the publish token cannot be signed
-     */
-    StreamPublishCredentialsResponse publishCredentials(UUID sessionId, UUID ownerUserId);
+    default String formatStreamKey(UUID ingestKeyId, String publishJwt) {
+        return ingestKeyId + "?token=" + publishJwt;
+    }
 
     /**
      * Returns the public JSON Web Key Set used to verify issued tokens.
-     *
-     * <p>The set exposes only the public parameters of the active RS256 signing key.</p>
      *
      * @return a JWKS document containing the public signing key
      */

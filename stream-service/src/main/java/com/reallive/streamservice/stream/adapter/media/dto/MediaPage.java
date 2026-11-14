@@ -1,4 +1,4 @@
-package com.reallive.streamservice.stream.adapter.media;
+package com.reallive.streamservice.stream.adapter.media.dto;
 
 import java.util.List;
 

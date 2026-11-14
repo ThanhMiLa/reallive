@@ -2,118 +2,132 @@ package com.reallive.streamservice.stream.adapter.media;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
+import com.reallive.streamservice.stream.adapter.media.dto.MediaPage;
+import com.reallive.streamservice.stream.adapter.media.dto.MediaPathConfiguration;
+import com.reallive.streamservice.stream.adapter.media.dto.MediaPathStatus;
+import com.reallive.streamservice.stream.adapter.media.dto.MediaServerInfo;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Provides synchronous media path and publisher operations through the MediaMTX Control API.
- *
- * <p>Session operations derive an exact path from the session UUID. Requests use backend-only API
- * credentials and finite timeouts; failures are not retried in the background. This adapter performs
- * media I/O without authorizing session ownership or changing application database state.</p>
+ * Provides synchronous media path, server info, and publisher operations through the MediaMTX
+ * Control API.
  */
 public interface MediaServerAdapter {
 
     /**
-     * Reads the configuration of a session's exact media path without creating or changing it.
+     * Reads runtime server identity and startup timestamp from MediaMTX {@code /v3/info}.
      *
-     * <p>A configured path does not imply that a publisher is online; use {@link #getSource(UUID)}
-     * to inspect the runtime source.</p>
-     *
-     * @param sessionId non-null session UUID identifying the exact media path
-     * @return the path configuration, or empty when MediaMTX confirms that the configuration is absent
-     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if the request fails,
-     *                      times out or returns an invalid response
-     * @throws NullPointerException if sessionId is null
+     * @return current server info
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if unavailable or
+     *     invalid
      */
-    Optional<MediaPathConfiguration> getPath(UUID sessionId);
+    MediaServerInfo getServerInfo();
 
     /**
-     * Ensures that a session's exact path exists and accepts a publisher without publisher override.
+     * Reads the configuration of an ingest path {@code ingest/<ingestKeyId>}.
      *
-     * <p>Creates the path only when absent and verifies the resulting configuration. Repeated calls
-     * preserve an existing compatible path and its live source. An incompatible configuration is
-     * rejected rather than replaced; concurrent creation is accepted only after verifying the path.</p>
+     * @param ingestKeyId non-null ingest key UUID
+     * @return configuration if present on MediaMTX, or empty when confirmed absent
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
+     */
+    Optional<MediaPathConfiguration> getIngestPath(UUID ingestKeyId);
+
+    /**
+     * Ensures that an ingest path {@code ingest/<ingestKeyId>} exists accepting publishers without
+     * override and disabling viewer read hooks on the ingest namespace.
      *
-     * @param sessionId non-null session UUID identifying the exact media path
+     * @param ingestKeyId non-null ingest key UUID
      * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if provisioning or
-     *                      verification fails, the configuration is incompatible or a request times out
-     * @throws NullPointerException if sessionId is null
+     *     verification fails
      */
-    void ensurePath(UUID sessionId);
+    void ensureIngestPath(UUID ingestKeyId);
 
     /**
-     * Deletes the configuration of a session's exact media path synchronously.
+     * Deletes an ingest path {@code ingest/<ingestKeyId>}; succeeds idempotently when already
+     * absent.
      *
-     * <p>Repeating deletion is successful when MediaMTX confirms that the path is already absent.
-     * This operation does not independently verify runtime source disconnection; callers requiring
-     * closure confirmation must also inspect {@link #getSource(UUID)}.</p>
-     *
-     * @param sessionId non-null session UUID identifying the exact media path
-     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if deletion fails,
-     *                      times out or returns an unrecognized response
-     * @throws NullPointerException if sessionId is null
+     * @param ingestKeyId non-null ingest key UUID
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if deletion fails
      */
-    void deletePath(UUID sessionId);
+    void deleteIngestPath(UUID ingestKeyId);
 
     /**
-     * Observes the runtime path's online flag and publisher connection details without changing them.
+     * Observes the runtime status of {@code ingest/<ingestKeyId>}.
      *
-     * <p>An offline path can have no source connection. An absent runtime path does not establish
-     * whether its configuration exists; use {@link #getPath(UUID)} for that distinction.</p>
-     *
-     * @param sessionId non-null session UUID identifying the exact media path
-     * @return the runtime observation, or empty when MediaMTX confirms that the runtime path is absent
-     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if the request fails,
-     *                      times out or returns invalid or unsupported source details
-     * @throws NullPointerException if sessionId is null
+     * @param ingestKeyId non-null ingest key UUID
+     * @return runtime observation, or empty when confirmed absent
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
      */
-    Optional<MediaPathStatus> getSource(UUID sessionId);
+    Optional<MediaPathStatus> getIngestSource(UUID ingestKeyId);
 
     /**
-     * Retrieves one page of configured media paths, including paths without an online publisher.
+     * Reads the configuration of a playback path {@code live/<sessionId>}.
      *
-     * <p>Results describe configuration rather than runtime availability. The caller controls page
-     * traversal; this operation does not reconcile paths or modify their configuration.</p>
+     * @param sessionId non-null session UUID
+     * @return configuration if present on MediaMTX, or empty when confirmed absent
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
+     */
+    Optional<MediaPathConfiguration> getPlaybackPath(UUID sessionId);
+
+    /**
+     * Ensures that playback path {@code live/<sessionId>} exists pulling internally via RTMP from
+     * {@code ingest/<ingestKeyId>} using the supplied technical relay Read JWT, with {@code
+     * sourceOnDemand: false} and lifecycle hooks disabled.
+     *
+     * @param sessionId non-null playback session UUID
+     * @param ingestKeyId non-null source ingest key UUID
+     * @param relayReadJwt non-blank internal relay Read JWT
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if provisioning or
+     *     verification fails
+     */
+    void ensurePlaybackPath(UUID sessionId, UUID ingestKeyId, String relayReadJwt);
+
+    /**
+     * Deletes playback path {@code live/<sessionId>}; succeeds idempotently when already absent.
+     *
+     * @param sessionId non-null session UUID
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if deletion fails
+     */
+    void deletePlaybackPath(UUID sessionId);
+
+    /**
+     * Observes the runtime status of {@code live/<sessionId>}.
+     *
+     * @param sessionId non-null session UUID
+     * @return runtime observation, or empty when confirmed absent
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
+     */
+    Optional<MediaPathStatus> getPlaybackSource(UUID sessionId);
+
+    /**
+     * Retrieves one page of configured media paths.
      *
      * @param page zero-based page index
-     * @param size requested number of items per page, from 1 through 100
-     * @return a configuration page with total item count, total page count and returned items
-     * @throws IllegalArgumentException if page is negative or size is outside the supported range
-     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if the request fails,
-     *                      times out or returns an invalid page
+     * @param size requested page size (1..100)
+     * @return configuration page
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
      */
     MediaPage<MediaPathConfiguration> listConfigurations(int page, int size);
 
     /**
-     * Retrieves one page of runtime media paths with their online flags and source connection details.
-     *
-     * <p>Results are runtime observations rather than a list of all configured paths. This operation
-     * does not change media paths or application session states.</p>
+     * Retrieves one page of runtime media paths.
      *
      * @param page zero-based page index
-     * @param size requested number of items per page, from 1 through 100
-     * @return a runtime page with total item count, total page count and returned observations
-     * @throws IllegalArgumentException if page is negative or size is outside the supported range
-     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if the request fails,
-     *                      times out or returns an invalid page or unsupported source details
+     * @param size requested page size (1..100)
+     * @return runtime status page
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
      */
     MediaPage<MediaPathStatus> listPaths(int page, int size);
 
     /**
-     * Disconnects a media connection through the endpoint matching its RTMP or RTMPS source type.
+     * Disconnects a publisher RTMP/RTMPS connection by its MediaMTX connection UUID.
      *
-     * <p>Uses the actual MediaMTX connection UUID, not the application session UUID. An already
-     * absent connection is treated as disconnected. Path configuration is preserved, so an
-     * authorized publisher can reconnect while the path remains available.</p>
-     *
-     * @param sourceType non-null RTMP or RTMPS connection type selecting the protocol endpoint
-     * @param connectionId non-null MediaMTX connection UUID obtained from a runtime source observation
-     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if disconnection fails,
-     *                      times out or returns an unrecognized response
-     * @throws NullPointerException if sourceType or connectionId is null
+     * @param sourceType non-null publisher connection type (RTMP_CONN or RTMPS_CONN)
+     * @param connectionId non-null MediaMTX connection UUID
+     * @throws AppException with {@link ErrorCode#MEDIA_SERVER_UNAVAILABLE} if Control API fails
      */
     void kick(MediaSourceType sourceType, UUID connectionId);
 }
