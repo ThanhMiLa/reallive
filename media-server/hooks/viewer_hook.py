@@ -4,7 +4,6 @@
 from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import signal
 import sys
 import time
@@ -55,12 +54,6 @@ def endpoint(value):
     return value.rstrip('/')
 
 
-def secret(value):
-    if not value or len(value) > MAX_RESPONSE_BYTES or any(char.isspace() for char in value):
-        raise HookFailure('invalid-credential-configuration')
-    return value
-
-
 class ViewerHook:
     def __init__(self, environment):
         self.environment = environment
@@ -73,24 +66,12 @@ class ViewerHook:
             raise HookFailure('deadline-exceeded')
         return remaining
 
-    def control_token(self):
-        token_file = self.environment.get('MEDIA_CONTROL_TOKEN_FILE', '/run/media-hook/control.jwt')
-        try:
-            with Path(token_file).open(encoding='utf-8') as source:
-                token = source.read(MAX_RESPONSE_BYTES + 1)
-        except (OSError, UnicodeError, ValueError):
-            raise HookFailure('control-credential-unavailable') from None
-        return secret(token.strip())
-
     def request(self, method, url, body=None):
         control = method == 'GET'
-        reloaded_after_unauthorized = False
         for attempt in range(MAX_ATTEMPTS):
             timeout = min(REQUEST_TIMEOUT, self.remaining())
             headers = {'Accept': 'application/json'}
-            if control:
-                headers['Authorization'] = 'Bearer ' + self.control_token()
-            else:
+            if not control:
                 headers['Content-Type'] = 'application/json'
             request = Request(url, data=body, headers=headers, method=method)
             try:
@@ -112,9 +93,7 @@ class ViewerHook:
                 error.close()
                 if control and status == 404:
                     return None
-                if control and status == 401 and not reloaded_after_unauthorized:
-                    reloaded_after_unauthorized = True
-                elif status == 503 or (not control and status == 409):
+                if status == 503 or (not control and status == 409):
                     pass
                 else:
                     raise HookFailure(('control' if control else 'callback') + '-rejected-' + str(status)) from None

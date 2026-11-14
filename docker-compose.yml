@@ -18,7 +18,6 @@ services:
       STREAM_MEDIA_CALLBACK_URL: ${STREAM_MEDIA_CALLBACK_URL:?Set STREAM_MEDIA_CALLBACK_URL in .env}
       STREAM_CCU_ENABLED: ${STREAM_CCU_ENABLED:-false}
       MEDIA_CONTROL_BASE_URL: http://127.0.0.1:9997
-      MEDIA_CONTROL_TOKEN_FILE: /run/media-hook/control.jwt
       STREAM_VIEWER_CALLBACK_URL: ${STREAM_VIEWER_CALLBACK_URL:-http://host.docker.internal:8082/stream/internal/api/viewer-events}
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -28,7 +27,6 @@ services:
       - "127.0.0.1:9997:9997"
     volumes:
       - ./media-server/config/mediamtx.yml:/mediamtx.yml:ro
-      - ${STREAM_CCU_CONTROL_TOKEN_DIRECTORY:-./.local/streaming/ccu}:/run/media-hook:ro
     healthcheck:
       test:
         - CMD
