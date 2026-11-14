@@ -11,9 +11,11 @@ import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.ThumbnailResultService;
+
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,8 +39,9 @@ public class ThumbnailResultServiceImpl implements ThumbnailResultService {
     public ThumbnailResultResponse apply(ThumbnailResultRequest request) {
         String publicUrl = validateAndBuildPublicUrl(request);
         StreamSessionEntity session = sessions.findByIdForUpdate(request.sessionId()).orElse(null);
-        LocalDateTime now = LocalDateTime.ofInstant(streamClock.instant(), ZoneOffset.UTC)
-                .truncatedTo(ChronoUnit.MICROS);
+        LocalDateTime now =
+                LocalDateTime.ofInstant(streamClock.instant(), ZoneOffset.UTC)
+                        .truncatedTo(ChronoUnit.MICROS);
         if (!eligible(session, request, now)) {
             return new ThumbnailResultResponse(ThumbnailResultOutcome.IGNORED);
         }
@@ -72,10 +75,12 @@ public class ThumbnailResultServiceImpl implements ThumbnailResultService {
         return publicUrl;
     }
 
-    private boolean eligible(StreamSessionEntity session, ThumbnailResultRequest request, LocalDateTime now) {
+    private boolean eligible(
+            StreamSessionEntity session, ThumbnailResultRequest request, LocalDateTime now) {
         if (session == null
                 || !request.jobId().equals(session.getThumbnailJobId())
                 || !isWaiting(session.getThumbnailJobStatus())
+                || session.isEndRequested()
                 || session.getStatus() != StreamSessionStatus.LIVE) {
             return false;
         }
@@ -84,7 +89,8 @@ public class ThumbnailResultServiceImpl implements ThumbnailResultService {
     }
 
     private boolean isWaiting(ThumbnailJobStatus status) {
-        return status == ThumbnailJobStatus.PENDING_DISPATCH || status == ThumbnailJobStatus.ACCEPTED;
+        return status == ThumbnailJobStatus.PENDING_DISPATCH
+                || status == ThumbnailJobStatus.ACCEPTED;
     }
 
     private String expectedObjectKey(UUID sessionId, UUID jobId) {
