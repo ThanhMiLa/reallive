@@ -2,12 +2,12 @@ package com.reallive.streamservice.stream.service;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
-import com.reallive.streamservice.stream.configuration.CcuProperties;
 import com.reallive.streamservice.stream.dto.request.ViewerPresenceEvent;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.impl.StreamViewerPresenceServiceImpl;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -22,14 +22,13 @@ import static org.mockito.Mockito.*;
 class StreamViewerPresenceServiceTest {
     final Instant now = Instant.parse("2026-11-11T00:00:00Z");
     final UUID sid = UUID.randomUUID(), owner = UUID.randomUUID(), user = UUID.randomUUID(), reader = UUID.randomUUID();
-    final CcuProperties properties = new CcuProperties();
     final StreamViewerPresenceStore store = mock(StreamViewerPresenceStore.class);
     final StreamSessionRepository sessions = mock(StreamSessionRepository.class);
     final StreamSessionEntity session = new StreamSessionEntity();
-    final StreamViewerPresenceService service = new StreamViewerPresenceServiceImpl(properties, store, sessions, Clock.fixed(now, ZoneOffset.UTC));
+    final StreamViewerPresenceService service = new StreamViewerPresenceServiceImpl(store, sessions, Clock.fixed(now, ZoneOffset.UTC));
 
     @BeforeEach void setup() {
-        properties.setEnabled(true);
+        ReflectionTestUtils.setField(service, "ccuEnabled", true);
         session.setId(sid); session.setOwnerUserId(owner); session.setStatus(StreamSessionStatus.LIVE);
         when(sessions.findById(sid)).thenReturn(Optional.of(session));
     }
@@ -62,7 +61,7 @@ class StreamViewerPresenceServiceTest {
         assertEquals(0L, service.count(sid, StreamSessionStatus.READY));
     }
     @Test void disabledDoesNotAccessRedis() {
-        properties.setEnabled(false);
+        ReflectionTestUtils.setField(service, "ccuEnabled", false);
         assertNull(service.count(sid, StreamSessionStatus.LIVE));
         service.accept(event(ViewerPresenceEvent.Type.READ, user, now));
         service.closeAfterCommit(sid);

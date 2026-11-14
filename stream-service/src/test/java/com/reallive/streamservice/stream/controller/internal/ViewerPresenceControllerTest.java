@@ -8,7 +8,6 @@ import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
 import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
-import com.reallive.streamservice.stream.configuration.CcuProperties;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
@@ -16,7 +15,6 @@ import com.reallive.streamservice.stream.service.impl.StreamViewerPresenceServic
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -51,7 +49,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 "STREAM_DB_PASSWORD=test-placeholder-only"
         }
 )
-@EnableConfigurationProperties(CcuProperties.class)
 @Import({SecurityConfig.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         StreamViewerPresenceServiceImpl.class})
