@@ -5,23 +5,13 @@ import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
 
 import java.util.UUID;
 
+/** Channel settings contain no publish or relay credentials. */
 public record StreamSetupResponse(
         UUID channelId,
         String title,
         UUID categoryId,
         StreamVisibility visibility,
         ChannelStreamConfigStatus status,
-        long generation,
-        UUID operationId,
-        String serverUrl,
-        String streamKey,
-        boolean publishReady,
+        boolean hasStreamKey,
         String blockedReason
-) {
-    @Override
-    public String toString() {
-        return "StreamSetupResponse[channelId=" + channelId + ", status=" + status
-                + ", generation=" + generation + ", operationId=" + operationId
-                + ", publishReady=" + publishReady + ", credentials=REDACTED]";
-    }
-}
+) {}

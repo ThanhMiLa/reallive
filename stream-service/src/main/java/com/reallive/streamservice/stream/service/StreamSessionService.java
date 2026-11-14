@@ -1,70 +1,29 @@
 package com.reallive.streamservice.stream.service;
 
 import com.reallive.streamservice.common.exception.AppException;
-import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
-import com.reallive.streamservice.stream.dto.request.CreateStreamSessionRequest;
-import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
 import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
-import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
 
 import java.util.UUID;
 
-/** Application entry points own their transactions and must be invoked without an ambient transaction. */
+/** Provides read access to current owner session state and public session metadata. */
 public interface StreamSessionService {
 
     /**
-     * Reserves and provisions a PUBLIC session synchronously, returning credentials only after commit.
-     * Repeated owner/request identifiers return the original session without changing its metadata.
-     * Media failures roll back DB changes; DB and MediaMTX do not share an atomic transaction.
-     *
-     * @param ownerUserId authenticated account identifier
-     * @param request validated creation metadata and idempotency identifier
-     * @return the committed session and credentials, with created true only for the first creation
-     * @throws AppException if eligibility fails, the channel slot is occupied, the session cannot publish or media fails
-     */
-    SessionProvisioningResult create(UUID ownerUserId, CreateStreamSessionRequest request);
-
-    /**
-     * Updates only the supplied title/category of an owned, nonterminal session without media I/O.
-     * Category validation precedes the write transaction; ownership/state are rechecked under a row lock.
-     *
-     * @param sessionId session to update
-     * @param ownerUserId authenticated account identifier
-     * @param request validated partial update; omitted fields remain unchanged
-     * @return committed owner metadata without credentials
-     * @throws AppException if ownership, status or category validation fails
-     */
-    StreamSessionResponse update(UUID sessionId, UUID ownerUserId, UpdateStreamSessionRequest request);
-
-    /**
-     * Issues a new publish credential for the same path after rechecking owner, eligibility and media readiness.
-     * Does not persist tokens, revoke earlier credentials or restore missing media paths.
-     *
-     * @param sessionId session receiving the credential
-     * @param ownerUserId authenticated account identifier
-     * @return a fresh Publish JWT embedded in the OBS stream key and its expiry
-     * @throws AppException if the session is absent, unowned, ended, beyond grace, ineligible or its path is unavailable
-     */
-    StreamPublishCredentialsResponse publishCredentials(UUID sessionId, UUID ownerUserId);
-
-    /**
      * Returns viewer-facing metadata for a PUBLIC session in any lifecycle state.
-     * The read-only lookup issues no credential, performs no media I/O and does not mutate the session.
      *
      * @param sessionId session to read
-     * @return persisted metadata and the current server time, without playback URL or credentials
-     * @throws AppException if the session does not exist or its visibility is outside the MVP viewing scope
+     * @return persisted metadata and current server time without credentials
+     * @throws AppException if the session does not exist or its visibility is restricted
      */
     StreamMetadataResponse metadata(UUID sessionId);
 
     /**
-     * Returns the owner's active session, including a readiness observation and the persisted reconnect deadline.
-     * An expired reconnect still occupies the channel until confirmed closure; no credential is returned.
+     * Returns the owner's active non-ended session and its ingest readiness observation, or null if
+     * offline.
      *
      * @param ownerUserId authenticated account identifier
-     * @return active owner metadata, or null if there is no active session
-     * @throws AppException if media readiness cannot be checked
+     * @return active owner session metadata, or null if no LIVE/RECONNECTING session exists
      */
     StreamSessionResponse current(UUID ownerUserId);
 }
