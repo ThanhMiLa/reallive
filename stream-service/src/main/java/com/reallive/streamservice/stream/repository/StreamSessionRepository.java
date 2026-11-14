@@ -5,7 +5,9 @@ import com.reallive.streamservice.stream.dto.StreamSessionStatusSnapshot;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
+
 import jakarta.persistence.LockModeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
@@ -24,7 +26,8 @@ import java.util.UUID;
 @Repository
 public interface StreamSessionRepository extends JpaRepository<StreamSessionEntity, UUID> {
 
-    @Query("""
+    @Query(
+            """
             SELECT NEW com.reallive.streamservice.stream.dto.StreamPresenceSessionSnapshot(s.id, s.ownerUserId)
             FROM StreamSessionEntity s
             WHERE s.status IN :statuses
@@ -33,59 +36,87 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
     Slice<StreamPresenceSessionSnapshot> findPresenceSessionsByStatusIn(
             @Param("statuses") List<StreamSessionStatus> statuses, Pageable pageable);
 
-    @Query("""
+    @Query(
+            """
+            SELECT s.channelId
+            FROM StreamSessionEntity s
+            WHERE s.id = :id
+            """)
+    Optional<UUID> findChannelIdById(@Param("id") UUID id);
+
+    @Query(
+            """
+            SELECT s
+            FROM StreamSessionEntity s
+            WHERE s.status IN :statuses
+            """)
+    List<StreamSessionEntity> findByStatusIn(
+            @Param("statuses") Collection<StreamSessionStatus> statuses);
+
+    @Query(
+            """
             SELECT NEW com.reallive.streamservice.stream.dto.StreamSessionStatusSnapshot(s.id, s.status)
             FROM StreamSessionEntity s
             WHERE s.id IN :sessionIds
             """)
-    List<StreamSessionStatusSnapshot> findStatusSnapshotsByIdIn(@Param("sessionIds") Collection<UUID> sessionIds);
+    List<StreamSessionStatusSnapshot> findStatusSnapshotsByIdIn(
+            @Param("sessionIds") Collection<UUID> sessionIds);
 
-    Optional<StreamSessionEntity> findByOwnerUserIdAndCreationRequestId(UUID ownerUserId, UUID creationRequestId);
+    Optional<StreamSessionEntity> findByOwnerUserIdAndCreationRequestId(
+            UUID ownerUserId, UUID creationRequestId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
+    @Query(
+            """
             SELECT s
             FROM StreamSessionEntity s
             WHERE s.ownerUserId = :ownerUserId
               AND s.creationRequestId = :requestId
             """)
-    Optional<StreamSessionEntity> findCreationForUpdate(@Param("ownerUserId") UUID ownerUserId, @Param("requestId") UUID requestId);
+    Optional<StreamSessionEntity> findCreationForUpdate(
+            @Param("ownerUserId") UUID ownerUserId, @Param("requestId") UUID requestId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
+    @Query(
+            """
             SELECT s
             FROM StreamSessionEntity s
             WHERE s.id = :id
             """)
     Optional<StreamSessionEntity> findByIdForUpdate(@Param("id") UUID id);
 
-    @Query("""
+    @Query(
+            """
             SELECT s
             FROM StreamSessionEntity s
             WHERE s.channelId = :channelId
-              AND s.status IN ('READY', 'LIVE', 'RECONNECTING')
+              AND s.status IN ('LIVE', 'RECONNECTING')
             """)
     Optional<StreamSessionEntity> findSlotOccupyingByChannelId(@Param("channelId") UUID channelId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
+    @Query(
+            """
             SELECT s
             FROM StreamSessionEntity s
             WHERE s.channelId = :channelId
-              AND s.status IN ('READY', 'LIVE', 'RECONNECTING')
+              AND s.status IN ('LIVE', 'RECONNECTING')
             """)
-    Optional<StreamSessionEntity> findSlotOccupyingByChannelIdForUpdate(@Param("channelId") UUID channelId);
+    Optional<StreamSessionEntity> findSlotOccupyingByChannelIdForUpdate(
+            @Param("channelId") UUID channelId);
 
-    @Query("""
+    @Query(
+            """
             SELECT s
             FROM StreamSessionEntity s
             WHERE s.ownerUserId = :ownerUserId
-              AND s.status IN ('READY', 'LIVE', 'RECONNECTING')
+              AND s.status IN ('LIVE', 'RECONNECTING')
             ORDER BY s.createdAt DESC
             """)
     List<StreamSessionEntity> findCurrentByOwnerUserId(@Param("ownerUserId") UUID ownerUserId);
 
-    @Query("""
+    @Query(
+            """
             SELECT s.id
             FROM StreamSessionEntity s
             WHERE s.status = 'RECONNECTING'
@@ -94,7 +125,8 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
             """)
     List<UUID> findExpiredReconnectingIds(@Param("now") LocalDateTime now, Pageable pageable);
 
-    @Query("""
+    @Query(
+            """
             SELECT s.id
             FROM StreamSessionEntity s
             WHERE s.thumbnailJobStatus IN ('PENDING_DISPATCH', 'ACCEPTED')
@@ -103,7 +135,8 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
             """)
     List<UUID> findExpiredThumbnailJobIds(@Param("now") LocalDateTime now, Pageable pageable);
 
-    @Query("""
+    @Query(
+            """
             SELECT s.id
             FROM StreamSessionEntity s
             WHERE s.status = 'LIVE'
@@ -113,7 +146,8 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
             """)
     List<UUID> findPendingThumbnailDispatchIds(@Param("now") LocalDateTime now, Pageable pageable);
 
-    @Query("""
+    @Query(
+            """
             SELECT s.id
             FROM StreamSessionEntity s
             WHERE s.status = 'LIVE'
@@ -125,11 +159,9 @@ public interface StreamSessionRepository extends JpaRepository<StreamSessionEnti
 
     Page<StreamSessionEntity> findByStatus(StreamSessionStatus status, Pageable pageable);
 
-    Page<StreamSessionEntity> findByStatusAndCategoryId(StreamSessionStatus status, UUID categoryId, Pageable pageable);
+    Page<StreamSessionEntity> findByStatusAndCategoryId(
+            StreamSessionStatus status, UUID categoryId, Pageable pageable);
 
     Page<StreamSessionEntity> findByVisibilityAndStatusOrderByStartedAtDescIdAsc(
-            StreamVisibility visibility,
-            StreamSessionStatus status,
-            Pageable pageable
-    );
+            StreamVisibility visibility, StreamSessionStatus status, Pageable pageable);
 }

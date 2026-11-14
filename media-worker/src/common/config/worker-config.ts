@@ -13,7 +13,6 @@ export interface WorkerConfig {
   environment: string;
   http: {
     port: number;
-    internalToken: string;
     mediamtxBaseUrl: string;
     maxBatchSize: number;
     maxBodyBytes: number;
@@ -61,14 +60,12 @@ export interface WorkerConfig {
   };
   callback: {
     baseUrl: string;
-    internalToken?: string;
   };
 }
 
 export const WORKER_ENV_KEYS = [
   'NODE_ENV',
   'PORT',
-  'MEDIA_WORKER_INTERNAL_TOKEN',
   'MEDIA_WORKER_MEDIAMTX_BASE_URL',
   'MEDIA_WORKER_MAX_BATCH_SIZE',
   'MEDIA_WORKER_MAX_BODY_BYTES',
@@ -107,7 +104,6 @@ export const WORKER_ENV_KEYS = [
   'MEDIA_WORKER_R2_ACCESS_KEY_ID',
   'MEDIA_WORKER_R2_SECRET_ACCESS_KEY',
   'STREAM_SERVICE_BASE_URL',
-  'STREAM_SERVICE_INTERNAL_TOKEN',
 ] as const;
 
 export class ConfigurationError extends Error {
@@ -148,7 +144,6 @@ const DEFAULTS = {
   streamServiceBaseUrl: 'http://stream-service:8082',
 } as const;
 
-const MIN_INTERNAL_TOKEN_LENGTH = 32;
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 class Reader {
@@ -263,11 +258,6 @@ export function loadWorkerConfig(
     min: 1,
     max: 65_535,
   }) as number;
-  const internalToken = reader.string('MEDIA_WORKER_INTERNAL_TOKEN', {
-    required: true,
-    minLength: MIN_INTERNAL_TOKEN_LENGTH,
-    trim: false,
-  });
   const mediamtxBaseUrl = reader.url(
     'MEDIA_WORKER_MEDIAMTX_BASE_URL',
     reader.string('MEDIA_WORKER_MEDIAMTX_BASE_URL', {
@@ -425,10 +415,6 @@ export function loadWorkerConfig(
     }),
     { allowPath: false },
   );
-  const streamServiceInternalToken = reader.string(
-    'STREAM_SERVICE_INTERNAL_TOKEN',
-    { minLength: MIN_INTERNAL_TOKEN_LENGTH, trim: false },
-  );
 
   if (!isAbsolute(tempDir)) {
     reader.issues.push('MEDIA_WORKER_TEMP_DIR must be an absolute path');
@@ -447,11 +433,6 @@ export function loadWorkerConfig(
     if (configuredR2Values < r2Values.length) {
       reader.issues.push(
         'MEDIA_WORKER_R2_ENDPOINT, MEDIA_WORKER_R2_BUCKET, MEDIA_WORKER_R2_ACCESS_KEY_ID and MEDIA_WORKER_R2_SECRET_ACCESS_KEY are required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
-      );
-    }
-    if (!streamServiceInternalToken) {
-      reader.issues.push(
-        'STREAM_SERVICE_INTERNAL_TOKEN is required when MEDIA_WORKER_PROCESSOR_ENABLED=true',
       );
     }
   }
@@ -483,7 +464,6 @@ export function loadWorkerConfig(
     environment,
     http: {
       port,
-      internalToken: internalToken as string,
       mediamtxBaseUrl: mediamtxBaseUrl as string,
       maxBatchSize,
       maxBodyBytes,
@@ -536,7 +516,6 @@ export function loadWorkerConfig(
     },
     callback: {
       baseUrl: streamServiceBaseUrl as string,
-      internalToken: streamServiceInternalToken,
     },
   };
 }

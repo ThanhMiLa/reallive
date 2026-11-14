@@ -17,7 +17,6 @@ const MAX_RESPONSE_BYTES = 16 * 1024;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_ERRORS = new Set([
-  'CALLBACK_NOT_CONFIGURED',
   'CALLBACK_REJECTED',
   'CALLBACK_TIMEOUT',
   'CALLBACK_ABORTED',
@@ -42,8 +41,6 @@ export class ThumbnailCallbackClientImpl
     if (this.stopping || options.signal?.aborted)
       throw new Error('CALLBACK_ABORTED');
     this.validateResult(result);
-    const token = this.config.callback.internalToken;
-    if (!token) throw new Error('CALLBACK_NOT_CONFIGURED');
 
     const timeout = Math.min(
       this.config.timeouts.callbackMs,
@@ -88,7 +85,6 @@ export class ThumbnailCallbackClientImpl
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Internal-Token': token,
           },
           body,
           redirect: 'error',

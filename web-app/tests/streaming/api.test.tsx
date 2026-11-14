@@ -19,31 +19,28 @@ it('binds the owner and playback API contract through the account client', async
   const payload = {
     title: 'Morning',
     categoryId: '00000000-0000-4000-8000-000000000001',
-    requestId: '00000000-0000-4000-8000-000000000002',
   }
   const controller = new AbortController()
+  await streamApi.setup(controller.signal)
+  await streamApi.saveSetup(payload, controller.signal)
+  await streamApi.issueKey(controller.signal)
   await streamApi.current(controller.signal)
-  await streamApi.create(payload)
-  await streamApi.update(id, { title: 'Changed' })
-  await streamApi.credentials(id)
   await streamApi.metadata(id)
   await streamApi.details(id)
   await streamApi.access(id)
-  await streamApi.end(id)
   expect(requests.map((request: AxiosRequestConfig) => [request.method, request.url])).toEqual([
+    ['get', '/stream/api/streams/me/setup'],
+    ['put', '/stream/api/streams/me/setup'],
+    ['post', '/stream/api/streams/me/stream-key'],
     ['get', '/stream/api/streams/me/current'],
-    ['post', '/stream/api/streams'],
-    ['patch', `/stream/api/streams/${id}`],
-    ['post', `/stream/api/streams/${id}/publish-credentials`],
     ['get', `/stream/api/streams/${id}`],
     ['get', `/stream/api/streams/${id}/details`],
     ['post', `/stream/api/streams/${id}/playback-access`],
-    ['post', `/stream/api/streams/${id}/end`],
   ])
   expect(requests.every((request) => request.withCredentials)).toBe(true)
   expect(requests[0].signal).toBe(controller.signal)
   expect(JSON.parse(requests[1].data)).toEqual(payload)
-  expect(JSON.parse(requests[2].data)).toEqual({ title: 'Changed' })
+  expect(requests[2].data).toBeUndefined()
   expect(requests[6].data).toBeUndefined()
 })
 

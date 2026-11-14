@@ -19,14 +19,6 @@ export function badRequest(
   return new ApiException(HttpStatus.BAD_REQUEST, code, message, details);
 }
 
-export function unauthorized(message: string): ApiException {
-  return new ApiException(
-    HttpStatus.UNAUTHORIZED,
-    'INVALID_INTERNAL_TOKEN',
-    message,
-  );
-}
-
 export function serviceUnavailable(
   code: string,
   message: string,

@@ -3,7 +3,7 @@ package com.reallive.streamservice.stream.adapter.media;
 import com.reallive.streamservice.common.configuration.MediaControlProperties;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
-import org.junit.jupiter.api.BeforeEach;
+import com.reallive.streamservice.stream.adapter.media.dto.CcuMediaReader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.springframework.http.HttpHeaders;
@@ -15,40 +15,30 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class CcuMediaSessionsTest {
 
-    private static final Instant NOW = Instant.parse("2026-11-11T00:00:00Z");
     private final MediaControlProperties properties = new MediaControlProperties();
-    private final MediaJwtIssuer issuer = mock(MediaJwtIssuer.class);
     private final List<ClientRequest> requests = new ArrayList<>();
     private final UUID readerId = UUID.randomUUID();
     private final String path = "live/" + UUID.randomUUID();
     private final String user = UUID.randomUUID().toString();
 
-    @BeforeEach
-    void setUp() {
-        when(issuer.issueControlApi()).thenReturn(new MediaToken("control-token", NOW.plusSeconds(300)));
-    }
-
     @Test
-    void readsTheAuthenticatedUserForTheRequestedReaderWithAControlApiToken() {
+    void readsTheViewerIdentityWithoutControlApiCredentials() {
         var media = client(HttpStatus.OK, reader(readerId, user));
 
         assertThat(media.get(readerId)).contains(new CcuMediaReader(readerId, path, user));
         assertThat(requests).hasSize(1);
         assertThat(requests.getFirst().url().getPath()).isEqualTo("/v3/hls/sessions/get/" + readerId);
         assertThat(requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
-                .isEqualTo("Bearer control-token");
+                .isNull();
     }
 
     @Test
@@ -81,7 +71,7 @@ class CcuMediaSessionsTest {
         assertThat(requests.getFirst().url().getPath()).isEqualTo("/v3/hls/sessions/list");
         assertThat(requests.getFirst().url().getQuery()).isEqualTo("page=2&itemsPerPage=100");
         assertThat(requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
-                .isEqualTo("Bearer control-token");
+                .isNull();
     }
 
     @Test
@@ -107,12 +97,12 @@ class CcuMediaSessionsTest {
     void transportFailureAndTimeoutAreTranslatedToTheMediaUnavailableError() {
         var failed = WebClient.builder().baseUrl("http://media.test:9997")
                 .exchangeFunction(request -> Mono.error(new IllegalStateException("Connection failed"))).build();
-        assertUnavailable(() -> new CcuMediaSessions(failed, properties, issuer).get(readerId));
+        assertUnavailable(() -> new CcuMediaSessions(failed, properties).get(readerId));
 
         properties.setRequestTimeout(Duration.ofMillis(5));
         var stalled = WebClient.builder().baseUrl("http://media.test:9997")
                 .exchangeFunction(request -> Mono.never()).build();
-        assertUnavailable(() -> new CcuMediaSessions(stalled, properties, issuer).get(readerId));
+        assertUnavailable(() -> new CcuMediaSessions(stalled, properties).get(readerId));
     }
 
     private CcuMediaSessions client(HttpStatus status, String body) {
@@ -123,7 +113,7 @@ class CcuMediaSessionsTest {
                             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                             .body(body).build());
                 }).build();
-        return new CcuMediaSessions(webClient, properties, issuer);
+        return new CcuMediaSessions(webClient, properties);
     }
 
     private String reader(UUID id, String identity) {

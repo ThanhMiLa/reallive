@@ -7,18 +7,14 @@ import com.reallive.streamservice.common.security.CustomJwtDecoder;
 import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
 import com.reallive.streamservice.common.security.SecurityConfig;
-import com.reallive.streamservice.common.security.ViewerCallbackSecurityConfiguration;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
-import com.reallive.streamservice.stream.configuration.CcuProperties;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.impl.StreamViewerPresenceServiceImpl;
-import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -48,21 +44,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalViewerPresenceController.class,
         properties = {
                 "stream.ccu.enabled=true",
-                "stream.ccu.callback-token=viewer-callback-token-0123456789abcdef",
-                "stream.ccu.control-token-directory=/tmp/unused-viewer-mvc-test",
                 "auth.cookie.access-token.name=access_token",
                 "ACCESS_TOKEN_COOKIE_NAME=access_token",
                 "STREAM_DB_PASSWORD=test-placeholder-only"
         }
 )
-@EnableConfigurationProperties(CcuProperties.class)
-@Import({ViewerCallbackSecurityConfiguration.class, SecurityConfig.class,
+@Import({SecurityConfig.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         StreamViewerPresenceServiceImpl.class})
 @ActiveProfiles("dev")
 class ViewerPresenceControllerTest {
 
-    private static final String TOKEN = "viewer-callback-token-0123456789abcdef";
     private static final String PATH = "/stream/internal/api/viewer-events";
     private static final Instant NOW = Instant.parse("2026-11-11T00:00:00Z");
 
@@ -117,9 +109,8 @@ class ViewerPresenceControllerTest {
     }
 
     @Test
-    void readCallbackUsesInternalTokenWithoutAnyAccountAuthentication() throws Exception {
+    void readCallbackDoesNotRequireServiceOrAccountAuthentication() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
@@ -134,7 +125,6 @@ class ViewerPresenceControllerTest {
                 .replace("\"userId\": \"" + userId + "\"", "\"userId\": null");
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(unread))
                 .andExpect(status().isOk());
 
@@ -144,34 +134,23 @@ class ViewerPresenceControllerTest {
     }
 
     @Test
-    void missingAndWrongTokensAreRejectedBeforeProcessingPresence() throws Exception {
+    void legacyInternalTokenIsIgnored() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
+                        .header("X-Internal-Token", "ignored")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isUnauthorized())
-                .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.code").value(1001));
-        mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", "wrong-internal-token")
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Unauthorized"));
-
-        verifyNoInteractions(store, sessions, decoder, authorities);
+                .andExpect(status().isOk());
+        verify(store).join(sessionId, userId, readerId);
+        verifyNoInteractions(decoder, authorities);
     }
 
     @Test
-    void accountCookieAndReadJwtCannotReplaceTheInternalToken() throws Exception {
+    void authorizationHeaderDoesNotTriggerAccountAuthentication() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
-                        .cookie(new Cookie("access_token", "a.b.c"))
+                        .header("Authorization", "Bearer malformed")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isUnauthorized());
-        mvc.perform(post(PATH).contextPath("/stream")
-                        .header("Authorization", "Bearer read-jwt")
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isUnauthorized());
-
-        verifyNoInteractions(store, sessions, decoder, authorities);
+                .andExpect(status().isOk());
+        verify(store).join(sessionId, userId, readerId);
+        verifyNoInteractions(decoder, authorities);
     }
 
     @Test
@@ -186,7 +165,6 @@ class ViewerPresenceControllerTest {
                 body.replace("\"hlsSession\"", "null"),
                 body.replace("\"occurredAt\": \"" + NOW + "\"", "\"occurredAt\": null"))) {
             mvc.perform(post(PATH).contextPath("/stream")
-                            .header("X-Internal-Token", TOKEN)
                             .contentType(MediaType.APPLICATION_JSON).content(invalid))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(1004));
@@ -201,7 +179,6 @@ class ViewerPresenceControllerTest {
                 body.replace("\"userId\": \"" + userId + "\"", "\"userId\": null"),
                 body.replace("\"userId\": \"" + userId + "\",", ""))) {
             mvc.perform(post(PATH).contextPath("/stream")
-                            .header("X-Internal-Token", TOKEN)
                             .contentType(MediaType.APPLICATION_JSON).content(invalid))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value(1004));
@@ -216,7 +193,6 @@ class ViewerPresenceControllerTest {
                 .when(store).join(sessionId, userId, readerId);
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.status").value(503))
@@ -227,7 +203,6 @@ class ViewerPresenceControllerTest {
     void callbackCannotBeReachedThroughThePublicApiNamespaceOrChildPaths() throws Exception {
         for (String path : List.of("/stream/api/viewer-events", PATH + "/other")) {
             mvc.perform(post(path).contextPath("/stream")
-                            .header("X-Internal-Token", TOKEN)
                             .contentType(MediaType.APPLICATION_JSON).content(body))
                     .andExpect(status().isUnauthorized());
         }
@@ -238,13 +213,11 @@ class ViewerPresenceControllerTest {
     @Test
     void streamOwnerAndEndedReadersAreAcknowledgedWithoutAddingAViewer() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body.replace(userId.toString(), ownerId.toString())))
                 .andExpect(status().isOk());
         session.setStatus(StreamSessionStatus.ENDED);
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());
 
@@ -256,7 +229,6 @@ class ViewerPresenceControllerTest {
         session.setStatus(StreamSessionStatus.READY);
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(1009));

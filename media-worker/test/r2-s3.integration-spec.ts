@@ -87,7 +87,6 @@ test('captures HLS, uploads to S3 and retrieves the JPEG', async () => {
   try {
     await client.send(new CreateBucketCommand({ Bucket: 'thumbnail-test' }));
     const config = loadWorkerConfig({
-      MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
       MEDIA_WORKER_MEDIAMTX_BASE_URL: origin,
       MEDIA_WORKER_TEMP_DIR: dir,
       MEDIA_WORKER_R2_ENDPOINT: endpoint,

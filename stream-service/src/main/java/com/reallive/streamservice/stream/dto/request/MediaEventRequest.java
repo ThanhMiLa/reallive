@@ -2,6 +2,7 @@ package com.reallive.streamservice.stream.dto.request;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -14,7 +15,7 @@ public record MediaEventRequest(
         String eventType,
 
         @NotNull
-        @Pattern(regexp = "live/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+        @Pattern(regexp = "ingest/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
         String path,
 
         @NotNull

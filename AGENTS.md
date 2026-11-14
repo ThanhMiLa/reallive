@@ -57,4 +57,6 @@ Use Conventional Commits, matching history: `feat: ...`, `fix: ...`, or `docs(da
 
 ## Security & Configuration
 
+Follow [.agents/rules/internal-service-access.md](.agents/rules/internal-service-access.md) when implementing or changing gateway routes, internal endpoints, or service-to-service calls.
+
 Keep credentials in environment variables and commit only sanitized configuration examples. Exclude `.env`, `local.properties`, dependencies, and build outputs. Keep applications as ordinary directories in this repository; do not initialize nested Git repositories.

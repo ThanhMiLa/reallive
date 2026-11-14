@@ -50,7 +50,6 @@ class ThumbnailDispatchWorkerUnavailablePostgresTest extends PostgresIntegration
         registry.add("stream.thumbnail.job-deadline", () -> "240s");
         registry.add("stream.thumbnail.worker-base-url", () -> "http://127.0.0.1:1");
         registry.add("stream.thumbnail.internal-hls-base-url", () -> "http://media-server:8888");
-        registry.add("stream.thumbnail.internal-token", () -> "test-internal-token-0123456789abcdef");
         registry.add("stream.thumbnail.worker-connect-timeout", () -> "300ms");
         registry.add("stream.thumbnail.worker-read-timeout", () -> "500ms");
     }

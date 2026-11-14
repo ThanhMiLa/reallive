@@ -1,6 +1,5 @@
 package com.reallive.streamservice.client.thumbnail;
 
-import com.reallive.streamservice.stream.configuration.ThumbnailProperties;
 import feign.FeignException;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -24,12 +23,10 @@ import java.util.Optional;
 public class ThumbnailWorkerClient {
 
     ThumbnailWorkerApiClient api;
-    ThumbnailProperties properties;
 
     public Optional<ThumbnailBatchResponse> dispatchBatch(List<ThumbnailJobPayload> jobs) {
         try {
             ThumbnailBatchResponse response = api.dispatchBatch(
-                    properties.getInternalToken(),
                     new ThumbnailBatchRequest(jobs)
             );
             if (response == null || response.acceptedJobIds() == null) {

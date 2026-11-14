@@ -1,9 +1,15 @@
 import { useState } from 'react'
-import { ArrowLeft, ChevronLeft, LayoutDashboard, Tv, UserRound } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, KeyRound, LayoutDashboard, Tv, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import realLiveLogo from '@/assets/RealLive-logo.svg'
 import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
+
+const navigationItems = [
+  { to: '/dashboard', label: 'Stream Manager', icon: LayoutDashboard, end: true },
+  { to: '/dashboard/stream-key', label: 'Stream URL & Key', icon: KeyRound },
+  { to: '/dashboard/channel', label: 'My Channel', icon: Tv },
+]
 
 export function StreamerDashboardLayout() {
   const { user, isAuthenticated } = useAuthStore()
@@ -83,69 +89,42 @@ export function StreamerDashboardLayout() {
         </div>
 
         <nav aria-label="Streamer navigation" className="space-y-1.5 px-3 pb-4 md:flex-1">
-          <NavLink
-            to="/dashboard"
-            end
-            title={isCollapsed ? 'Stream Manager' : undefined}
-            className={({ isActive }) =>
-              `relative flex h-11 items-center rounded-lg px-3 text-sm overflow-hidden whitespace-nowrap focus-visible:outline-2 focus-visible:outline-[#ff2b42] transition-colors duration-200 ${
-                isActive
-                  ? 'bg-[#121216] font-semibold text-[#ff2b42]'
-                  : 'text-gray-400 hover:bg-[#121216] hover:text-white'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#ff2b42] transition-opacity duration-200 ${
-                    isActive ? 'opacity-100' : 'opacity-0'
-                  }`}
-                />
-                <LayoutDashboard className="h-5 w-5 shrink-0" />
-                <span
-                  className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                    isCollapsed
-                      ? 'ml-0 max-w-0 -translate-x-1 opacity-0'
-                      : 'ml-3 max-w-[160px] translate-x-0 opacity-100'
-                  }`}
-                >
-                  Stream Manager
-                </span>
-              </>
-            )}
-          </NavLink>
-          <NavLink
-            to="/dashboard/channel"
-            title={isCollapsed ? 'My Channel' : undefined}
-            className={({ isActive }) =>
-              `relative flex h-11 items-center rounded-lg px-3 text-sm overflow-hidden whitespace-nowrap focus-visible:outline-2 focus-visible:outline-[#ff2b42] transition-colors duration-200 ${
-                isActive
-                  ? 'bg-[#121216] font-semibold text-[#ff2b42]'
-                  : 'text-gray-400 hover:bg-[#121216] hover:text-white'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <span
-                  className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#ff2b42] transition-opacity duration-200 ${
-                    isActive ? 'opacity-100' : 'opacity-0'
-                  }`}
-                />
-                <Tv className="h-5 w-5 shrink-0" />
-                <span
-                  className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                    isCollapsed
-                      ? 'ml-0 max-w-0 -translate-x-1 opacity-0'
-                      : 'ml-3 max-w-[160px] translate-x-0 opacity-100'
-                  }`}
-                >
-                  My Channel
-                </span>
-              </>
-            )}
-          </NavLink>
+          {navigationItems.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              aria-label={label}
+              title={isCollapsed ? label : undefined}
+              className={({ isActive }) =>
+                `relative flex h-11 items-center rounded-lg px-3 text-sm overflow-hidden whitespace-nowrap focus-visible:outline-2 focus-visible:outline-[#ff2b42] transition-colors duration-200 ${
+                  isActive
+                    ? 'bg-[#121216] font-semibold text-[#ff2b42]'
+                    : 'text-gray-400 hover:bg-[#121216] hover:text-white'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#ff2b42] transition-opacity duration-200 ${
+                      isActive ? 'opacity-100' : 'opacity-0'
+                    }`}
+                  />
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span
+                    className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                      isCollapsed
+                        ? 'ml-3 max-w-[170px] translate-x-0 opacity-100 md:ml-0 md:max-w-0 md:-translate-x-1 md:opacity-0'
+                        : 'ml-3 max-w-[170px] translate-x-0 opacity-100'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="space-y-3 border-t border-[#1f1f26] px-4 py-4 md:py-5">

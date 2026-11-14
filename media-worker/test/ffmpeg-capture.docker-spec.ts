@@ -65,7 +65,6 @@ function container() {
       { host: 'host.docker.internal', ipAddress: 'host-gateway' },
     ])
     .withEnvironment({
-      MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
       MEDIA_WORKER_MEDIAMTX_BASE_URL: origin,
       MEDIA_WORKER_FFMPEG_TIMEOUT_MS: '60000',
       MEDIA_WORKER_JOB_DEADLINE_SECONDS: '120',

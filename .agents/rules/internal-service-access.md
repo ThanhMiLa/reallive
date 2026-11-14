@@ -1,0 +1,7 @@
+# Internal Service Access
+
+- The API gateway is the entry point for web and mobile clients. Internal services must not be directly accessible to those clients.
+- Endpoints intended exclusively for calls between internal services do not require authentication or token verification. In Spring Security, explicitly permit those endpoints (for example, with `permitAll`); scope matchers to the intended paths and HTTP methods. Do not add service-to-service credentials or JWT verification for these calls by default.
+- Do not expose internal endpoints through client-facing gateway routes. Ensure deployment and network configuration prevent external clients from reaching internal services directly. `permitAll` alone does not enforce this boundary; verify both gateway routing and network exposure when changing it. If the boundary cannot be verified, report that limitation rather than assuming it is enforced.
+- This rule applies to internal service-to-service endpoints, not automatically to every endpoint hosted by an internal service. Preserve authentication and authorization requirements for client-facing endpoints and existing provider webhook or callback verification.
+- When implementing a new internal endpoint or changing access rules, add relevant regression tests for the permitted service call and for preventing client access through the gateway. Consider authentication filters as well as authorization matchers: `permitAll` does not necessarily bypass token processing.

@@ -4,15 +4,12 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 import type { ThumbnailBatchAcceptedResponse } from '../common/contracts/thumbnail-contract';
-import { InternalTokenGuard } from '../common/auth/internal-token.guard';
 import { ThumbnailJobsBatchDto } from './dto/thumbnail-jobs-batch.dto';
 import { ThumbnailJobsService } from './thumbnail-jobs.service';
 
 @Controller('internal/api/thumbnail-jobs')
-@UseGuards(InternalTokenGuard)
 export class ThumbnailJobsController {
   constructor(private readonly thumbnailJobsService: ThumbnailJobsService) {}
 

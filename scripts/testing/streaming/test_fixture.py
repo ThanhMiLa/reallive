@@ -54,21 +54,33 @@ class FixtureTest(unittest.TestCase):
             self.assertEqual('existing key must survive', private.read_text())
 
     def test_valid_tokens_have_exact_permissions_and_expiry(self):
-        for action, ttl in [('publish', 28800), ('read', 300), ('api', 300)]:
-            with self.subTest(action=action):
-                payload = fixture.verify(self.state, self.fixtures[action + 'Token'], action, self.fixtures['path'])
-                self.assertEqual(ttl, payload['exp'] - payload['iat'])
-                self.assertEqual(1, len(payload['mediamtx_permissions']))
+        publish_payload = fixture.verify(self.state, self.fixtures['publishToken'], 'publish', self.fixtures['ingestPath'])
+        self.assertNotIn('exp', publish_payload)
+        self.assertEqual(1, len(publish_payload['mediamtx_permissions']))
+        relay_payload = fixture.verify(
+            self.state, self.fixtures['relayReadToken'], 'read', self.fixtures['ingestPath'], allow_permanent=True)
+        self.assertNotIn('exp', relay_payload)
+        self.assertEqual('relay-internal', relay_payload['sub'])
+        payload = fixture.verify(self.state, self.fixtures['readToken'], 'read', self.fixtures['path'])
+        self.assertEqual(300, payload['exp'] - payload['iat'])
+        self.assertEqual(1, len(payload['mediamtx_permissions']))
+        self.assertNotIn('apiToken', self.fixtures)
 
     def test_invalid_signature_expiry_path_and_action_are_rejected(self):
         for name, token in self.fixtures['negativeTokens'].items():
             action = 'publish' if name.endswith('Publish') else 'read'
+            target_path = self.fixtures['ingestPath'] if action == 'publish' else self.fixtures['path']
             with self.subTest(name=name), self.assertRaises(ValueError):
-                fixture.verify(self.state, token, action, self.fixtures['path'])
+                fixture.verify(self.state, token, action, target_path)
         with self.assertRaises(ValueError):
             fixture.verify(self.state, self.fixtures['readToken'], 'publish', self.fixtures['path'])
         with self.assertRaises(ValueError):
             fixture.verify(self.state, self.fixtures['publishToken'], 'api', '')
+        with self.assertRaises(ValueError):
+            fixture.verify(self.state, self.fixtures['publishToken'], 'read', self.fixtures['ingestPath'])
+        with self.assertRaises(ValueError):
+            fixture.verify(self.state, self.fixtures['publishToken'], 'publish', self.fixtures['ingestPath'],
+                           allow_permanent=False)
 
     def test_jwks_endpoint_contains_only_public_parameters(self):
         with urlopen(self.base + fixture.JWKS_PATH, timeout=3) as response:
@@ -77,8 +89,11 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual(65537, int.from_bytes(fixture.unb64url(key['e']), 'big'))
         self.assertGreaterEqual(int.from_bytes(fixture.unb64url(key['n']), 'big').bit_length(), 2048)
 
-    def send_event(self, body):
-        request = Request(self.base + fixture.EVENTS_PATH, data=body, headers={'Content-Type': 'application/json'})
+    def send_event(self, body, internal_token=None):
+        headers = {'Content-Type': 'application/json'}
+        if internal_token is not None:
+            headers['X-Internal-Token'] = internal_token
+        request = Request(self.base + fixture.EVENTS_PATH, data=body, headers=headers)
         try:
             with urlopen(request, timeout=3) as response:
                 return response.status, json.load(response)
@@ -87,9 +102,14 @@ class FixtureTest(unittest.TestCase):
                 return error.code, json.load(error)
 
     def event_body(self):
-        return json.dumps({'eventId': str(uuid4()), 'eventType': 'ONLINE', 'path': self.fixtures['path'],
+        return json.dumps({'eventId': str(uuid4()), 'eventType': 'ONLINE', 'path': self.fixtures['ingestPath'],
                            'sourceId': str(uuid4()), 'sourceType': 'rtmpConn',
                            'occurredAt': '2026-10-24T00:00:00Z'}).encode()
+
+    def test_callback_accepts_no_token_and_ignores_legacy_token(self):
+        body = self.event_body()
+        self.assertEqual(200, self.send_event(body, internal_token=None)[0])
+        self.assertEqual(200, self.send_event(body, internal_token='ignored')[0])
 
     def test_callback_and_duplicate_are_recorded_once(self):
         body = self.event_body()
@@ -154,6 +174,7 @@ class FixtureTest(unittest.TestCase):
             self.assertEqual('no-store', response.headers['Cache-Control'])
         self.assertIn('player.js', body)
         self.assertNotIn(self.fixtures['publishToken'], body)
+        self.assertNotIn(self.fixtures['relayReadToken'], body)
         self.assertNotIn(self.fixtures['readToken'], body)
 
     def test_acceptance_does_not_complete_tasks_without_runtime_and_human_evidence(self):

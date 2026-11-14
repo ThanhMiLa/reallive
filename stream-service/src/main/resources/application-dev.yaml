@@ -80,16 +80,16 @@ stream:
     key-id: ${STREAM_MEDIA_KEY_ID:stream-rs256-v1}
     issuer: ${STREAM_MEDIA_ISSUER:reallive-stream}
     audience: ${STREAM_MEDIA_AUDIENCE:reallive-media}
-    publish-token-ttl: ${STREAM_PUBLISH_TOKEN_TTL:8h}
     read-token-ttl: ${STREAM_READ_TOKEN_TTL:5m}
-    control-token-ttl: ${STREAM_CONTROL_TOKEN_TTL:5m}
-    rtmp-public-url: ${STREAM_RTMP_PUBLIC_URL:rtmp://localhost:1935/live}
+    rtmp-public-url: ${STREAM_RTMP_PUBLIC_URL:rtmp://localhost:1935/ingest}
     hls-public-base-url: ${STREAM_HLS_PUBLIC_BASE_URL:http://localhost:8898}
     control-api:
       base-url: ${STREAM_MEDIA_CONTROL_API_URL:http://localhost:9997}
+      internal-rtmp-base-url: ${STREAM_MEDIA_INTERNAL_RTMP_BASE_URL:rtmp://127.0.0.1:1935}
       connect-timeout: ${STREAM_MEDIA_CONTROL_CONNECT_TIMEOUT:2s}
       request-timeout: ${STREAM_MEDIA_CONTROL_REQUEST_TIMEOUT:5s}
       paths:
+        info: ${STREAM_MEDIA_CONTROL_PATH_INFO:/v3/info}
         config-get: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_GET:/v3/config/paths/get/}
         config-add: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_ADD:/v3/config/paths/add/}
         config-delete: ${STREAM_MEDIA_CONTROL_PATH_CONFIG_DELETE:/v3/config/paths/delete/}
@@ -97,6 +97,7 @@ stream:
         status-get: ${STREAM_MEDIA_CONTROL_PATH_STATUS_GET:/v3/paths/get/}
         status-list: ${STREAM_MEDIA_CONTROL_PATH_STATUS_LIST:/v3/paths/list}
         conns-kick: ${STREAM_MEDIA_CONTROL_PATH_CONNS_KICK:/v3/%s/conns/kick/}
+        ingest-prefix: ${STREAM_MEDIA_INGEST_PATH_PREFIX:ingest/}
         stream-prefix: ${STREAM_MEDIA_STREAM_PATH_PREFIX:live/}
   lifecycle:
     reconnect-grace: ${STREAM_RECONNECT_GRACE:60s}
@@ -111,8 +112,6 @@ stream:
     batch-size: ${STREAM_THUMBNAIL_BATCH_SIZE:50}
     job-deadline: ${STREAM_THUMBNAIL_JOB_DEADLINE:240s}
     worker-base-url: ${MEDIA_WORKER_BASE_URL:http://localhost:8090}
-    internal-token: ${MEDIA_WORKER_INTERNAL_TOKEN:}
-    callback-internal-token: ${STREAM_SERVICE_INTERNAL_TOKEN:}
     public-base-url: ${R2_PUBLIC_BASE_URL:}
     max-jpeg-bytes: ${STREAM_THUMBNAIL_MAX_JPEG_BYTES:5242880}
     internal-hls-base-url: ${STREAM_MEDIA_INTERNAL_HLS_BASE_URL:http://localhost:8898}
@@ -121,5 +120,3 @@ stream:
 
   ccu:
     enabled: ${STREAM_CCU_ENABLED:true}
-    callback-token: ${STREAM_CCU_CALLBACK_TOKEN:}
-    control-token-directory: ${STREAM_CCU_CONTROL_TOKEN_DIRECTORY:}

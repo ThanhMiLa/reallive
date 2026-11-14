@@ -3,7 +3,6 @@ package com.reallive.streamservice.stream.service.impl;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
-import com.reallive.streamservice.stream.configuration.CcuProperties;
 import com.reallive.streamservice.stream.dto.request.ViewerPresenceEvent;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
@@ -16,7 +15,9 @@ import java.util.concurrent.TimeUnit;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -27,14 +28,16 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class StreamViewerPresenceServiceImpl implements StreamViewerPresenceService {
-    CcuProperties properties;
+    @NonFinal
+    @Value("${stream.ccu.enabled:false}")
+    boolean ccuEnabled;
     StreamViewerPresenceStore store;
     StreamSessionRepository sessions;
     Clock streamClock;
 
     @Override
     public void accept(ViewerPresenceEvent event) {
-        if (!properties.isEnabled()) return;
+        if (!ccuEnabled) return;
         if (event.eventType() == ViewerPresenceEvent.Type.READ && event.userId() == null)
             throw new AppException(ErrorCode.STREAM_REQUEST_INVALID);
         Metrics.counter("ccu.callback.received", "type", event.eventType().name()).increment();
@@ -56,7 +59,7 @@ public class StreamViewerPresenceServiceImpl implements StreamViewerPresenceServ
     @Override
     public Long count(UUID sessionId, StreamSessionStatus status) {
         if (status == StreamSessionStatus.READY || status == StreamSessionStatus.ENDED) return 0L;
-        if (!properties.isEnabled()) return null;
+        if (!ccuEnabled) return null;
         try {
             return store.count(sessionId);
         } catch (RuntimeException exception) {
@@ -68,7 +71,7 @@ public class StreamViewerPresenceServiceImpl implements StreamViewerPresenceServ
 
     @Override
     public void closeAfterCommit(UUID sessionId) {
-        if (!properties.isEnabled()) return;
+        if (!ccuEnabled) return;
         Runnable cleanup = () -> {
             try { store.close(sessionId); }
             catch (RuntimeException exception) { log.warn("CCU cleanup pending: sessionId={}", sessionId); }

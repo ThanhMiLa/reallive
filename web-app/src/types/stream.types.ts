@@ -1,4 +1,6 @@
-export type StreamStatus = 'READY' | 'LIVE' | 'RECONNECTING' | 'ENDED'
+export type StreamStatus = 'LIVE' | 'RECONNECTING' | 'ENDED'
+
+export type StreamConfigStatus = 'DRAFT' | 'ACTIVE' | 'BLOCKED'
 
 interface StreamMetadataFields {
   id: string
@@ -22,13 +24,6 @@ export interface StreamSession extends StreamMetadataFields {
   publishReady: boolean
 }
 
-export interface PublishCredentials {
-  sessionId: string
-  serverUrl: string
-  streamKey: string
-  publishExpiresAt: string
-}
-
 export interface PlaybackAccess {
   sessionId: string
   playbackUrl: string
@@ -41,13 +36,22 @@ export interface StreamDetails {
   categoryId: string
 }
 
-export interface CreateStreamRequest extends StreamDetails {
-  requestId: string
+export type SaveStreamSetupRequest = StreamDetails
+
+export interface StreamSetup {
+  channelId: string
+  title: string | null
+  categoryId: string | null
+  visibility: 'PUBLIC'
+  status: StreamConfigStatus
+  hasStreamKey: boolean
+  blockedReason: string | null
 }
 
-export interface CreateStreamResponse {
-  session: StreamSession
-  publishCredentials: PublishCredentials
+export interface StreamKeyCredentials {
+  channelId: string
+  serverUrl: string
+  streamKey: string
 }
 
 export interface StreamChannelSummary {

@@ -74,8 +74,6 @@ class ThumbnailRepositoryPostgresTest extends PostgresIntegrationTestSupport {
                 null, ThumbnailJobStatus.PENDING_DISPATCH, UUID.randomUUID(), NOW.plusSeconds(60));
         StreamSessionEntity accepted = save(StreamSessionStatus.LIVE, MediaPathState.OPEN,
                 CUTOFF.minusSeconds(10), ThumbnailJobStatus.ACCEPTED, UUID.randomUUID(), NOW.plusSeconds(60));
-        StreamSessionEntity ready = save(StreamSessionStatus.READY, MediaPathState.OPEN,
-                null, null, null, null);
         StreamSessionEntity reconnecting = save(StreamSessionStatus.RECONNECTING, MediaPathState.OPEN,
                 null, null, null, null);
         StreamSessionEntity ended = save(StreamSessionStatus.ENDED, MediaPathState.CLOSED,
@@ -87,7 +85,6 @@ class ThumbnailRepositoryPostgresTest extends PostgresIntegrationTestSupport {
         assertFalse(due.contains(recentImage.getId()));
         assertFalse(due.contains(pending.getId()));
         assertFalse(due.contains(accepted.getId()));
-        assertFalse(due.contains(ready.getId()));
         assertFalse(due.contains(reconnecting.getId()));
         assertFalse(due.contains(ended.getId()));
         assertEquals(List.of(neverHadImage.getId()), sessions.findDueThumbnailSessionIds(CUTOFF, PageRequest.of(0, 1)));
@@ -103,7 +100,9 @@ class ThumbnailRepositoryPostgresTest extends PostgresIntegrationTestSupport {
                 null, ThumbnailJobStatus.PENDING_DISPATCH, UUID.randomUUID(), NOW);
         StreamSessionEntity expiresBeforeNow = save(StreamSessionStatus.LIVE, MediaPathState.OPEN,
                 null, ThumbnailJobStatus.PENDING_DISPATCH, UUID.randomUUID(), NOW.minusSeconds(1));
-        StreamSessionEntity ready = save(StreamSessionStatus.READY, MediaPathState.OPEN,
+        StreamSessionEntity reconnecting = save(StreamSessionStatus.RECONNECTING, MediaPathState.OPEN,
+                null, ThumbnailJobStatus.PENDING_DISPATCH, UUID.randomUUID(), NOW.plusSeconds(30));
+        StreamSessionEntity ended = save(StreamSessionStatus.ENDED, MediaPathState.CLOSED,
                 null, ThumbnailJobStatus.PENDING_DISPATCH, UUID.randomUUID(), NOW.plusSeconds(30));
         StreamSessionEntity accepted = save(StreamSessionStatus.LIVE, MediaPathState.OPEN,
                 null, ThumbnailJobStatus.ACCEPTED, UUID.randomUUID(), NOW.plusSeconds(30));
@@ -115,7 +114,8 @@ class ThumbnailRepositoryPostgresTest extends PostgresIntegrationTestSupport {
         assertEquals(List.of(first.getId(), second.getId()), pending);
         assertFalse(pending.contains(expiresNow.getId()));
         assertFalse(pending.contains(expiresBeforeNow.getId()));
-        assertFalse(pending.contains(ready.getId()));
+        assertFalse(pending.contains(reconnecting.getId()));
+        assertFalse(pending.contains(ended.getId()));
         assertFalse(pending.contains(accepted.getId()));
         assertFalse(pending.contains(succeeded.getId()));
         assertEquals(List.of(first.getId()),

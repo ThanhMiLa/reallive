@@ -4,7 +4,9 @@ import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
-import com.reallive.streamservice.common.security.ThumbnailCallbackSecurityConfiguration;
+import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
+import com.reallive.streamservice.common.security.CustomJwtDecoder;
+import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.configuration.ThumbnailProperties;
 import com.reallive.streamservice.stream.dto.response.ThumbnailResultOutcome;
 import com.reallive.streamservice.stream.dto.response.ThumbnailResultResponse;
@@ -15,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -24,10 +25,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -38,7 +39,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalThumbnailResultController.class,
         properties = {
                 "stream.thumbnail.callback-enabled=true",
-                "stream.thumbnail.callback-internal-token=callback-token-0123456789abcdefg",
                 "stream.thumbnail.public-base-url=https://thumbnails.example.com",
                 "stream.thumbnail.max-jpeg-bytes=5242880",
                 "ACCESS_TOKEN_COOKIE_NAME=access_token",
@@ -46,18 +46,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         }
 )
 @EnableConfigurationProperties(ThumbnailProperties.class)
-@Import({ThumbnailCallbackSecurityConfiguration.class, JwtAuthenticationEntryPoint.class})
+@Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class})
 @ActiveProfiles("dev")
 class ThumbnailResultControllerTest {
 
-    private static final String TOKEN = "callback-token-0123456789abcdefg";
     private static final String PATH = "/stream/internal/api/thumbnail-results";
 
     @Autowired
     private MockMvc mvc;
 
-    @Autowired
-    private ApplicationContext context;
+    @MockitoBean
+    private RedisAuthoritiesReader authorities;
 
     @MockitoBean
     private ThumbnailResultService resultService;
@@ -89,7 +88,6 @@ class ThumbnailResultControllerTest {
                 new ThumbnailResultResponse(ThumbnailResultOutcome.APPLIED));
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -104,7 +102,6 @@ class ThumbnailResultControllerTest {
                 new ThumbnailResultResponse(ThumbnailResultOutcome.IGNORED));
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk())
@@ -112,42 +109,43 @@ class ThumbnailResultControllerTest {
     }
 
     @Test
-    void missingTokenIsRejectedWithTheStandard401Envelope() throws Exception {
+    void callbackAcceptsNoToken() throws Exception {
+        when(resultService.apply(any())).thenReturn(
+                new ThumbnailResultResponse(ThumbnailResultOutcome.APPLIED));
         mvc.perform(post(PATH).contextPath("/stream")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.code").value(1001))
-                .andExpect(jsonPath("$.message").value("Unauthorized"));
-        verify(resultService, never()).apply(any());
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        verify(resultService).apply(any());
     }
 
     @Test
-    void workerTokenCannotReplaceTheCallbackToken() throws Exception {
+    void callbackIgnoresLegacyInternalToken() throws Exception {
+        when(resultService.apply(any())).thenReturn(
+                new ThumbnailResultResponse(ThumbnailResultOutcome.APPLIED));
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", "worker-token-0123456789abcdefg")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(1001));
-        verify(resultService, never()).apply(any());
+                        .header("X-Internal-Token", "ignored")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        verify(resultService).apply(any());
     }
 
     @Test
-    void accountCookieCannotReplaceTheInternalToken() throws Exception {
+    void suppliedMalformedAccountCookieUsesTheStandardAuthenticationPolicy() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
                         .cookie(new Cookie("access_token", "a.b.c"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(1001));
-        verify(resultService, never()).apply(any());
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(resultService, authorities);
     }
 
     @Test
-    void callbackDoesNotDependOnRedisAuthorities() {
-        assertThat(context.getBeansOfType(RedisAuthoritiesReader.class)).isEmpty();
+    void callbackWithoutCookiesDoesNotLoadRedisAuthorities() throws Exception {
+        when(resultService.apply(any())).thenReturn(
+                new ThumbnailResultResponse(ThumbnailResultOutcome.APPLIED));
+        mvc.perform(post(PATH).contextPath("/stream")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        verifyNoInteractions(authorities);
     }
 
     @Test
@@ -155,7 +153,6 @@ class ThumbnailResultControllerTest {
         String invalid = body.replace(jobId.toString(), "not-a-uuid");
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(invalid))
                 .andExpect(status().isBadRequest())
@@ -172,7 +169,6 @@ class ThumbnailResultControllerTest {
                 body.replace("\"height\": 360", "\"height\": -1")
         }) {
             mvc.perform(post(PATH).contextPath("/stream")
-                            .header("X-Internal-Token", TOKEN)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(invalid))
                     .andExpect(status().isBadRequest())
@@ -187,7 +183,6 @@ class ThumbnailResultControllerTest {
                 new AppException(ErrorCode.THUMBNAIL_RESULT_INVALID));
 
         mvc.perform(post(PATH).contextPath("/stream")
-                        .header("X-Internal-Token", TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())

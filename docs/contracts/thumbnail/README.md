@@ -3,15 +3,14 @@
 Contract dùng chung giữa Stream Service (Java) và `media-worker` (NestJS) cho tính năng thumbnail livestream. Worker tiếp nhận job qua BullMQ/Redis, trích JPEG bằng FFmpeg, upload R2 và callback để backend cập nhật DB. Consumer mặc định tắt, bật có chủ đích khi đủ cấu hình.
 
 - Base URL của Worker trong môi trường nội bộ: `http://media-worker:8090` (cấu hình khi triển khai; không public qua Gateway).
-- Mọi API nội bộ dùng header `X-Internal-Token`; giá trị lấy từ biến môi trường, không dùng account cookie, không dùng JWT người dùng.
-- Token nội bộ không xuất hiện trong body, log, fixture hoặc thông báo lỗi. Fixtures chỉ chứa giá trị tổng hợp, không phải credential thật.
+- API nội bộ không yêu cầu token hay account cookie/JWT. Truy cập dựa trên mạng nội bộ; Gateway không expose các endpoint này.
+- Read JWT và credential không xuất hiện trong log hoặc thông báo lỗi. Fixtures chỉ chứa giá trị tổng hợp.
 
 ## 1. Worker nhận batch
 
 ```http
 POST /internal/api/thumbnail-jobs/batch
 Content-Type: application/json
-X-Internal-Token: <internal token>
 ```
 
 ### 1.1. Request schema
@@ -89,7 +88,6 @@ Khi Redis sẵn sàng, Worker trả `202` sau khi lưu hoặc xác nhận job t�
 ```http
 POST /stream/internal/api/thumbnail-results
 Content-Type: application/json
-X-Internal-Token: <internal token>
 ```
 
 ### 2.1. Payload schema
@@ -135,10 +133,9 @@ HTTP/1.1 200 OK
 - `APPLIED`: kết quả hợp lệ, đúng job, job còn chờ, chưa quá deadline, session vẫn `LIVE` và metadata ảnh hợp lệ.
 - `IGNORED`: kết quả trùng, cũ, sai job/trạng thái hoặc không còn đủ điều kiện áp dụng. Client coi như đã xử lý xong và không retry.
 - `400`: schema/UUID/timestamp/metadata ảnh sai.
-- `401`: thiếu hoặc sai internal token.
 - `503`: dependency tạm thời không khả dụng. Worker ghi log, kết thúc job và không retry callback.
 
-Endpoint đã được triển khai trong Step 7, bật bằng STREAM_THUMBNAIL_CALLBACK_ENABLED tại Stream Service và không public qua Gateway. STREAM_SERVICE_INTERNAL_TOKEN phải khớp Worker; backend tự dựng URL bằng R2_PUBLIC_BASE_URL của bucket thumbnail.
+Endpoint đã được triển khai trong Step 7, bật bằng STREAM_THUMBNAIL_CALLBACK_ENABLED tại Stream Service và không public qua Gateway. backend tự dựng URL bằng R2_PUBLIC_BASE_URL của bucket thumbnail.
 
 ## 3. Error contract dùng chung
 
@@ -153,7 +150,7 @@ Worker trả lỗi JSON theo cấu trúc:
 }
 ```
 
-`details` là optional, chỉ chứa đường dẫn field và mô tả lỗi; không chứa `readToken`, internal token, Authorization header hoặc credential.
+`details` là optional, chỉ chứa đường dẫn field và mô tả lỗi; không chứa `readToken`, Authorization header hoặc credential.
 
 | HTTP status | `code` | Trường hợp |
 | --- | --- | --- |
@@ -161,7 +158,6 @@ Worker trả lỗi JSON theo cấu trúc:
 | `400` | `BATCH_TOO_LARGE` | Số job vượt giới hạn batch |
 | `400` | `INVALID_PLAYBACK_URL` | URL nguồn không thuộc MediaMTX base URL/path cho phép |
 | `400` | `INVALID_JSON` | Body không phải JSON hợp lệ |
-| `401` | `INVALID_INTERNAL_TOKEN` | Thiếu hoặc sai `X-Internal-Token` |
 | `413` | `REQUEST_BODY_TOO_LARGE` | Body vượt giới hạn byte |
 | `503` | `QUEUE_UNAVAILABLE` | Queue/dependency không khả dụng |
 | `500` | `INTERNAL_ERROR` | Lỗi không mong đợi; message không chứa chi tiết nội bộ |

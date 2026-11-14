@@ -6,6 +6,7 @@ import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
 import com.reallive.streamservice.stream.entity.enums.ThumbnailJobStatus;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,12 +17,14 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
+
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
+
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.springframework.data.domain.Persistable;
@@ -38,10 +41,13 @@ import java.util.UUID;
 @Table(
         name = "stream_sessions",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uk_stream_sessions_playback_path", columnNames = "playback_path"),
-                @UniqueConstraint(name = "uk_stream_sessions_owner_creation_request", columnNames = {"owner_user_id", "creation_request_id"})
-        }
-)
+            @UniqueConstraint(
+                    name = "uk_stream_sessions_playback_path",
+                    columnNames = "playback_path"),
+            @UniqueConstraint(
+                    name = "uk_stream_sessions_owner_creation_request",
+                    columnNames = {"owner_user_id", "creation_request_id"})
+        })
 public class StreamSessionEntity extends BaseEntity implements Persistable<UUID> {
 
     @Id
@@ -75,8 +81,21 @@ public class StreamSessionEntity extends BaseEntity implements Persistable<UUID>
     @Column(name = "playback_path", nullable = false, length = 500)
     String playbackPath;
 
-    @Column(name = "creation_request_id", nullable = false, updatable = false)
+    @Column(name = "creation_request_id", updatable = false)
     UUID creationRequestId;
+
+    @Column(name = "ingest_key_id")
+    UUID ingestKeyId;
+
+    @Builder.Default
+    @Column(name = "end_requested", nullable = false)
+    boolean endRequested = false;
+
+    @Column(name = "end_requested_at")
+    LocalDateTime endRequestedAt;
+
+    @Column(name = "end_reason", length = 500)
+    String endReason;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "media_path_state", nullable = false, length = 30)
@@ -122,9 +141,7 @@ public class StreamSessionEntity extends BaseEntity implements Persistable<UUID>
     @JdbcTypeCode(SqlTypes.LOCAL_DATE_TIME)
     LocalDateTime thumbnailJobDeadlineAt;
 
-    @Transient
-    @Builder.Default
-    boolean isNew = true;
+    @Transient @Builder.Default boolean isNew = true;
 
     @Override
     public boolean isNew() {

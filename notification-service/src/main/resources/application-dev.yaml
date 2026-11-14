@@ -25,6 +25,8 @@ spring:
 
   jpa:
     open-in-view: false
+    properties:
+      hibernate.jdbc.batch_size: 50
     hibernate:
       ddl-auto: validate
 

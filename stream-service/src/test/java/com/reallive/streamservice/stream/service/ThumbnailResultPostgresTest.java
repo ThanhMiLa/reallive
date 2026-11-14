@@ -67,8 +67,6 @@ class ThumbnailResultPostgresTest extends PostgresIntegrationTestSupport {
         configureDatabase(registry, SCHEMA);
         registry.add("stream.thumbnail.enabled", () -> "false");
         registry.add("stream.thumbnail.callback-enabled", () -> "true");
-        registry.add("stream.thumbnail.callback-internal-token",
-                () -> "test-internal-token-0123456789abcdef");
         registry.add("stream.thumbnail.public-base-url", () -> BASE_URL);
         registry.add("stream.thumbnail.max-jpeg-bytes", () -> "5242880");
     }

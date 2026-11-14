@@ -252,96 +252,48 @@ Composite Index:
 
 ## 3. Stream Service Data Model
 
+Thiết kế đồng bộ V6; xem [Streaming Architecture and Flow](../architecture/Streaming%20Architecture%20and%20Flow.md).
+
 ### 3.1 Tables
 
-Thiết kế MVP cập nhật ngày 2026-10-25 theo [plan xử lý đồng bộ](../Implement%20Plan/Streaming%20MVP%20Phase%201%20Implementation%20Plan.md): Stream Service có hai bảng `stream_sessions` và `stream_status_history`. Backend gọi MediaMTX trực tiếp và chờ kết quả; không dùng bảng task hoặc worker retry.
+#### 3.1.1 channel_stream_configs
 
-Các bảng và constraint dưới đây mô tả schema sau V3: V2 bỏ bảng task, V3 bỏ cột version của session. V1/V2 được giữ nguyên làm lịch sử migration. Migration mới chỉ được kiểm chứng trên PostgreSQL test cô lập, chưa áp dụng vào database ứng dụng; xem [kết quả Giai đoạn 1](../testing/Streaming%20MVP%20Tests.md).
+Mỗi kênh một cấu hình, dùng cả trước khi có buổi phát.
 
-#### 3.1.1 stream_sessions
+| Column | Vai trò |
+|---|---|
+| channel_id | UUID primary key, định danh kênh |
+| streamer_id / owner_user_id | Chủ sở hữu, mỗi giá trị unique |
+| title / category_id / visibility | Thông tin dùng khi tạo session; MVP PUBLIC |
+| status | DRAFT / ACTIVE / BLOCKED |
+| current_ingest_key_id | UUID unique nullable, ingest đang được phép publish |
+| blocked_reason | Lý do chặn nếu có |
+| created_at / updated_at | Thời gian tạo/cập nhật |
 
-| Column | Type | Constraints | Index | Description |
-|---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Stream session ID, path `live/{id}` |
-| channel_id | UUID | NOT NULL | INDEX | Channel ID from Channel Service |
-| streamer_id | UUID | NOT NULL | INDEX | Streamer ID from User Service |
-| owner_user_id | UUID | NOT NULL | INDEX | Owner user identifier |
-| category_id | UUID | NOT NULL | INDEX | Category ID from Channel Service |
-| title | VARCHAR(255) | NOT NULL | - | Stream title, non-blank |
-| visibility | VARCHAR(30) | NOT NULL | INDEX | `PUBLIC, PRIVATE, UNLISTED` |
-| status | VARCHAR(30) | NOT NULL | INDEX | `READY, LIVE, RECONNECTING, ENDED` |
-| playback_path | VARCHAR(500) | UNIQUE, NOT NULL | UNIQUE | HLS playback path `/live/{id}/index.m3u8` |
-| creation_request_id | UUID | NOT NULL | UNIQUE Composite | Owner creation request identifier for deduplication |
-| media_path_state | VARCHAR(30) | NOT NULL | - | `OPEN, CLOSED`; confirmed media path state when the transaction commits |
-| media_source_id | UUID | - | - | Active media publisher connection identifier |
-| media_source_type | VARCHAR(30) | - | - | `rtmpConn, rtmpsConn` |
-| disconnected_at | TIMESTAMP | - | - | Timestamp when current media connection disconnected |
-| reconnect_deadline_at | TIMESTAMP | - | INDEX | Reconnect deadline timestamp |
-| started_at | TIMESTAMP | - | INDEX | Actual stream first start time |
-| ended_at | TIMESTAMP | - | - | Stream end time |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Created time |
-| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
+Không lưu Publish/Relay JWT. DRAFT chưa có key; ACTIVE có ingest ID và category hợp lệ. Save chỉ cập nhật thông tin, POST cấp key luôn thay ingest ID hiện hành.
 
-Constraints:
+#### 3.1.2 stream_sessions
 
-- `UNIQUE (owner_user_id, creation_request_id)`
-- `CHECK (length(btrim(title)) > 0)`
-- `CHECK (length(btrim(playback_path)) > 0)`
-- `CHECK (visibility IN ('PUBLIC', 'PRIVATE', 'UNLISTED'))`
-- `CHECK (status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
-- `CHECK (media_path_state IN ('OPEN', 'CLOSED'))`
-- `CHECK (media_source_type IS NULL OR media_source_type IN ('rtmpConn', 'rtmpsConn'))`
-- `CHECK (status <> 'RECONNECTING' OR (disconnected_at IS NOT NULL AND reconnect_deadline_at IS NOT NULL))`
-- `CHECK (status <> 'LIVE' OR (started_at IS NOT NULL AND media_source_id IS NOT NULL AND media_source_type IS NOT NULL AND reconnect_deadline_at IS NULL))`
-- `CHECK ((status = 'ENDED' AND ended_at IS NOT NULL) OR (status <> 'ENDED' AND ended_at IS NULL))`
-- `CHECK ((status IN ('READY', 'LIVE', 'RECONNECTING') AND media_path_state = 'OPEN') OR (status = 'ENDED' AND media_path_state = 'CLOSED'))`
+Mỗi buổi phát có session độc lập. Giữ schema V5 gồm ID/owner/channel/streamer, snapshot title/category, visibility, status LIVE/RECONNECTING/ENDED, playback_path unique `/live/{sessionId}/index.m3u8`, ingest_key_id, media_path_state, media_source_id/type, disconnected_at, reconnect_deadline_at, started_at, ended_at và end_requested/end_requested_at/end_reason. creation_request_id nullable giữ tương thích lịch sử.
 
-Indexes:
+Các cột thumbnail URL/object key/update time và job ID/status/deadline giữ nguyên. Kết thúc phiên xóa job đang chờ và đóng CCU.
 
-- `UNIQUE INDEX uq_stream_sessions_channel_slot ON stream_sessions (channel_id) WHERE status IN ('READY', 'LIVE', 'RECONNECTING')`
-- `INDEX (visibility, status, started_at DESC, id ASC)`
-- `INDEX (owner_user_id, created_at DESC, id DESC)`
-- `INDEX (status, reconnect_deadline_at) WHERE status = 'RECONNECTING'`
-- `INDEX (channel_id)`
-- `INDEX (streamer_id)`
-- `INDEX (category_id)`
+- Unique active slot theo channel: status LIVE hoặc RECONNECTING.
+- ingest_key_id là snapshot UUID, không còn FK tới bảng credential đã bỏ.
+- LIVE yêu cầu startedAt/source ID/type, không có reconnect deadline. RECONNECTING yêu cầu disconnectedAt/deadline. ENDED yêu cầu endedAt và media path CLOSED.
+- Tất cả thao tác lifecycle khóa config trước session; Control API chạy đồng bộ trong transaction.
 
-Quy tắc ghi dữ liệu đồng bộ:
+#### 3.1.3 stream_status_history
 
-- Dùng pessimistic locking (`PESSIMISTIC_WRITE`) trong cùng transaction cho mọi thao tác cập nhật session hiện có; không dùng cột version hoặc JPA @Version. Unique index vẫn bảo vệ Create khi chưa có row để khóa.
-- Create reserve slot bằng row READY/OPEN chưa commit, gọi MediaMTX mở path và chờ thành công rồi commit session/history; lỗi media rollback thay đổi DB.
-- End hoặc hết hạn reconnect gọi MediaMTX đóng path trước, thành công mới commit ENDED/CLOSED cùng history và giải phóng slot channel. Nếu lời gọi media lỗi thì rollback thay đổi DB, giữ trạng thái/slot trước thao tác.
-- MVP chỉ tạo stream PUBLIC; PRIVATE/UNLISTED được giữ trong enum cho thiết kế mở rộng.
-
-#### 3.1.2 stream_status_history
-
-| Column | Type | Constraints | Index | Description |
-|---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Stream status history ID |
-| stream_id | UUID | FK, NOT NULL | INDEX | References `stream_sessions.id`, ON DELETE CASCADE |
-| previous_status | VARCHAR(30) | - | - | Previous status (`READY, LIVE, RECONNECTING, ENDED`) |
-| status | VARCHAR(30) | NOT NULL | - | New status (`READY, LIVE, RECONNECTING, ENDED`) |
-| reason | VARCHAR(500) | - | - | Reason for status change |
-| media_source_id | UUID | - | - | Media publisher connection identifier |
-| media_event_id | UUID | - | UNIQUE Partial | Media callback event ID for deduplication |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Transition time |
-
-Constraints:
-
-- `CHECK (previous_status IS NULL OR previous_status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
-- `CHECK (status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
-
-Indexes:
-
-- `INDEX (stream_id, created_at ASC, id ASC)`
-- `UNIQUE INDEX uq_stream_status_history_media_event_id ON stream_status_history (media_event_id) WHERE media_event_id IS NOT NULL`
+Giữ ID, stream_id, previous_status, status, reason, media_source_id, media_event_id và created_at. Unique media_event_id khi non-null giúp callback lặp không tạo lại transition. Trạng thái READY vẫn được phép ở history để giữ dữ liệu cũ.
 
 ### 3.2 Relationships
 
-- `channels (Channel Service)` 1 — N `stream_sessions`
-- `streamers (User Service)` 1 — N `stream_sessions`
-- `categories (Channel Service)` 1 — N `stream_sessions`
-- `stream_sessions` 1 — N `stream_status_history`
+- Channel 1 — 1 channel_stream_configs.
+- Channel/streamer/category 1 — N stream_sessions.
+- stream_sessions 1 — N stream_status_history.
+
+V6 bỏ channel_stream_credentials, stream_media_operations và stream_media_runtime_state. V1–V5 là lịch sử Flyway bất biến; các bài test migration V5 vẫn kiểm tra schema cũ.
 
 ---
 

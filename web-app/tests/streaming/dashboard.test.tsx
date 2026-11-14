@@ -2,11 +2,17 @@ import { StrictMode, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { StreamerDashboardLayout } from '@/components/layout/StreamerDashboardLayout'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
+import { StreamUrlKeyPage } from '@/pages/dashboard/StreamUrlKeyPage'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ChatMessage, ChatPage } from '@/types/chat.types'
-import type { StreamMetadata, StreamSession } from '@/types/stream.types'
+import type {
+  StreamMetadata,
+  StreamSession,
+  StreamSetup,
+} from '@/types/stream.types'
 
 type HlsStub = {
   source: string
@@ -20,19 +26,19 @@ type SocketStub = {
 }
 
 const mocks = vi.hoisted(() => ({
+  setup: vi.fn(),
+  saveSetup: vi.fn(),
+  issueKey: vi.fn(),
   current: vi.fn(),
   metadata: vi.fn(),
-  create: vi.fn(),
-  update: vi.fn(),
-  credentials: vi.fn(),
   access: vi.fn(),
-  end: vi.fn(),
   categories: vi.fn(),
   chatHistory: vi.fn(),
   toast: vi.fn(),
   hls: [] as HlsStub[],
   sockets: [] as SocketStub[],
 }))
+
 class FakeSocket {
   connected = false
   handlers = new Map<string, ((...args: unknown[]) => void)[]>()
@@ -92,6 +98,7 @@ class FakeSocket {
     return this
   }
 }
+
 vi.mock('@/api/stream.api', () => ({ streamApi: mocks }))
 vi.mock('@/api/channel.api', () => ({ channelApi: { getCategories: mocks.categories } }))
 vi.mock('@/api/chat.api', () => ({ chatApi: { history: mocks.chatHistory } }))
@@ -146,27 +153,35 @@ vi.mock('hls.js', () => {
   return { default: FakeHls, FetchLoader: class {} }
 })
 
+const channelId = '00000000-0000-4000-8000-000000000010'
 const categoryId = '00000000-0000-4000-8000-000000000001'
 const sessionId = '462c912c-ee66-4477-9852-bed13d377297'
-const ready: StreamSession = {
+
+const draftSetup: StreamSetup = {
+  channelId, title: '', categoryId: null, visibility: 'PUBLIC', status: 'DRAFT',
+  hasStreamKey: false, blockedReason: null,
+}
+const activeSetup: StreamSetup = {
+  ...draftSetup, title: 'Morning', categoryId, status: 'ACTIVE', hasStreamKey: true,
+}
+const issuedKey = {
+  channelId, serverUrl: 'rtmp://localhost:1935/ingest', streamKey: 'ingest-id-1?token=secret-jwt-1',
+}
+
+const liveSession: StreamSession = {
   id: sessionId,
-  channelId: 'channel',
+  channelId,
   title: 'Morning',
   categoryId,
   visibility: 'PUBLIC',
-  status: 'READY',
-  startedAt: null,
+  status: 'LIVE',
+  startedAt: '2026-10-30T00:00:00Z',
   endedAt: null,
   reconnectDeadlineAt: null,
   serverTime: '2026-10-30T00:00:00Z',
   publishReady: true,
 }
-const credentials = {
-  sessionId,
-  serverUrl: 'rtmp://localhost:1935/live',
-  streamKey: 'secret-key',
-  publishExpiresAt: '2026-10-30T08:00:00Z',
-}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason: unknown) => void
@@ -178,16 +193,29 @@ function deferred<T>() {
 }
 
 let client: QueryClient
-function mount(node: ReactNode = <StreamerDashboardPage />) {
+function mount(node: ReactNode = <StreamerDashboardPage />, initialEntries = ['/dashboard']) {
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>{node}</MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>{node}</MemoryRouter>
     </QueryClientProvider>,
   )
 }
+
+function mountDashboardRoutes(initialEntries = ['/dashboard']) {
+  return mount(
+    <Routes>
+      <Route element={<StreamerDashboardLayout />}>
+        <Route path="/dashboard" element={<StreamerDashboardPage />} />
+        <Route path="/dashboard/stream-key" element={<StreamUrlKeyPage />} />
+      </Route>
+    </Routes>,
+    initialEntries,
+  )
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.hls.length = 0
@@ -213,11 +241,13 @@ beforeEach(() => {
       dob: null,
     },
   })
+  mocks.issueKey.mockResolvedValue(issuedKey)
+  mocks.setup.mockResolvedValue(activeSetup)
   mocks.current.mockResolvedValue(null)
   mocks.categories.mockResolvedValue([
     { id: categoryId, name: 'Gaming', slug: 'gaming', thumbnailUrl: null },
   ])
-  mocks.metadata.mockResolvedValue(ready)
+  mocks.metadata.mockResolvedValue({ ...liveSession, currentViewerCount: 0 })
   mocks.access.mockResolvedValue({
     sessionId,
     playbackUrl: `http://localhost:8898/live/${sessionId}/index.m3u8`,
@@ -238,16 +268,16 @@ beforeEach(() => {
     },
   })
 })
+
 afterEach(() => {
   cleanup()
   client?.clear()
 })
 
-describe('Stream Manager', () => {
+describe('Stream Manager (persistent stream key)', () => {
   it('seeds owner metadata with an unknown count then updates viewers without restarting the preview', async () => {
-    const live = { ...ready, status: 'LIVE', startedAt: '2026-10-30T00:00:00Z' }
     const pendingMetadata = deferred<StreamMetadata>()
-    mocks.current.mockResolvedValue(live)
+    mocks.current.mockResolvedValue(liveSession)
     mocks.metadata.mockReturnValue(pendingMetadata.promise)
     mount()
 
@@ -259,7 +289,7 @@ describe('Stream Manager', () => {
     await waitFor(() => expect(mocks.hls).toHaveLength(1))
 
     await act(async () => {
-      pendingMetadata.resolve({ ...live, visibility: 'PUBLIC', status: 'LIVE', currentViewerCount: 7 })
+      pendingMetadata.resolve({ ...liveSession, currentViewerCount: 7 })
       await Promise.resolve()
     })
 
@@ -268,7 +298,7 @@ describe('Stream Manager', () => {
     expect(mocks.hls).toHaveLength(1)
     expect(mocks.hls[0].destroy).not.toHaveBeenCalled()
 
-    mocks.metadata.mockResolvedValue({ ...live, currentViewerCount: 8 })
+    mocks.metadata.mockResolvedValue({ ...liveSession, currentViewerCount: 8 })
     await act(async () => {
       await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId], exact: true })
     })
@@ -284,48 +314,37 @@ describe('Stream Manager', () => {
     expect(mocks.hls[0].destroy).not.toHaveBeenCalled()
   })
 
-  it.each(['READY', 'ENDED'])('shows zero viewers for an owner session in %s', async (status) => {
-    const inactive = { ...ready, status, endedAt: status === 'ENDED' ? '2026-10-30T01:00:00Z' : null }
-    mocks.current.mockResolvedValue(inactive)
-    mocks.metadata.mockResolvedValue({ ...inactive, currentViewerCount: null })
-    mount()
-
-    const viewers = await screen.findByRole('group', { name: 'Current viewers' })
-    expect(within(viewers).getByText('0')).toBeTruthy()
-    expect(mocks.access).not.toHaveBeenCalled()
-  })
-
   it('waits for login and does not query private APIs for guests', () => {
     useAuthStore.setState({ user: null, isAuthenticated: false })
     mount()
     expect(screen.getByText('Log in to manage your stream.')).toBeTruthy()
+    expect(mocks.setup).not.toHaveBeenCalled()
     expect(mocks.current).not.toHaveBeenCalled()
     expect(mocks.access).not.toHaveBeenCalled()
   })
 
-  it('creates a session using real form values and shows masked OBS credentials', async () => {
-    mocks.create.mockResolvedValue({ session: ready, publishCredentials: credentials })
+  it('auto-detects OBS going live from offline /me/current refetch and displays LIVE preview and chat', async () => {
+    mocks.setup.mockResolvedValue(activeSetup)
+    mocks.current.mockResolvedValueOnce(null).mockResolvedValue(liveSession)
+    mocks.metadata.mockResolvedValue({ ...liveSession, currentViewerCount: 2 })
+
     mount()
-    await screen.findByText('Gaming')
-    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: '  Morning  ' } })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: categoryId } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create stream' }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1))
-    expect(mocks.create.mock.calls[0][0]).toEqual({
-      title: 'Morning',
-      categoryId,
-      requestId: expect.any(String),
+    expect(await screen.findByText('Waiting for OBS')).toBeTruthy()
+    expect(screen.getByText('Chat opens automatically when you start streaming in OBS.')).toBeTruthy()
+
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['stream', 'current', 'owner'], exact: true })
     })
-    expect(await screen.findByLabelText('Stream key')).toHaveProperty('type', 'password')
-    expect(screen.getByDisplayValue('rtmp://localhost:1935/live')).toBeTruthy()
-    expect(mocks.access).not.toHaveBeenCalled()
-    expect(client.getMutationCache().getAll()).toHaveLength(0)
+
+    expect(await screen.findByLabelText('Stream preview')).toBeTruthy()
+    await waitFor(() => expect(mocks.access).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('heading', { name: 'Stream Manager' })).toBeNull()
+    expect(within(screen.getByLabelText('Session Info')).getByText('LIVE')).toBeTruthy()
   })
 
   it('uses authenticated media requests only for the current stream path', async () => {
-    const live = { ...ready, status: 'LIVE', startedAt: '2026-10-30T00:00:00Z' }
-    mocks.current.mockResolvedValue(live)
-    mocks.metadata.mockResolvedValue(live)
+    mocks.current.mockResolvedValue(liveSession)
+    mocks.metadata.mockResolvedValue(liveSession)
     mount(
       <StrictMode>
         <StreamerDashboardPage />
@@ -357,42 +376,9 @@ describe('Stream Manager', () => {
     expect(hls.destroy).toHaveBeenCalled()
   })
 
-  it('keeps the session visible when ending fails', async () => {
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValue(ready)
-    mocks.end.mockRejectedValue({ isAxiosError: true, response: { status: 503 } })
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel session' }))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel session' }),
-    )
-    await waitFor(() => expect(mocks.end).toHaveBeenCalledTimes(1))
-    expect(screen.getByText('Waiting for OBS')).toBeTruthy()
-    expect(screen.queryByText('This stream has ended')).toBeNull()
-  })
-
-  it('retries an uncertain create with the same request ID and payload', async () => {
-    mocks.create
-      .mockReset()
-      .mockRejectedValueOnce(new Error('connection lost'))
-      .mockResolvedValueOnce({ session: ready, publishCredentials: credentials })
-    mount()
-    await screen.findByText('Gaming')
-    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: 'Morning' } })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: categoryId } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create stream' }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('button', { name: 'Create stream' }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2))
-    expect(mocks.create.mock.calls[1][0]).toEqual(mocks.create.mock.calls[0][0])
-    expect(await screen.findByLabelText('Stream key')).toBeTruthy()
-  })
-
   it('discards delayed playback access after the session ends', async () => {
-    const live = { ...ready, status: 'LIVE', startedAt: '2026-10-30T00:00:00Z' }
-    mocks.current.mockResolvedValue(live)
-    mocks.metadata.mockResolvedValue(live)
+    mocks.current.mockResolvedValue(liveSession)
+    mocks.metadata.mockResolvedValue(liveSession)
     let resolveAccess!: (value: unknown) => void
     mocks.access.mockImplementation(
       () =>
@@ -404,12 +390,12 @@ describe('Stream Manager', () => {
     await waitFor(() => expect(mocks.access).toHaveBeenCalled())
     act(() =>
       client.setQueryData(['stream', 'metadata', 'owner', sessionId], {
-        ...live,
+        ...liveSession,
         status: 'ENDED',
         endedAt: '2026-10-30T00:30:00Z',
       }),
     )
-    await screen.findByText('This stream has ended')
+    await screen.findByText(/Previous broadcast ended/i)
     await act(async () => {
       resolveAccess({
         sessionId,
@@ -421,330 +407,59 @@ describe('Stream Manager', () => {
     expect(mocks.hls).toHaveLength(0)
   })
 
-  it('rejects a blank title without calling the backend', async () => {
+  it('preserves dirty Edit Stream Info modal input across polled setup and metadata updates', async () => {
+    mocks.current.mockResolvedValue(liveSession)
+    mocks.metadata.mockResolvedValue(liveSession)
     mount()
-    await screen.findByText('Gaming')
-    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: '   ' } })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: categoryId } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create stream' }))
-    await screen.findByText('Enter a stream title.')
-    expect(mocks.create).not.toHaveBeenCalled()
-  })
-
-  it('preserves an edited title when metadata is refreshed', async () => {
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValue(ready)
-    mount()
-    const input = (await screen.findByLabelText('Stream title')) as HTMLInputElement
-    fireEvent.change(input, { target: { value: 'Draft title' } })
-    act(() =>
-      client.setQueryData(['stream', 'metadata', 'owner', sessionId], {
-        ...ready,
-        title: 'Changed elsewhere',
-      }),
-    )
-    expect(input.value).toBe('Draft title')
-  })
-
-  it('keeps saved details when PATCH succeeds but the metadata refresh fails', async () => {
-    const nextCategoryId = '00000000-0000-4000-8000-000000000002'
-    mocks.categories.mockResolvedValue([
-      { id: categoryId, name: 'Gaming' },
-      { id: nextCategoryId, name: 'Music' },
-    ])
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValueOnce(ready).mockRejectedValue(new Error('GET offline'))
-    mocks.update.mockResolvedValue({ ...ready, title: 'Saved title', categoryId: nextCategoryId })
-    mount()
-    await waitFor(() => expect(mocks.metadata).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: 'Saved title' } })
-    fireEvent.change(screen.getByLabelText('Category'), { target: { value: nextCategoryId } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Stream information updated'))
-    await waitFor(() => {
-      expect(screen.getByLabelText('Stream title')).toHaveProperty('value', 'Saved title')
-      expect(screen.getByLabelText('Category')).toHaveProperty('value', nextCategoryId)
-    })
-    expect(screen.getByRole('alert').textContent).toContain('Unable to refresh stream status')
-    expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty('disabled', true)
-  })
-
-  it('keeps the draft editable when PATCH fails', async () => {
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValue(ready)
-    mocks.update.mockRejectedValue(new Error('PATCH offline'))
-    mount()
-    const input = await screen.findByLabelText('Stream title')
-    fireEvent.change(input, { target: { value: 'Draft title' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() =>
-      expect(mocks.toast).toHaveBeenCalledWith('Unable to connect. Please try again.'),
-    )
-    expect(input).toHaveProperty('value', 'Draft title')
-    expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty('disabled', false)
-    expect(mocks.toast).not.toHaveBeenCalledWith('Stream information updated')
-  })
-
-  it('cancels an older poll before applying saved fields and preserves the lifecycle clock', async () => {
-    const reconnecting = {
-      ...ready,
-      status: 'RECONNECTING',
-      startedAt: '2026-10-29T23:00:00Z',
-      reconnectDeadlineAt: '2026-10-30T00:01:00Z',
-      publishReady: false,
-    }
-    const saved = { ...ready, title: 'Saved title', serverTime: '2026-10-30T00:00:05Z' }
-    mocks.current.mockResolvedValue(reconnecting)
-    mocks.metadata.mockResolvedValueOnce(reconnecting).mockRejectedValue(new Error('GET offline'))
-    mocks.update.mockResolvedValue(saved)
-    mount()
-    await waitFor(() => expect(mocks.metadata).toHaveBeenCalledTimes(1))
-    const key = ['stream', 'metadata', 'owner', sessionId]
-    const previousTime = client.getQueryState(key)?.dataUpdatedAt
-    const ownerTime = client.getQueryState(['stream', 'current', 'owner'])?.dataUpdatedAt
-    const poll = deferred<typeof ready>()
-    let pollSignal: AbortSignal | undefined
-    let polling!: Promise<unknown>
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit stream information' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Stream Info' })
+    const input = within(dialog).getByLabelText(/Stream title/i) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Unsaved Draft Title' } })
     act(() => {
-      polling = client
-        .fetchQuery({
-          queryKey: key,
-          queryFn: ({ signal }) => {
-            pollSignal = signal
-            return poll.promise
-          },
-        })
-        .catch(() => undefined)
-    })
-    fireEvent.change(screen.getByLabelText('Stream title'), { target: { value: 'Saved title' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Stream information updated'))
-    expect(pollSignal?.aborted).toBe(true)
-    await act(async () => {
-      poll.resolve(ready)
-      await polling
-    })
-    for (const queryKey of [key, ['stream', 'current', 'owner']]) {
-      expect(client.getQueryData(queryKey)).toMatchObject({ ...reconnecting, title: 'Saved title' })
-    }
-    expect(client.getQueryState(key)?.dataUpdatedAt).toBe(previousTime)
-    expect(client.getQueryState(['stream', 'current', 'owner'])?.dataUpdatedAt).toBe(ownerTime)
-    expect(screen.getByLabelText('Stream title')).toHaveProperty('value', 'Saved title')
-  })
-
-  it('keeps a newer metadata snapshot instead of overwriting it with an older PATCH result', async () => {
-    const patch = deferred<typeof ready>()
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValueOnce(ready).mockRejectedValue(new Error('GET offline'))
-    mocks.update.mockReturnValue(patch.promise)
-    mount()
-    await waitFor(() => expect(mocks.metadata).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText('Stream title'), {
-      target: { value: 'Submitted title' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(mocks.update).toHaveBeenCalled())
-    const newer = { ...ready, title: 'Changed in another tab', serverTime: '2026-10-30T00:00:10Z' }
-    act(() => client.setQueryData(['stream', 'metadata', 'owner', sessionId], newer))
-    await act(async () => {
-      patch.resolve({ ...ready, title: 'Submitted title', serverTime: '2026-10-30T00:00:05Z' })
-      await patch.promise
-    })
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Stream information updated'))
-    expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(newer)
-    await waitFor(() =>
-      expect(screen.getByLabelText('Stream title')).toHaveProperty('value', newer.title),
-    )
-  })
-
-  it.each(['ENDED', 'different session', 'unmount'])(
-    'discards a delayed PATCH after %s',
-    async (change) => {
-      const patch = deferred<typeof ready>()
-      mocks.current.mockResolvedValue(ready)
-      mocks.metadata.mockResolvedValue(ready)
-      mocks.update.mockReturnValue(patch.promise)
-      const view = mount()
-      fireEvent.change(await screen.findByLabelText('Stream title'), {
-        target: { value: 'Submitted title' },
+      client.setQueryData(['stream', 'setup', 'owner'], {
+        ...activeSetup,
+        title: 'Changed elsewhere',
       })
-      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-      await waitFor(() => expect(mocks.update).toHaveBeenCalled())
-      if (change === 'ENDED') {
-        act(() =>
-          client.setQueryData(['stream', 'metadata', 'owner', sessionId], {
-            ...ready,
-            status: 'ENDED',
-          }),
-        )
-        await screen.findByText('This stream has ended')
-      } else if (change === 'different session') {
-        const other = {
-          ...ready,
-          id: '00000000-0000-4000-8000-000000000003',
-          title: 'Other session',
-        }
-        mocks.metadata.mockResolvedValue(other)
-        act(() => client.setQueryData(['stream', 'current', 'owner'], other))
-        await waitFor(() =>
-          expect(screen.getByLabelText('Stream title')).toHaveProperty('value', other.title),
-        )
-      } else {
-        view.unmount()
-        expect(mocks.update.mock.calls[0][2].aborted).toBe(true)
-      }
-      const snapshot = client.getQueryData(['stream', 'metadata', 'owner', sessionId])
-      const calls = mocks.metadata.mock.calls.length
-      await act(async () => {
-        patch.resolve({ ...ready, title: 'Submitted title' })
-        await patch.promise
-      })
-      expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(snapshot)
-      expect(mocks.metadata).toHaveBeenCalledTimes(calls)
-      expect(mocks.toast).not.toHaveBeenCalledWith('Stream information updated')
-    },
-  )
-
-  it('closes the dialog when polling confirms ENDED without sending End', async () => {
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValue(ready)
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel session' }))
-    expect(screen.getByRole('dialog')).toBeTruthy()
-    act(() =>
       client.setQueryData(['stream', 'metadata', 'owner', sessionId], {
-        ...ready,
-        status: 'ENDED',
-        endedAt: '2026-10-30T01:00:00Z',
-      }),
-    )
-    await screen.findByText('This stream has ended')
-    expect(screen.queryByRole('dialog')).toBeNull()
-    expect(mocks.end).not.toHaveBeenCalled()
-    mocks.current.mockResolvedValue(null)
-    fireEvent.click(screen.getByRole('button', { name: 'Create new stream' }))
-    await screen.findByRole('button', { name: 'Create stream' })
-    expect(screen.queryByRole('dialog')).toBeNull()
-  })
-
-  it('keeps an open End dialog through a temporary metadata failure', async () => {
-    const reconnecting = {
-      ...ready,
-      status: 'RECONNECTING',
-      reconnectDeadlineAt: '2026-10-30T00:01:00Z',
-    }
-    mocks.current.mockResolvedValue(reconnecting)
-    mocks.metadata.mockResolvedValueOnce(reconnecting).mockRejectedValue(new Error('GET offline'))
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'End stream' }))
-    await waitFor(() => {
-      expect(mocks.metadata).toHaveBeenCalledTimes(1)
-      expect(client.getQueryState(['stream', 'metadata', 'owner', sessionId])?.fetchStatus).toBe('idle')
-    })
-    await act(async () => {
-      await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId] })
-    })
-    expect(screen.getByRole('dialog')).toBeTruthy()
-    expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(mocks.end).not.toHaveBeenCalled()
-  })
-
-  it.each(['succeeds', 'fails'])(
-    'does not reopen the dialog if an in-flight End %s after polling confirms ENDED',
-    async (outcome) => {
-      const end = deferred<typeof ready>()
-      mocks.current.mockResolvedValue(ready)
-      mocks.metadata.mockResolvedValue(ready)
-      mocks.end.mockReturnValue(end.promise)
-      mount()
-      fireEvent.click(await screen.findByRole('button', { name: 'Cancel session' }))
-      fireEvent.click(
-        within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel session' }),
-      )
-      await waitFor(() => expect(mocks.end).toHaveBeenCalledTimes(1))
-      const ended: StreamSession = { ...ready, status: 'ENDED', endedAt: '2026-10-30T01:00:00Z' }
-      const endedMetadata = { ...ended, currentViewerCount: 0 }
-      act(() => client.setQueryData(['stream', 'metadata', 'owner', sessionId], endedMetadata))
-      await screen.findByText('This stream has ended')
-      expect(screen.queryByRole('dialog')).toBeNull()
-      mocks.metadata.mockResolvedValue(endedMetadata)
-      await act(async () => {
-        if (outcome === 'succeeds') end.resolve(ended)
-        else end.reject(new Error('Response lost'))
-        await end.promise.catch(() => undefined)
+        ...liveSession,
+        title: 'Changed elsewhere',
       })
-      expect(screen.queryByRole('dialog')).toBeNull()
-      expect(client.getQueryData(['stream', 'metadata', 'owner', sessionId])).toEqual(endedMetadata)
-    },
-  )
-
-  it('clears credentials after confirmed End', async () => {
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValue(ready)
-    mocks.credentials.mockResolvedValue(credentials)
-    mocks.end.mockResolvedValue({ ...ready, status: 'ENDED', endedAt: '2026-10-30T00:30:00Z' })
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'Get OBS credentials' }))
-    await screen.findByLabelText('Stream key')
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel session' }))
-    fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel session' }),
-    )
-    await screen.findByText('This stream has ended')
-    expect(screen.queryByLabelText('Stream key')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Create new stream' })).toBeTruthy()
-  })
-
-  it('reports clipboard failure rather than a false success', async () => {
-    mocks.current.mockResolvedValue(ready)
-    mocks.metadata.mockResolvedValue(ready)
-    mocks.credentials.mockResolvedValue(credentials)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
     })
-    mount()
-    fireEvent.click(await screen.findByRole('button', { name: 'Get OBS credentials' }))
-    await screen.findByLabelText('Stream key')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Copy' })[1])
-    await waitFor(() =>
-      expect(mocks.toast).toHaveBeenCalledWith(
-        expect.stringContaining('Could not copy stream key'),
-      ),
-    )
+    expect(input.value).toBe('Unsaved Draft Title')
   })
 
   it('refetches metadata when playback access returns 409', async () => {
-    const live = { ...ready, status: 'LIVE', startedAt: '2026-10-30T00:00:00Z' }
-    mocks.current.mockResolvedValue(live)
-    mocks.metadata.mockResolvedValueOnce(live).mockResolvedValue(ready)
+    const reconnecting = {
+      ...liveSession,
+      status: 'RECONNECTING',
+      reconnectDeadlineAt: '2026-10-30T00:01:00Z',
+    }
+    mocks.current.mockResolvedValue(liveSession)
+    mocks.metadata.mockResolvedValueOnce(liveSession).mockResolvedValue(reconnecting)
     mocks.access.mockRejectedValue({ isAxiosError: true, response: { status: 409 } })
     mount()
-    await screen.findByText('Waiting for OBS')
+    await screen.findByText('Waiting for the stream to reconnect')
     expect(mocks.access).toHaveBeenCalledTimes(1)
     expect(mocks.metadata.mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(mocks.hls).toHaveLength(0)
   })
 
   it('stops the preview when metadata says the session no longer exists', async () => {
-    const live = { ...ready, status: 'LIVE', startedAt: '2026-10-30T00:00:00Z' }
-    mocks.current.mockResolvedValueOnce(live).mockRejectedValue(new Error('service unavailable'))
+    mocks.current.mockResolvedValueOnce(liveSession).mockRejectedValue(new Error('service unavailable'))
     mocks.metadata.mockRejectedValue({ isAxiosError: true, response: { status: 404 } })
     mount()
     await screen.findByText('Stream session is unavailable.')
     expect(screen.queryByLabelText('Stream preview')).toBeNull()
   })
 
-  it('shows empty chat guidance without a session and opens live chat for the streamer', async () => {
+  it('shows offline chat guidance without a session and opens live chat for the streamer', async () => {
     mocks.current.mockResolvedValue(null)
     mount()
-    await screen.findByText('Create a stream session to open chat.')
+    await screen.findByText('Chat opens automatically when you start streaming in OBS.')
     cleanup()
 
     const live: StreamMetadata = {
-      ...ready,
-      status: 'LIVE',
-      startedAt: '2026-10-30T00:00:00Z',
+      ...liveSession,
       currentViewerCount: 3,
       ownerUserId: 'owner',
     }
@@ -762,7 +477,7 @@ describe('Stream Manager', () => {
           id: '00000000-0000-4000-8000-000000000001',
           cursor: 'cursor-1',
           streamId: sessionId,
-          channelId: 'channel',
+          channelId,
           userId: 'viewer-1',
           clientMessageId: 'viewer-1-msg',
           sequence: 1,
@@ -795,4 +510,201 @@ describe('Stream Manager', () => {
     expect(ownerName.closest('.border-\\[\\#ff2b42\\]')).toBeTruthy()
     expect(document.activeElement).toBe(input)
   })
+})
+it('reopens playback after a fatal temporary HLS error with unchanged LIVE metadata', async () => {
+  mocks.current.mockResolvedValue(liveSession)
+  mount()
+  await waitFor(() => expect(mocks.hls).toHaveLength(1))
+  await act(async () => {
+    (mocks.hls[0] as unknown as { handlers: Record<string, (...args: unknown[]) => void> })
+      .handlers.error('error', { fatal: true, type: 'network', response: { code: 404 } })
+  })
+  expect(mocks.hls[0].destroy).toHaveBeenCalled()
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['stream', 'metadata', 'owner', sessionId], exact: true })
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+  })
+  expect(mocks.access).toHaveBeenCalledTimes(2)
+  expect(mocks.hls).toHaveLength(2)
+}, 10000)
+it('clears permanent credentials when the authenticated owner changes', async () => {
+  mount()
+  const { queryClient: applicationClient } = await import('@/lib/query-client')
+  applicationClient.setQueryData(['stream', 'setup', 'owner'], activeSetup)
+  await act(async () => {
+    const owner = useAuthStore.getState().user!
+    useAuthStore.getState().setUser({ ...owner, userId: 'another-owner' })
+  })
+  expect(applicationClient.getQueryData(['stream', 'setup', 'owner'])).toBeUndefined()
+  applicationClient.clear()
+})
+
+it('cancels a scheduled HLS reopen when the preview unmounts', async () => {
+  mocks.current.mockResolvedValue(liveSession)
+  const view = mount()
+  await waitFor(() => expect(mocks.hls).toHaveLength(1))
+  await act(async () => {
+    (mocks.hls[0] as unknown as { handlers: Record<string, (...args: unknown[]) => void> })
+      .handlers.error('error', { fatal: true, type: 'network', response: { code: 503 } })
+  })
+  view.unmount()
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1200)) })
+  expect(mocks.access).toHaveBeenCalledTimes(1)
+})
+
+it('renders Stream Manager in 3 columns with Edit Stream Info popup and moves Stream URL & Key to nav', async () => {
+  mocks.setup.mockResolvedValue({ ...draftSetup, title: 'Morning', categoryId })
+  mocks.saveSetup.mockResolvedValue({ ...draftSetup, title: 'Changed', categoryId })
+  mountDashboardRoutes(['/dashboard'])
+
+  const streamInfoPanel = await screen.findByLabelText('Stream Information')
+  expect(screen.getByLabelText('Session Info')).toBeTruthy()
+  expect(screen.getByLabelText('Stream chat')).toBeTruthy()
+  expect(within(streamInfoPanel).getByText('Morning')).toBeTruthy()
+  expect(within(streamInfoPanel).getByText('Gaming')).toBeTruthy()
+  expect(within(streamInfoPanel).queryByText('Public')).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Stream Manager' })).toBeNull()
+  expect(screen.queryByRole('dialog', { name: 'Edit Stream Info' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Stream URL' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Stream Key' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull()
+
+  fireEvent.click(within(streamInfoPanel).getByRole('button', { name: 'Edit stream information' }))
+  const cancelDialog = await screen.findByRole('dialog', { name: 'Edit Stream Info' })
+  fireEvent.change(within(cancelDialog).getByLabelText(/Stream title/i), {
+    target: { value: 'Discarded' },
+  })
+  fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('dialog', { name: 'Edit Stream Info' })).toBeNull()
+  expect(within(streamInfoPanel).getByText('Morning')).toBeTruthy()
+  expect(mocks.saveSetup).not.toHaveBeenCalled()
+
+  fireEvent.click(within(streamInfoPanel).getByRole('button', { name: 'Edit stream information' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit Stream Info' })
+  const title = within(dialog).getByLabelText(/Stream title/i) as HTMLTextAreaElement
+  expect(title.value).toBe('Morning')
+  fireEvent.change(title, { target: { value: 'Changed' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(mocks.saveSetup).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Stream Info' })).toBeNull())
+  expect(within(screen.getByLabelText('Stream Information')).getByText('Changed')).toBeTruthy()
+  expect(mocks.issueKey).not.toHaveBeenCalled()
+
+  const nav = screen.getByRole('navigation', { name: 'Streamer navigation' })
+  fireEvent.click(within(nav).getByRole('link', { name: 'Stream URL & Key' }))
+
+  expect(await screen.findByRole('heading', { name: 'Stream URL & Key' })).toBeTruthy()
+  expect(await screen.findByRole('heading', { name: 'Stream URL' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Stream Key' })).toBeTruthy()
+  expect(screen.queryByLabelText('Stream title')).toBeNull()
+
+  const initialUrl = screen.getByLabelText('Stream URL') as HTMLInputElement
+  const initialKey = screen.getByLabelText('Stream Key') as HTMLInputElement
+  expect(initialUrl.type).toBe('password')
+  expect(initialKey.type).toBe('password')
+  expect(initialUrl.value).toBe('')
+  expect(initialKey.value).toBe('')
+
+  mocks.setup.mockResolvedValue(activeSetup)
+  fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+
+  await waitFor(() => {
+    expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe(issuedKey.streamKey)
+  })
+  const urlAfterReset = screen.getByLabelText('Stream URL') as HTMLInputElement
+  const keyAfterReset = screen.getByLabelText('Stream Key') as HTMLInputElement
+  expect(urlAfterReset.type).toBe('password')
+  expect(urlAfterReset.value).toBe(issuedKey.serverUrl)
+  expect(keyAfterReset.type).toBe('password')
+  expect(JSON.stringify(client.getQueryCache().getAll().map((query) => query.state.data)))
+    .not.toContain('secret-jwt-1')
+
+  // Leaving Stream URL & Key clears issued credentials from local page state.
+  fireEvent.click(within(nav).getByRole('link', { name: 'Stream Manager' }))
+  expect(await screen.findByLabelText('Stream Information')).toBeTruthy()
+  fireEvent.click(within(nav).getByRole('link', { name: 'Stream URL & Key' }))
+  await screen.findByRole('button', { name: 'Reset' })
+  expect((screen.getByLabelText('Stream URL') as HTMLInputElement).value).toBe('')
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
+})
+
+it('always displays Stream URL and Stream Key and toggles visibility via eye icons after Reset', async () => {
+  mocks.setup.mockResolvedValue(activeSetup)
+  mount(<StreamUrlKeyPage />)
+
+  const urlInput = (await screen.findByLabelText('Stream URL')) as HTMLInputElement
+  const keyInput = screen.getByLabelText('Stream Key') as HTMLInputElement
+  expect(urlInput.type).toBe('password')
+  expect(keyInput.type).toBe('password')
+  expect(keyInput.value).toBe('')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show stream key' }))
+  expect(keyInput.type).toBe('password')
+  expect(screen.getByRole('status').textContent).toContain('Click Reset to generate')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reset stream key' }))
+
+  await waitFor(() => expect(keyInput.value).toBe(issuedKey.streamKey))
+  expect(urlInput.value).toBe(issuedKey.serverUrl)
+  expect(urlInput.type).toBe('password')
+  expect(keyInput.type).toBe('password')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show stream URL' }))
+  expect(urlInput.type).toBe('text')
+  fireEvent.click(screen.getByRole('button', { name: 'Show stream key' }))
+  expect(keyInput.type).toBe('text')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Hide stream URL' }))
+  expect(urlInput.type).toBe('password')
+  fireEvent.click(screen.getByRole('button', { name: 'Hide stream key' }))
+  expect(keyInput.type).toBe('password')
+})
+
+it('never reveals an existing key on reload and requires confirmation to reset an existing key', async () => {
+  mocks.current.mockResolvedValue(liveSession)
+  mount(<StreamUrlKeyPage />)
+  await screen.findByRole('button', { name: 'Reset' })
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
+  expect(mocks.issueKey).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText(/active broadcast will end immediately/i)).toBeTruthy()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reset stream key' }))
+  await screen.findByDisplayValue(issuedKey.streamKey)
+  await screen.findByDisplayValue(issuedKey.serverUrl)
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+  cleanup()
+  mount(<StreamUrlKeyPage />)
+  await screen.findByRole('button', { name: 'Reset' })
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
+})
+
+it('keeps Reset enabled without category setup and explains backend 400 setup requirement', async () => {
+  mocks.setup.mockResolvedValue(draftSetup)
+  mocks.issueKey.mockRejectedValue({ isAxiosError: true, response: { status: 400 } })
+  mount(<StreamUrlKeyPage />)
+  const resetBtn = (await screen.findByRole('button', { name: 'Reset' })) as HTMLButtonElement
+  expect(resetBtn.disabled).toBe(false)
+  fireEvent.click(resetBtn)
+  await waitFor(() =>
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.stringContaining('Save a stream title and category in Stream Manager'),
+    ),
+  )
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+})
+
+it('returns a synchronous issuance error without polling or retrying key generation', async () => {
+  mocks.setup.mockResolvedValue({ ...activeSetup, hasStreamKey: false })
+  mocks.issueKey.mockRejectedValue({ isAxiosError: true, response: { status: 503 } })
+  mount(<StreamUrlKeyPage />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset' }))
+  await waitFor(() =>
+    expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('unavailable')),
+  )
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+  expect((screen.getByLabelText('Stream URL') as HTMLInputElement).value).toBe('')
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
 })

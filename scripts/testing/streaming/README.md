@@ -15,8 +15,8 @@ python3 scripts/testing/streaming/fixture.py serve
 ```
 
 - `prepare` tạo key nếu chưa có; dùng lại key/session ID khi chạy lại, chỉ cấp lại bộ JWT test. Không tự thay một cặp khóa thiếu/mismatched.
-- `fixtures.json` chứa serverUrl/streamKey/playbackUrl và JWT publish/read/api. Các token âm tính gồm sai chữ ký, hết hạn và sai path; token read cũng dùng để thử publish sai quyền.
-- TTL mặc định đồng bộ với quyết định Giai đoạn 2: publish 8h, read 5m, api 5m. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
+- `fixtures.json` chứa serverUrl/streamKey/playbackUrl và JWT publish/read. Các token âm tính gồm sai chữ ký, hết hạn và sai path; token read cũng dùng để thử publish sai quyền.
+- TTL mặc định đồng bộ với quyết định Giai đoạn 2: publish/relay không có exp, read 5m; Control API không yêu cầu JWT. Chạy lại `prepare` để refresh trước đợt test mới; không coi đó là revoke token cũ.
 - Key RSA 2048 bit được ký/verify bằng OpenSSL; JWKS chỉ gồm kty/kid/alg/use/n/e. Không có Python dependency ngoài thư viện chuẩn.
 - Không `cat` token/key ra log hoặc commit chúng. Các lệnh trên chỉ in trạng thái và đường dẫn.
 - Dừng fixture bằng Ctrl+C. Dữ liệu callback test lưu ở `.local/streaming/events.jsonl`, không có token/query.
@@ -26,7 +26,7 @@ python3 scripts/testing/streaming/fixture.py serve
 | Endpoint | Hành vi |
 |---|---|
 | `GET http://localhost:18082/health` | Trạng thái fixture |
-| `GET http://localhost:18082/stream/api/media/jwks` | JWKS public, không bọc ApiResponse |
+| `GET http://localhost:18082/stream/internal/api/media/jwks` | JWKS public, không bọc ApiResponse |
 | `POST http://localhost:18082/stream/api/media/events` | Receiver nhận JSON event hợp lệ và dedupe eventId |
 
 Callback theo contract ở [Implementation Plan](../../../docs/Implement%20Plan/Streaming%20MVP%20Implementation%20Plan.md): gửi POST JSON trực tiếp tới endpoint callback.
@@ -49,7 +49,7 @@ Nếu build timeout khi lấy metadata public image do Docker credential helper,
 
 Smoke cần FFmpeg/ffprobe có libx264/AAC trên máy chạy test. Đây chỉ là nguồn media tổng hợp để kiểm chứng, không đưa FFmpeg vào container MediaMTX hoặc luồng runtime MVP. Mỗi lần smoke tạo path UUID riêng và dọn đúng path đó; không thay fixture session/path đang dùng với OBS.
 
-12 mục kiểm chứng gồm Control API permission, path chưa có media chưa online, H264/AAC + ONLINE hook, chặn publisher thứ hai, CORS, HLS master/media playlist + init/segment và decode audio/video, token HLS sai, JWT hết hạn giữa phiên HLS, OFFLINE hook, token publish sai, reconnect và xóa path khi LIVE rồi thử JWT cũ còn hạn.
+12 mục kiểm chứng gồm Control API không token, path chưa có media chưa online, H264/AAC + ONLINE hook, chặn publisher thứ hai, CORS, HLS master/media playlist + init/segment và decode audio/video, token HLS sai, JWT hết hạn giữa phiên HLS, OFFLINE hook, token publish sai, reconnect và xóa path khi LIVE rồi thử JWT cũ còn hạn.
 
 Kết quả an toàn ở `.local/streaming/smoke-results.json` không chứa JWT hoặc HLS session URL. Lần chạy mới chuyển report sang RUNNING, lỗi ghi FAIL, chỉ đủ kiểm chứng mới ghi PASS. FFmpeg stderr có thể chứa URL ingest nên chỉ được giữ tạm trong memory và không in ra log.
 
@@ -115,8 +115,8 @@ Yêu cầu: Stream Service, Gateway và MediaMTX đang chạy; HLS allow-origin 
 
 ### Chuẩn bị
 
-1. Đăng nhập web app qua Gateway (`http://localhost:8888`) bằng account test.
-2. Tạo session PUBLIC, cho OBS phát để MediaMTX báo nguồn online và backend chuyển session sang `LIVE`.
+1. Đăng nhập web app qua Gateway (`http://localhost:8888`) bằng account test (hoặc kiểm tra luồng setup/reset key qua `provisioning.py`).
+2. Vào **Stream Manager**, lưu Title + Category (`PUT /stream/api/streams/me/setup`) để lưu settings; bấm Generate key (`POST /stream/api/streams/me/stream-key`) để nhận key một lần, sau đó cho OBS Start Streaming bằng `serverUrl` (`.../ingest`) và `streamKey` (`{ingestKeyId}?token={PublishJWT}`) để backend tự tạo session và chuyển `LIVE`.
 3. Lấy đúng header `Cookie` của account từ DevTools → Network, chỉ dán một dòng vào file ngoài Git:
 
    ```sh
@@ -177,12 +177,12 @@ python3 scripts/testing/streaming/acceptance.py --access-source backend --sessio
 
 Không truyền lựa chọn nào thì CLI giữ chế độ nghiệm thu M0. Truyền session ID mà thiếu `--access-source backend` sẽ bị từ chối thay vì âm thầm kiểm tra session M0. Các OBS record cũ bị gắn nhầm session A không thể suy ra lại B: cần ghi nhận lại cho session đúng, không tự đổi lịch sử.
 
-Trong backend mode, các nút tạo/xóa path và copy key M0 bị tắt. Kết thúc buổi phát backend bằng End API với account owner rồi ghi nhận OBS/key cũ bị từ chối; không dùng nút xóa path M0 để kết thúc session backend.
+Trong backend mode, các nút tạo/xóa path và copy key M0 bị tắt. Kết thúc buổi phát backend bằng **Stop Streaming** trên OBS (chờ hết grace 60 giây) hoặc bấm **Reset Stream Key** trên Stream Manager, rồi ghi nhận OBS/key cũ bị từ chối; không dùng nút xóa path M0 để kết thúc session backend.
 
 ### Case âm tính và expiry
 
 - Không có cookie hoặc cookie hết hạn: GET metadata phải trả 401; fixture báo lỗi an toàn, không in cookie.
-- Session `READY`/`RECONNECTING`/`ENDED`: POST trả 409; session PRIVATE trả 403.
+- Session `RECONNECTING`/`ENDED`: POST trả 409; session PRIVATE trả 403.
 - Token thiếu/sai path/sai chữ ký/hết hạn trên **phiên HLS mới** phải bị MediaMTX từ chối (401/403). Có thể dùng các case token fixture cho phần HLS; happy case bắt buộc dùng Read JWT backend cấp.
 - Read JWT mặc định hết hạn sau 5 phút. Kiểm tra bằng cách mở phiên HLS mới sau khi hết hạn; không coi phiên HLS đang mở là bị thu hồi ngay, vì đây là hành vi của MediaMTX cần ghi nhận riêng.
 
@@ -190,7 +190,7 @@ Không đánh dấu STR-505/M5 hoàn tất nếu chưa có xác nhận account t
 
 ## Dừng fixture
 
-Với backend mode: nếu muốn kết thúc buổi phát, dùng End API của session backend, rồi dừng fixture bằng Ctrl+C. Quy trình `stack.py down` dưới đây chỉ dành cho stack thử nghiệm M0.
+Với backend mode: dừng OBS (chờ hết grace 60s hoặc reset key nếu cần), rồi dừng fixture bằng Ctrl+C. Quy trình `stack.py down` dưới đây chỉ dành cho stack thử nghiệm M0.
 
 Stop Streaming trong OBS, đóng path trên trang, sau đó:
 
@@ -198,4 +198,6 @@ Stop Streaming trong OBS, đóng path trên trang, sau đó:
 python3 scripts/testing/streaming/stack.py down
 ```
 
-Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service và vòng đời DB thật được triển khai ở giai đoạn 2–4, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+Dừng fixture server bằng Ctrl+C ở terminal 1. Không xóa volume/database của các service khác. JWKS/callback gọi trực tiếp Stream Service (`/stream/internal/api/media-events`, không cần token nội bộ) và vòng đời DB/service đồng bộ thật thuộc backend, không coi fixture là backend nghiệp vụ hoàn chỉnh.
+
+V6 owner smoke: setup/save → POST `/api/streams/me/stream-key` → current → save → POST cấp lại key. Không có polling operation hay idempotency header; credential chỉ có trong response POST. GET setup không trả key.

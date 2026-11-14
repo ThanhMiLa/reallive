@@ -28,15 +28,20 @@ import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class SendGridWebhookServiceImpl implements SendGridWebhookService {
+
+    static final int QUERY_BATCH_SIZE = 500;
 
     EmailDeliveryProperties properties;
     ObjectMapper objectMapper;
@@ -48,18 +53,22 @@ public class SendGridWebhookServiceImpl implements SendGridWebhookService {
     public void receive(byte[] body, String signature, String timestamp) {
         verifySignature(body, signature, timestamp);
         List<SendGridWebhookEventRequest> events = readEvents(body);
+        if (events.isEmpty()) {
+            return;
+        }
         Map<UUID, EmailNotificationEntity> locked = lockNotifications(events);
-        for (SendGridWebhookEventRequest event : events) {
-            EmailNotificationEntity notification = locked.get(UUID.fromString(event.getEventId()));
-            if (notification == null || deliveryEvents.existsBySgEventId(event.getSgEventId())) {
-                continue;
+        List<SendGridWebhookEventRequest> correlated = events.stream()
+                .filter(event -> locked.containsKey(UUID.fromString(event.getEventId())))
+                .toList();
+        Set<String> seen = findExistingEventIds(correlated);
+        List<EmailDeliveryEventEntity> pending = new ArrayList<>();
+        for (SendGridWebhookEventRequest event : correlated) {
+            if (seen.add(event.getSgEventId())) {
+                pending.add(deliveryEvent(event, locked.get(UUID.fromString(event.getEventId()))));
             }
-            deliveryEvents.saveAndFlush(EmailDeliveryEventEntity.builder()
-                    .notification(notification).sgEventId(event.getSgEventId())
-                    .sgMessageId(event.getSgMessageId()).eventType(EmailDeliveryEventType.fromSendGridEvent(event.getEvent()))
-                    .providerTimestamp(Instant.ofEpochSecond(event.getTimestamp()))
-                    .response(cleanDetail(event.getResponse())).reason(cleanDetail(event.getReason()))
-                    .smtpStatus(event.getStatus()).build());
+        }
+        if (!pending.isEmpty()) {
+            deliveryEvents.saveAllAndFlush(pending);
         }
     }
 
@@ -118,12 +127,36 @@ public class SendGridWebhookServiceImpl implements SendGridWebhookService {
         }
     }
 
-    /** Lock in a stable order to serialize redelivery without deadlocking overlapping batches. */
+    /** Order chunks and database row locks identically to avoid deadlocks between overlapping batches. */
     private Map<UUID, EmailNotificationEntity> lockNotifications(List<SendGridWebhookEventRequest> events) {
+        List<UUID> eventIds = events.stream().map(event -> UUID.fromString(event.getEventId()))
+                .distinct().sorted(Comparator.comparing(UUID::toString)).toList();
         Map<UUID, EmailNotificationEntity> locked = new HashMap<>();
-        events.stream().map(event -> UUID.fromString(event.getEventId())).distinct().sorted().forEach(eventId ->
-                notifications.findByEventIdForUpdate(eventId).ifPresent(notification -> locked.put(eventId, notification)));
+        for (int offset = 0; offset < eventIds.size(); offset += QUERY_BATCH_SIZE) {
+            List<UUID> batch = eventIds.subList(offset, Math.min(offset + QUERY_BATCH_SIZE, eventIds.size()));
+            notifications.findAllByEventIdInForUpdate(batch)
+                    .forEach(notification -> locked.put(notification.getEventId(), notification));
+        }
         return locked;
+    }
+
+    private Set<String> findExistingEventIds(List<SendGridWebhookEventRequest> events) {
+        List<String> sgEventIds = events.stream().map(SendGridWebhookEventRequest::getSgEventId).distinct().toList();
+        Set<String> existing = new HashSet<>();
+        for (int offset = 0; offset < sgEventIds.size(); offset += QUERY_BATCH_SIZE) {
+            List<String> batch = sgEventIds.subList(offset, Math.min(offset + QUERY_BATCH_SIZE, sgEventIds.size()));
+            existing.addAll(deliveryEvents.findExistingSgEventIds(batch));
+        }
+        return existing;
+    }
+
+    private EmailDeliveryEventEntity deliveryEvent(SendGridWebhookEventRequest event, EmailNotificationEntity notification) {
+        return EmailDeliveryEventEntity.builder()
+                .notification(notification).sgEventId(event.getSgEventId())
+                .sgMessageId(event.getSgMessageId()).eventType(EmailDeliveryEventType.fromSendGridEvent(event.getEvent()))
+                .providerTimestamp(Instant.ofEpochSecond(event.getTimestamp()))
+                .response(cleanDetail(event.getResponse())).reason(cleanDetail(event.getReason()))
+                .smtpStatus(event.getStatus()).build();
     }
 
     private String cleanDetail(String detail) {

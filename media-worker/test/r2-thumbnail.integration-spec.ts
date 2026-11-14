@@ -49,7 +49,6 @@ beforeEach(() => {
 });
 function config() {
   return loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
     MEDIA_WORKER_R2_ENDPOINT: origin,
     MEDIA_WORKER_R2_BUCKET: 'test-bucket',
     MEDIA_WORKER_R2_ACCESS_KEY_ID: 'example',
@@ -123,7 +122,6 @@ test('rejects wrong metadata and missing configuration', async () => {
     await storage.onApplicationShutdown();
   }
   const unconfigured = new R2ThumbnailStorage(
-    loadWorkerConfig({ MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32) }),
   );
   try {
     await expect(unconfigured.upload(data)).rejects.toThrow(
@@ -217,7 +215,6 @@ test('CLI SIGTERM aborts a stalled upload and removes the JPEG', async () => {
       env: {
         ...process.env,
         NODE_ENV: 'test',
-        MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
         MEDIA_WORKER_MEDIAMTX_BASE_URL: hlsOrigin,
         MEDIA_WORKER_TEMP_DIR: directory,
         MEDIA_WORKER_R2_ENDPOINT: origin,

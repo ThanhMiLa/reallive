@@ -14,7 +14,6 @@ import { ThumbnailPipelineProcessor } from './thumbnail-pipeline.processor';
 
 function config() {
   return loadWorkerConfig({
-    MEDIA_WORKER_INTERNAL_TOKEN: 'a'.repeat(32),
   });
 }
 

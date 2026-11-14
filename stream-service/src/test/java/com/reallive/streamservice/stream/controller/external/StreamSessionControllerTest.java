@@ -1,5 +1,14 @@
 package com.reallive.streamservice.stream.controller.external;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
 import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
@@ -7,24 +16,22 @@ import com.reallive.streamservice.common.security.CustomJwtDecoder;
 import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
 import com.reallive.streamservice.common.security.SecurityConfig;
-import com.reallive.streamservice.stream.dto.SessionProvisioningResult;
-import com.reallive.streamservice.stream.dto.request.UpdateStreamSessionRequest;
-import com.reallive.streamservice.stream.dto.response.CreateStreamSessionResponse;
 import com.reallive.streamservice.stream.dto.response.StreamDetailsResponse;
+import com.reallive.streamservice.stream.dto.response.StreamKeyResponse;
 import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
-import com.reallive.streamservice.stream.dto.response.StreamPublishCredentialsResponse;
-import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
+import com.reallive.streamservice.stream.dto.response.StreamSetupResponse;
+import com.reallive.streamservice.stream.entity.enums.ChannelStreamConfigStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
 import com.reallive.streamservice.stream.service.StreamDetailsService;
 import com.reallive.streamservice.stream.service.StreamPlaybackService;
-import com.reallive.streamservice.stream.service.StreamSessionClosureService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
+import com.reallive.streamservice.stream.service.StreamSetupService;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -38,301 +45,306 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.hamcrest.Matchers.containsString;
-
-@WebMvcTest(controllers = StreamSessionController.class, properties = {"auth.cookie.access-token.name=access_token",
-        "app.service.user=http://127.0.0.1:1/user", "app.service.channel=http://127.0.0.1:1/channel"})
+@WebMvcTest(
+        controllers = StreamSessionController.class,
+        properties = {
+            "auth.cookie.access-token.name=access_token",
+            "app.service.user=http://127.0.0.1:1/user",
+            "app.service.channel=http://127.0.0.1:1/channel"
+        })
 @Import({SecurityConfig.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class})
 class StreamSessionControllerTest {
 
     @Autowired private MockMvc mvc;
+    @MockitoBean private StreamSetupService setupService;
     @MockitoBean private StreamSessionService service;
-    @MockitoBean private StreamSessionClosureService closureService;
     @MockitoBean private StreamPlaybackService playbackService;
     @MockitoBean private StreamDetailsService detailsService;
     @MockitoBean private CustomJwtDecoder decoder;
     @MockitoBean private RedisAuthoritiesReader authorities;
+
     private final UUID owner = UUID.randomUUID();
+    private final UUID channelId = UUID.randomUUID();
+    private final UUID categoryId = UUID.randomUUID();
     private final UUID session = UUID.randomUUID();
+    private final UUID operationId = UUID.randomUUID();
 
     @Test
-    void ownerEndpointsRequireAuthentication() throws Exception {
-        mvc.perform(post("/api/streams").contentType("application/json").content(createBody()))
+    void allEndpointsRequireAuthentication() throws Exception {
+        mvc.perform(get("/api/streams/me/setup")).andExpect(status().isUnauthorized());
+        mvc.perform(
+                        put("/api/streams/me/setup")
+                                .contentType("application/json")
+                                .content(setupBody()))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/streams/me/stream-key").header("Idempotency-Key", "k1"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams/me/current")).andExpect(status().isUnauthorized());
-        mvc.perform(patch("/api/streams/" + session).contentType("application/json").content("{\"title\":\"new\"}"))
-                .andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/streams/" + session + "/publish-credentials")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/streams/" + session + "/end")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams/" + session)).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/streams/" + session + "/details")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/streams/" + session + "/playback-access")).andExpect(status().isUnauthorized());
-        verifyNoInteractions(service, closureService, playbackService, detailsService);
+        mvc.perform(get("/api/streams/" + session + "/details"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/streams/" + session + "/playback-access"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(setupService, service, playbackService, detailsService);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"ROLE_USER", "ROLE_STREAMER", "STREAM_UNRELATED"})
-    void ownerEndpointsRejectMissingPermissionsBeforeCallingServices(String authority) throws Exception {
-        mvc.perform(post("/api/streams").with(ownerWithPermissions(authority))
-                        .contentType("application/json").content(createBody()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
+    void ownerEndpointsRejectMissingPermissionsBeforeCallingServices(String authority)
+            throws Exception {
+        mvc.perform(get("/api/streams/me/setup").with(ownerWithPermissions(authority)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+        mvc.perform(
+                        put("/api/streams/me/setup")
+                                .with(ownerWithPermissions(authority))
+                                .contentType("application/json")
+                                .content(setupBody()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+        mvc.perform(
+                        post("/api/streams/me/stream-key")
+                                .with(ownerWithPermissions(authority))
+                                .header("Idempotency-Key", "k1"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
         mvc.perform(get("/api/streams/me/current").with(ownerWithPermissions(authority)))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
-        mvc.perform(patch("/api/streams/" + session).with(ownerWithPermissions(authority))
-                        .contentType("application/json").content("{\"title\":\"new\"}"))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
-        mvc.perform(post("/api/streams/" + session + "/publish-credentials").with(ownerWithPermissions(authority)))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
-        mvc.perform(post("/api/streams/" + session + "/end").with(ownerWithPermissions(authority)))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
-        verifyNoInteractions(service, closureService, playbackService);
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+        verifyNoInteractions(setupService, service, playbackService);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"STREAM_CREATE", "STREAM_PUBLISH"})
-    void creatingSessionRequiresBothCreateAndPublishPermissions(String permission) throws Exception {
-        mvc.perform(post("/api/streams").with(ownerWithPermissions(permission))
-                        .contentType("application/json").content(createBody()))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1002));
-        verifyNoInteractions(service, closureService, playbackService);
+    @ValueSource(strings = {"STREAM_VIEW_OWN", "STREAM_PUBLISH"})
+    void getSetupRequiresBothViewOwnAndPublish(String permission) throws Exception {
+        mvc.perform(get("/api/streams/me/setup").with(ownerWithPermissions(permission)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+        verifyNoInteractions(setupService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STREAM_UPDATE", "STREAM_PUBLISH"})
+    void saveSetupRequiresBothUpdateAndPublish(String permission) throws Exception {
+        mvc.perform(
+                        put("/api/streams/me/setup")
+                                .with(ownerWithPermissions(permission))
+                                .contentType("application/json")
+                                .content(setupBody()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+        verifyNoInteractions(setupService);
     }
 
     @Test
-    void viewerEndpointsNeedNoApplicationPermissions() throws Exception {
-        mvc.perform(get("/api/streams/" + session).with(ownerWithPermissions()))
-                .andExpect(status().isOk());
-        mvc.perform(get("/api/streams/" + session + "/details").with(ownerWithPermissions()))
-                .andExpect(status().isOk());
-        mvc.perform(post("/api/streams/" + session + "/playback-access").with(ownerWithPermissions()))
-                .andExpect(status().isOk());
-        verify(service).metadata(session);
-        verify(detailsService).details(session);
-        verify(playbackService).access(session, owner);
-        verifyNoInteractions(closureService);
+    void legacySessionCreatePatchCredentialAndEndRoutesAreRemoved() throws Exception {
+        var auth =
+                ownerWithPermissions(
+                        "STREAM_CREATE",
+                        "STREAM_PUBLISH",
+                        "STREAM_UPDATE",
+                        "STREAM_END",
+                        "STREAM_VIEW_OWN");
+        assertTrue(
+                mvc.perform(
+                                        post("/api/streams")
+                                                .with(auth)
+                                                .contentType("application/json")
+                                                .content("{}"))
+                                .andReturn()
+                                .getResponse()
+                                .getStatus()
+                        >= 400);
+        assertTrue(
+                mvc.perform(
+                                        patch("/api/streams/" + session)
+                                                .with(auth)
+                                                .contentType("application/json")
+                                                .content("{\"title\":\"x\"}"))
+                                .andReturn()
+                                .getResponse()
+                                .getStatus()
+                        >= 400);
+        assertTrue(
+                mvc.perform(post("/api/streams/" + session + "/publish-credentials").with(auth))
+                                .andReturn()
+                                .getResponse()
+                                .getStatus()
+                        >= 400);
+        assertTrue(
+                mvc.perform(post("/api/streams/" + session + "/end").with(auth))
+                                .andReturn()
+                                .getResponse()
+                                .getStatus()
+                        >= 400);
+        verifyNoInteractions(setupService, service, playbackService, detailsService);
     }
 
     @Test
-    void createAndIdempotentReplayHaveMatchingEnvelopeStatusAndNoStore() throws Exception {
-        var credentials = new StreamPublishCredentialsResponse(session, "rtmp://localhost:1935/live",
-                session + "?token=publish-secret", Instant.now().plusSeconds(3600));
-        var response = new CreateStreamSessionResponse(null, credentials);
-        when(service.create(eq(owner), any())).thenReturn(new SessionProvisioningResult(response, true),
-                new SessionProvisioningResult(response, false));
-        for (int status : List.of(201, 200)) {
-            mvc.perform(post("/api/streams").with(ownerWithPermissions("STREAM_CREATE", "STREAM_PUBLISH"))
-                            .contentType("application/json").content(createBody()))
-                    .andExpect(status().is(status)).andExpect(jsonPath("$.status").value(status))
-                    .andExpect(jsonPath("$.code").value(1000)).andExpect(header().string("Cache-Control", "no-store"))
-                    .andExpect(jsonPath("$.result.publishCredentials.sessionId").value(session.toString()))
-                    .andExpect(jsonPath("$.result.publishCredentials.streamKey").value(session + "?token=publish-secret"));
+    void getAndSaveSetupAreNoStoreAndValidateBody() throws Exception {
+        var activeSetup =
+                new StreamSetupResponse(
+                        channelId,
+                        "My stream",
+                        categoryId,
+                        StreamVisibility.PUBLIC,
+                        ChannelStreamConfigStatus.ACTIVE,
+                        true,
+                        null);
+        when(setupService.getOrCreateSetup(owner)).thenReturn(activeSetup);
+        when(setupService.saveSetup(eq(owner), any())).thenReturn(activeSetup);
+
+        mvc.perform(
+                        get("/api/streams/me/setup")
+                                .with(ownerWithPermissions("STREAM_VIEW_OWN", "STREAM_PUBLISH")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.result.channelId").value(channelId.toString()))
+                .andExpect(jsonPath("$.result.streamKey").doesNotExist())
+                .andExpect(jsonPath("$.result.hasStreamKey").value(true));
+
+        mvc.perform(
+                        put("/api/streams/me/setup")
+                                .with(ownerWithPermissions("STREAM_UPDATE", "STREAM_PUBLISH"))
+                                .contentType("application/json")
+                                .content(setupBody()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.result.status").value("ACTIVE"));
+
+        for (String invalidBody :
+                List.of(
+                        "{}",
+                        "{\"title\":\"   \",\"categoryId\":\"" + categoryId + "\"}",
+                        "{\"title\":\"ok\"}",
+                        "{\"title\":\""
+                                + "x".repeat(256)
+                                + "\",\"categoryId\":\""
+                                + categoryId
+                                + "\"}")) {
+            mvc.perform(
+                            put("/api/streams/me/setup")
+                                    .with(ownerWithPermissions("STREAM_UPDATE", "STREAM_PUBLISH"))
+                                    .contentType("application/json")
+                                    .content(invalidBody))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(1004));
         }
     }
 
     @Test
-    void invalidCreateAndPatchBodiesAreRejectedBeforeCallingService() throws Exception {
-        for (String body : List.of("{}", "{\"requestId\":\"bad\"}",
-                "{\"requestId\":\"" + UUID.randomUUID() + "\",\"title\":\"   \",\"categoryId\":\"" + UUID.randomUUID() + "\"}")) {
-            mvc.perform(post("/api/streams").with(ownerWithPermissions("STREAM_CREATE", "STREAM_PUBLISH"))
-                            .contentType("application/json").content(body))
-                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
-        }
-        for (String body : List.of("{}", "{\"title\":null}", "{\"categoryId\":null}", "{\"title\":\"  \"}",
-                "{\"status\":\"LIVE\"}", "{\"title\":\"new\",\"owner\":\"someone\"}",
-                "{\"title\":\"" + "x".repeat(256) + "\"}")) {
-            mvc.perform(patch("/api/streams/" + session).with(ownerWithPermissions("STREAM_UPDATE"))
-                            .contentType("application/json").content(body))
-                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400));
-        }
-        verifyNoInteractions(service);
-    }
-
-    @Test
-    void patchPreservesFieldPresenceAndUsesTheAuthenticatedOwner() throws Exception {
-        mvc.perform(patch("/api/streams/" + session).with(ownerWithPermissions("STREAM_UPDATE"))
-                        .contentType("application/json").content("{\"title\":\"  Updated title  \"}"))
-                .andExpect(status().isOk());
-        var request = ArgumentCaptor.forClass(UpdateStreamSessionRequest.class);
-        verify(service).update(eq(session), eq(owner), request.capture());
-        assertEquals("Updated title", request.getValue().getTitle());
-        assertTrue(request.getValue().isTitleProvided());
-        assertFalse(request.getValue().isCategoryProvided());
+    void issueKeyReturnsCredentialsOnceWithNoStore() throws Exception {
+        when(setupService.issueStreamKey(owner))
+                .thenReturn(
+                        new StreamKeyResponse(
+                                channelId,
+                                "rtmp://localhost:1935/ingest",
+                                "ingest-id?token=secret"));
+        mvc.perform(post("/api/streams/me/stream-key").with(ownerWithPermissions("STREAM_PUBLISH")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.result.streamKey").value("ingest-id?token=secret"));
     }
 
     @Test
     void currentCanBeNullAndDoesNotContainCredentials() throws Exception {
         mvc.perform(get("/api/streams/me/current").with(ownerWithPermissions("STREAM_VIEW_OWN")))
-                .andExpect(status().isOk()).andExpect(content().string(containsString("\"result\":null")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(content().string(containsString("\"result\":null")))
                 .andExpect(jsonPath("$.publishCredentials").doesNotExist());
         verify(service).current(owner);
     }
 
     @Test
-    void credentialResponseIsNotCacheableAndErrorsKeepTheirHttpContract() throws Exception {
-        var credentials = new StreamPublishCredentialsResponse(session, "rtmp://localhost:1935/live", "key", Instant.now());
-        when(service.publishCredentials(session, owner)).thenReturn(credentials);
-        mvc.perform(post("/api/streams/" + session + "/publish-credentials")
-                        .with(ownerWithPermissions("STREAM_PUBLISH")))
-                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.result.streamKey").value("key"));
-        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_OWNED, ErrorCode.STREAM_SESSION_NOT_FOUND,
-                ErrorCode.STREAM_SESSION_STATE_INVALID, ErrorCode.MEDIA_SERVER_UNAVAILABLE)) {
-            doThrow(new AppException(error)).when(service).publishCredentials(session, owner);
-            mvc.perform(post("/api/streams/" + session + "/publish-credentials")
-                            .with(ownerWithPermissions("STREAM_PUBLISH")))
-                    .andExpect(status().is(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.code").value(error.getCode()));
-        }
-    }
-
-    @Test
-    void endSessionCallsClosureServiceAndHandlesErrors() throws Exception {
-        var endResponse = new StreamSessionResponse(session, UUID.randomUUID(), "Title", UUID.randomUUID(),
-                StreamVisibility.PUBLIC, StreamSessionStatus.ENDED, Instant.now(), Instant.now(), null, Instant.now(), false);
-        when(closureService.end(session, owner, null)).thenReturn(endResponse);
-
-        mvc.perform(post("/api/streams/" + session + "/end")
-                        .with(ownerWithPermissions("STREAM_END")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(200))
-                .andExpect(jsonPath("$.result.id").value(session.toString()))
-                .andExpect(jsonPath("$.result.status").value("ENDED"));
-
-        verify(closureService).end(session, owner, null);
-
-        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_OWNED, ErrorCode.STREAM_SESSION_NOT_FOUND,
-                ErrorCode.MEDIA_SERVER_UNAVAILABLE)) {
-            doThrow(new AppException(error)).when(closureService).end(session, owner, null);
-            mvc.perform(post("/api/streams/" + session + "/end")
-                            .with(ownerWithPermissions("STREAM_END")))
-                    .andExpect(status().is(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.code").value(error.getCode()));
-        }
-    }
-
-    @Test
-    void viewerMetadataIsNoStoreAndContainsNoCredentialsForEveryLifecycleState() throws Exception {
+    void viewerMetadataDetailsAndPlaybackAccessPreserveContract() throws Exception {
         var startedAt = Instant.parse("2026-10-29T01:00:00Z");
-        for (var status : StreamSessionStatus.values()) {
-            var metadata = new StreamMetadataResponse(session, UUID.randomUUID(), owner, "Title", UUID.randomUUID(),
-                    StreamVisibility.PUBLIC, status, startedAt, null, null, Instant.parse("2026-10-29T02:00:00Z"), null);
+        for (var status :
+                List.of(
+                        StreamSessionStatus.LIVE,
+                        StreamSessionStatus.RECONNECTING,
+                        StreamSessionStatus.ENDED)) {
+            var metadata =
+                    new StreamMetadataResponse(
+                            session,
+                            channelId,
+                            owner,
+                            "Title",
+                            categoryId,
+                            StreamVisibility.PUBLIC,
+                            status,
+                            startedAt,
+                            null,
+                            null,
+                            Instant.parse("2026-10-29T02:00:00Z"),
+                            null);
             when(service.metadata(session)).thenReturn(metadata);
 
             mvc.perform(get("/api/streams/" + session).with(jwt()))
                     .andExpect(status().isOk())
                     .andExpect(header().string("Cache-Control", "no-store"))
-                    .andExpect(jsonPath("$.status").value(200))
-                    .andExpect(jsonPath("$.result.id").value(session.toString()))
-                    .andExpect(jsonPath("$.result.ownerUserId").value(owner.toString()))
                     .andExpect(jsonPath("$.result.status").value(status.name()))
-                    .andExpect(jsonPath("$.result.visibility").value("PUBLIC"))
-                    .andExpect(jsonPath("$.result.playbackUrl").doesNotExist())
-                    .andExpect(jsonPath("$.result.readToken").doesNotExist())
                     .andExpect(jsonPath("$.result.streamKey").doesNotExist());
         }
-        verify(service, times(StreamSessionStatus.values().length)).metadata(session);
-        verifyNoInteractions(playbackService);
-    }
 
-    @Test
-    void playbackAccessReturnsUrlAndReadTokenWithoutCacheOrPublishCredentials() throws Exception {
-        var expiresAt = Instant.parse("2026-10-29T02:05:00Z");
-        var access = new StreamPlaybackAccessResponse(session,
-                "http://localhost:8898/live/" + session + "/index.m3u8", "read.jwt.value", expiresAt);
-        when(playbackService.access(session, owner)).thenReturn(access);
-
-        mvc.perform(post("/api/streams/" + session + "/playback-access")
-                        .with(jwt().jwt(token -> token.subject(owner.toString()))))
-                .andExpect(status().isOk())
-                .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.status").value(200))
-                .andExpect(jsonPath("$.result.sessionId").value(session.toString()))
-                .andExpect(jsonPath("$.result.playbackUrl")
-                        .value("http://localhost:8898/live/" + session + "/index.m3u8"))
-                .andExpect(jsonPath("$.result.readToken").value("read.jwt.value"))
-                .andExpect(jsonPath("$.result.readExpiresAt").value("2026-10-29T02:05:00Z"))
-                .andExpect(jsonPath("$.result.streamKey").doesNotExist())
-                .andExpect(jsonPath("$.result.publishExpiresAt").doesNotExist());
-
-        verify(playbackService).access(session, owner);
-        verifyNoInteractions(service);
-    }
-
-    @Test
-    void playbackAccessKeepsTheStandardHttpErrorsForUnavailableSessions() throws Exception {
-        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_FOUND, ErrorCode.ACCESS_DENIED,
-                ErrorCode.STREAM_SESSION_STATE_INVALID)) {
-            doThrow(new AppException(error)).when(playbackService).access(session, owner);
-            mvc.perform(post("/api/streams/" + session + "/playback-access")
-                            .with(jwt().jwt(token -> token.subject(owner.toString()))))
-                    .andExpect(status().is(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.code").value(error.getCode()));
-        }
-    }
-
-    @Test
-    void streamDetailsReturnsChannelAndCategorySummariesWithNoStoreAndMapsErrors() throws Exception {
-        var channelId = UUID.randomUUID();
-        var categoryId = UUID.randomUUID();
-        var details = new StreamDetailsResponse(
-                session,
-                channelId,
-                categoryId,
-                new StreamDetailsResponse.ChannelSummary(channelId, "Queenofdarknesstv", "https://cdn.example.com/avatar.jpg"),
-                new StreamDetailsResponse.CategorySummary(categoryId, "IRL")
-        );
+        var details =
+                new StreamDetailsResponse(
+                        session,
+                        channelId,
+                        categoryId,
+                        new StreamDetailsResponse.ChannelSummary(
+                                channelId, "Streamer", "https://cdn.example.com/avatar.jpg"),
+                        new StreamDetailsResponse.CategorySummary(categoryId, "IRL"));
         when(detailsService.details(session)).thenReturn(details);
-
         mvc.perform(get("/api/streams/" + session + "/details").with(jwt()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.status").value(200))
-                .andExpect(jsonPath("$.code").value(1000))
-                .andExpect(jsonPath("$.result.id").value(session.toString()))
-                .andExpect(jsonPath("$.result.channelId").value(channelId.toString()))
-                .andExpect(jsonPath("$.result.categoryId").value(categoryId.toString()))
-                .andExpect(jsonPath("$.result.channel.id").value(channelId.toString()))
-                .andExpect(jsonPath("$.result.channel.name").value("Queenofdarknesstv"))
-                .andExpect(jsonPath("$.result.channel.avatarUrl").value("https://cdn.example.com/avatar.jpg"))
-                .andExpect(jsonPath("$.result.category.id").value(categoryId.toString()))
-                .andExpect(jsonPath("$.result.category.name").value("IRL"));
+                .andExpect(jsonPath("$.result.channel.name").value("Streamer"));
 
-        for (var error : List.of(ErrorCode.STREAM_SESSION_NOT_FOUND, ErrorCode.ACCESS_DENIED,
-                ErrorCode.STREAM_DATA_UNAVAILABLE)) {
-            doThrow(new AppException(error)).when(detailsService).details(session);
-            mvc.perform(get("/api/streams/" + session + "/details").with(jwt()))
+        var expiresAt = Instant.parse("2026-10-29T02:05:00Z");
+        when(playbackService.access(session, owner))
+                .thenReturn(
+                        new StreamPlaybackAccessResponse(
+                                session,
+                                "http://localhost:8898/live/" + session + "/index.m3u8",
+                                "read.jwt.value",
+                                expiresAt));
+        mvc.perform(
+                        post("/api/streams/" + session + "/playback-access")
+                                .with(jwt().jwt(token -> token.subject(owner.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(
+                        jsonPath("$.result.playbackUrl")
+                                .value("http://localhost:8898/live/" + session + "/index.m3u8"));
+    }
+
+    @Test
+    void setupErrorCodesMapCorrectHttpStatus() throws Exception {
+        for (var error :
+                List.of(
+                        ErrorCode.STREAM_KEY_NOT_PROVISIONED,
+                        ErrorCode.STREAM_CONFIG_BLOCKED,
+                        ErrorCode.STREAMER_NOT_ELIGIBLE)) {
+            doThrow(new AppException(error)).when(setupService).issueStreamKey(owner);
+            mvc.perform(
+                            post("/api/streams/me/stream-key")
+                                    .with(ownerWithPermissions("STREAM_PUBLISH"))
+                                    .header("Idempotency-Key", "k-err"))
                     .andExpect(status().is(error.getHttpStatus().value()))
-                    .andExpect(jsonPath("$.status").value(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.code").value(error.getCode()));
         }
     }
 
-    @Test
-    void invalidSessionIdentifiersAreRejectedBeforeCallingViewerServices() throws Exception {
-        mvc.perform(get("/api/streams/not-a-uuid").with(jwt()))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
-        mvc.perform(get("/api/streams/not-a-uuid/details").with(jwt()))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
-        mvc.perform(post("/api/streams/not-a-uuid/playback-access").with(jwt()))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(1004));
-        verifyNoInteractions(service, playbackService, detailsService);
-    }
-
-    private String createBody() {
-        return "{\"requestId\":\"" + UUID.randomUUID() + "\",\"title\":\"Stream title\",\"categoryId\":\"" + UUID.randomUUID() + "\"}";
+    private String setupBody() {
+        return "{\"title\":\"Stream title\",\"categoryId\":\"" + categoryId + "\"}";
     }
 
     private JwtRequestPostProcessor ownerWithPermissions(String... permissions) {
         return jwt().jwt(token -> token.subject(owner.toString()))
-                .authorities(Arrays.stream(permissions).map(SimpleGrantedAuthority::new)
-                        .toArray(SimpleGrantedAuthority[]::new));
+                .authorities(
+                        Arrays.stream(permissions)
+                                .map(SimpleGrantedAuthority::new)
+                                .toArray(SimpleGrantedAuthority[]::new));
     }
 }

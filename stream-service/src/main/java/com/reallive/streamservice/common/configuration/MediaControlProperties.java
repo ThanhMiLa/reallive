@@ -3,6 +3,7 @@ package com.reallive.streamservice.common.configuration;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
@@ -13,6 +14,7 @@ import java.time.Duration;
 public class MediaControlProperties {
 
     String baseUrl = "http://localhost:9997";
+    String internalRtmpBaseUrl = "rtmp://127.0.0.1:1935";
     Duration connectTimeout = Duration.ofSeconds(2);
     Duration requestTimeout = Duration.ofSeconds(5);
     Paths paths = new Paths();
@@ -20,6 +22,7 @@ public class MediaControlProperties {
     @Data
     @FieldDefaults(level = AccessLevel.PRIVATE)
     public static class Paths {
+        String info = "/v3/info";
         String configGet = "/v3/config/paths/get/";
         String configAdd = "/v3/config/paths/add/";
         String configDelete = "/v3/config/paths/delete/";
@@ -27,6 +30,7 @@ public class MediaControlProperties {
         String statusGet = "/v3/paths/get/";
         String statusList = "/v3/paths/list";
         String connsKick = "/v3/%s/conns/kick/";
+        String ingestPrefix = "ingest/";
         String streamPrefix = "live/";
     }
 }

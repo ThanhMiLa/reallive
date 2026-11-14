@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,6 +27,15 @@ public interface EmailNotificationRepository extends JpaRepository<EmailNotifica
             WHERE notification.eventId = :eventId
             """)
     Optional<EmailNotificationEntity> findByEventIdForUpdate(@Param("eventId") UUID eventId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT notification
+            FROM EmailNotificationEntity notification
+            WHERE notification.eventId IN :eventIds
+            ORDER BY notification.eventId ASC
+            """)
+    List<EmailNotificationEntity> findAllByEventIdInForUpdate(@Param("eventIds") Collection<UUID> eventIds);
 
     boolean existsByEventId(UUID eventId);
 

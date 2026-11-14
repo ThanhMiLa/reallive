@@ -3,6 +3,7 @@ package com.reallive.streamservice.stream.adapter.media;
 import com.reallive.streamservice.common.configuration.MediaControlProperties;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
+import com.reallive.streamservice.stream.adapter.media.dto.CcuMediaReader;
 import io.micrometer.core.instrument.Metrics;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +24,6 @@ import tools.jackson.databind.JsonNode;
 public class CcuMediaSessions {
     WebClient mediaControlWebClient;
     MediaControlProperties properties;
-    MediaJwtIssuer issuer;
 
     public Optional<CcuMediaReader> get(UUID id) {
         var response = request("/v3/hls/sessions/get/" + id);
@@ -52,7 +52,6 @@ public class CcuMediaSessions {
     private JsonNode request(String uri) {
         try {
             return mediaControlWebClient.get().uri(uri)
-                    .headers(headers -> headers.setBearerAuth(issuer.issueControlApi().value()))
                     .exchangeToMono(response -> {
                         if (response.statusCode().value() == 404) return response.releaseBody().then(Mono.empty());
                         if (!response.statusCode().is2xxSuccessful()) return response.releaseBody().then(Mono.error(unavailable()));

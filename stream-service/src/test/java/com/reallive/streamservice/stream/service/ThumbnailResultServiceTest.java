@@ -47,7 +47,6 @@ class ThumbnailResultServiceTest {
     @BeforeEach
     void setUp() {
         properties = new ThumbnailProperties();
-        properties.setCallbackInternalToken("test-internal-token-0123456789abcdef");
         properties.setPublicBaseUrl(BASE_URL);
         properties.setMaxJpegBytes(5_242_880);
         service = new ThumbnailResultServiceImpl(

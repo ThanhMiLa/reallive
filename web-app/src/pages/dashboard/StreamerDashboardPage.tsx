@@ -1,16 +1,19 @@
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense } from 'react'
+import { Link } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { Button } from '@/components/ui/Button'
+import { MessageSquare, MonitorPlay, Radio } from 'lucide-react'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
-import { ObsConnectionPanel } from '@/components/stream/ObsConnectionPanel'
-import { StreamInfoForm } from '@/components/stream/StreamInfoForm'
+import { StreamInfoPanel } from '@/components/stream/StreamInfoPanel'
+import { StreamAuthGate, StreamSetupFallback } from '@/components/stream/StreamPageStates'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
+import { useSessionElapsed, type SessionClock } from '@/components/stream/useSessionElapsed'
 import { useAuthStore } from '@/stores/auth.store'
-import { streamErrorMessage, useStreamManager } from '@/hooks/useStreamManager'
+import { useStreamManager } from '@/hooks/useStreamManager'
 
 const StreamPlayer = lazy(() =>
   import('@/components/stream/StreamPlayer').then((module) => ({ default: module.StreamPlayer })),
 )
+
 function formatDuration(seconds: number) {
   const value = Math.max(0, Math.floor(seconds))
   return [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60]
@@ -18,100 +21,42 @@ function formatDuration(seconds: number) {
     .join(':')
 }
 
-function EndDialog({
-  ready,
-  pending,
-  onClose,
-  onConfirm,
-}: {
-  ready: boolean
-  pending: boolean
-  onClose: () => void
-  onConfirm: () => void
-}) {
-  const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const node = ref.current
-    node?.showModal()
-    return () => node?.close()
-  }, [])
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby="end-title"
-      onCancel={(event) => {
-        event.preventDefault()
-        if (!pending) onClose()
-      }}
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border border-brand-border bg-[#101014] p-6 text-white backdrop:bg-black/80"
-    >
-      <h2 id="end-title" className="font-outfit text-xl font-bold">
-        {ready ? 'Cancel this session?' : 'End this stream?'}
-      </h2>
-      <p className="mt-3 text-sm leading-6 text-gray-400">
-        {ready
-          ? 'This session will be closed. You can create another session later.'
-          : 'Viewers will stop receiving the broadcast. You will need a new session to stream again.'}
-      </p>
-      <div className="mt-6 flex justify-end gap-3">
-        <Button type="button" variant="secondary" disabled={pending} onClick={onClose}>
-          Keep session
-        </Button>
-        <Button type="button" isLoading={pending} onClick={onConfirm}>
-          {pending ? 'Ending…' : ready ? 'Cancel session' : 'End stream'}
-        </Button>
-      </div>
-    </dialog>
-  )
+function SessionLiveDuration({ sessionClock }: { sessionClock: SessionClock }) {
+  const elapsed = useSessionElapsed(sessionClock)
+  return <>{elapsed == null ? '—' : formatDuration(elapsed)}</>
 }
 
 function Dashboard({ userId }: { userId: string }) {
   const {
+    setup,
     current,
     categories,
     metadata,
     session,
     id,
-    credentials,
     pending,
-    dialog,
-    setDialog,
+    lastEndedAt,
     now,
     refreshMetadata,
-    create,
-    update,
-    getCredentials,
-    end,
-    newStream,
+    saveSetup,
   } = useStreamManager(userId)
 
-  if (current.isPending)
+  if (setup.isPending || (setup.isError && !setup.data)) {
     return (
-      <main className="p-8">
-        <h1 className="font-outfit text-3xl font-bold">Stream Manager</h1>
-        <p className="mt-8 text-gray-400" role="status">
-          Loading your stream session…
-        </p>
-      </main>
+      <StreamSetupFallback
+        title="Stream Manager"
+        isPending={setup.isPending}
+        isError={setup.isError}
+        error={setup.error}
+        onRetry={() => void setup.refetch()}
+      />
     )
-  if (current.isError && !current.data)
-    return (
-      <main className="p-8">
-        <h1 className="font-outfit text-3xl font-bold">Stream Manager</h1>
-        <p className="mt-6 text-gray-400">{streamErrorMessage(current.error)}</p>
-        <div className="mt-4 flex gap-3">
-          {isAxiosError(current.error) && current.error.response?.status === 401 && (
-            <Button onClick={() => useAuthStore.getState().openAuthModal('login')}>Log in</Button>
-          )}
-          <Button variant="secondary" onClick={() => void current.refetch()}>
-            Try again
-          </Button>
-        </div>
-      </main>
-    )
+  }
 
+  const streamConfig = setup.data!
   const status = session?.status
   const ended = status === 'ENDED'
+  const activeSession = status === 'LIVE' || status === 'RECONNECTING'
   const authExpired = isAxiosError(metadata.error) && metadata.error.response?.status === 401
   const sessionNotFound = isAxiosError(metadata.error) && metadata.error.response?.status === 404
   const serverNow = session
@@ -121,19 +66,31 @@ function Dashboard({ userId }: { userId: string }) {
   const countdown = session?.reconnectDeadlineAt
     ? formatDuration((Date.parse(session.reconnectDeadlineAt) - serverNow) / 1000).slice(3)
     : null
+
+  const offlineHeading = streamConfig.status === 'BLOCKED' ? 'Streaming unavailable'
+    : !streamConfig.hasStreamKey ? 'Complete stream setup'
+      : ended || lastEndedAt ? 'Stream ended · Waiting for OBS' : 'Waiting for OBS'
+  const offlineDescription = streamConfig.status === 'BLOCKED'
+    ? streamConfig.blockedReason || 'Streaming access is currently blocked.'
+    : !streamConfig.hasStreamKey
+      ? streamConfig.categoryId
+        ? 'Your stream information is saved. Generate a stream key in Stream URL & Key to connect OBS.'
+        : 'Set your stream information on the right, then generate a stream key in Stream URL & Key.'
+      : ended || lastEndedAt
+        ? `Previous broadcast ended ${new Date(session?.endedAt || lastEndedAt!).toLocaleString()}. Start streaming in OBS when ready.`
+        : 'Start streaming in OBS to go live automatically.'
+
+  const statusLabel = status === 'LIVE' ? 'LIVE' : status === 'RECONNECTING' ? 'RECONNECTING' : 'OFFLINE'
+  const statusBadgeClass =
+    status === 'LIVE'
+      ? 'border-red-500/40 bg-red-500/15 text-red-300'
+      : status === 'RECONNECTING'
+        ? 'border-amber-500/40 bg-amber-500/15 text-amber-200'
+        : 'border-brand-border bg-brand-card text-gray-300'
+
   return (
-    <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="font-outfit text-2xl font-bold text-white sm:text-3xl">
-            Stream Manager
-          </h1>
-          {ended && (
-            <Button variant="success" onClick={() => void newStream()}>
-              Create new stream
-            </Button>
-          )}
-        </header>
+    <main className="min-w-0 flex-1 p-2 sm:p-2.5">
+      <div className="mx-auto max-w-[1920px] space-y-2">
         {metadata.isError && session && !ended && (
           <div
             role="alert"
@@ -160,6 +117,7 @@ function Dashboard({ userId }: { userId: string }) {
             )}
           </div>
         )}
+
         {status === 'RECONNECTING' && (
           <div
             role="status"
@@ -169,17 +127,23 @@ function Dashboard({ userId }: { userId: string }) {
             {countdown ? ` · ${countdown} remaining` : ''}.
           </div>
         )}
-        <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-          <div className="min-w-0 space-y-6 transform-gpu">
-            <section className="overflow-hidden rounded-2xl border border-brand-border bg-brand-card">
+
+        <div className="grid min-w-0 grid-cols-1 items-start gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)_minmax(216px,252px)]">
+          {/* Column 1: Livestream Preview & Session Info */}
+          <div className="min-w-0 space-y-2 transform-gpu">
+            <section className="overflow-hidden rounded-xl border border-brand-border bg-brand-card">
+              <div className="flex items-center gap-2 border-b border-brand-border px-4 py-3">
+                <MonitorPlay className="h-4 w-4 text-gray-400" />
+                <h2 className="font-outfit text-sm font-bold text-white">Stream Preview</h2>
+              </div>
               {authExpired || sessionNotFound ? (
-                <div className="flex aspect-video items-center justify-center p-6 text-center text-gray-400">
+                <div className="flex aspect-video items-center justify-center bg-[#08080a] p-6 text-center text-gray-400">
                   {authExpired ? 'Log in to resume the preview.' : 'Stream session is unavailable.'}
                 </div>
               ) : status === 'LIVE' && id ? (
                 <Suspense
                   fallback={
-                    <div className="flex aspect-video items-center justify-center text-gray-400">
+                    <div className="flex aspect-video items-center justify-center bg-[#08080a] text-gray-400">
                       Loading player…
                     </div>
                   }
@@ -197,69 +161,83 @@ function Dashboard({ userId }: { userId: string }) {
                   />
                 </Suspense>
               ) : (
-                <div
-                  className={`flex flex-col items-center justify-center bg-[#08080a] p-6 text-center ${session ? 'aspect-video' : 'min-h-[200px]'}`}
-                >
+                <div className="flex aspect-video flex-col items-center justify-center bg-[#08080a] p-6 text-center">
                   <p className="font-outfit text-lg font-semibold text-white">
-                    {status === 'READY'
-                      ? 'Waiting for OBS'
-                      : status === 'RECONNECTING'
-                        ? 'Waiting for the stream to reconnect'
-                        : ended
-                          ? 'This stream has ended'
-                          : 'No active session'}
+                    {status === 'RECONNECTING' ? 'Waiting for the stream to reconnect' : offlineHeading}
                   </p>
-                  <p className="mt-2 max-w-sm text-sm leading-6 text-gray-400">
-                    {status === 'READY'
-                      ? 'Start streaming in OBS to see your preview.'
-                      : status === 'RECONNECTING'
-                        ? 'Reconnect using OBS to continue this session.'
-                        : ended
-                          ? session?.endedAt
-                            ? `Ended ${new Date(session.endedAt).toLocaleString()}`
-                            : ''
-                          : 'Create a session to get your OBS connection details.'}
+                  <p className="mt-2 max-w-md text-sm leading-6 text-gray-400">
+                    {status === 'RECONNECTING'
+                      ? 'Reconnect using OBS within 60 seconds to continue this session.'
+                      : offlineDescription}
                   </p>
+                  {status !== 'RECONNECTING' && !streamConfig.hasStreamKey && streamConfig.status !== 'BLOCKED' && (
+                    <Link
+                      to="/dashboard/stream-key"
+                      className="mt-4 inline-flex items-center rounded-lg border border-brand-border bg-[#101014] px-3.5 py-2 text-xs font-semibold text-gray-200 hover:bg-[#18181f] hover:text-white transition"
+                    >
+                      Go to Stream URL &amp; Key
+                    </Link>
+                  )}
                 </div>
               )}
             </section>
-            <StreamInfoForm
-              key={`info-${session?.id || 'new'}`}
-              initial={{ title: session?.title || '', categoryId: session?.categoryId || '' }}
-              categories={categories.data || []}
-              categoriesLoading={categories.isPending}
-              categoriesError={categories.isError}
-              onRetryCategories={() => void categories.refetch()}
-              editing={Boolean(session)}
-              disabled={ended}
-              pending={pending === 'create' || pending === 'update'}
-              sessionStatus={status}
-              onEndStream={() => setDialog(true)}
-              endPending={pending === 'end'}
-              onSubmit={session ? update : create}
-            />
-            {session && !ended ? (
-              <ObsConnectionPanel
-                key={`obs-${session.id}`}
-                credentials={credentials?.sessionId === session.id ? credentials : null}
-                pending={pending === 'credentials'}
-                onGet={() => void getCredentials()}
-              />
-            ) : (
-              <section className="rounded-2xl border border-brand-border bg-brand-card p-5 sm:p-6">
-                <h2 className="font-outfit text-lg font-bold text-white">OBS connection</h2>
-                <p className="mt-3 text-sm leading-6 text-gray-400">
-                  Create a session to get your OBS connection details.
-                </p>
-              </section>
-            )}
+
+            <section
+              aria-label="Session Info"
+              className="rounded-xl border border-brand-border bg-brand-card"
+            >
+              <div className="flex items-center gap-2 border-b border-brand-border px-4 py-3">
+                <Radio className="h-4 w-4 text-gray-400" />
+                <h2 className="font-outfit text-sm font-bold text-white">Session Info</h2>
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-brand-border">
+                <div className="px-4 py-3">
+                  <span
+                    className={`inline-block rounded border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass}`}
+                  >
+                    {statusLabel}
+                  </span>
+                  <p className="mt-1.5 text-xs text-gray-400">Session</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-sm font-bold tabular-nums text-white">
+                    {activeSession && session?.currentViewerCount != null
+                      ? session.currentViewerCount.toLocaleString()
+                      : '—'}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">Viewers</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-sm font-bold tabular-nums text-white">
+                    {activeSession && session ? (
+                      <SessionLiveDuration
+                        sessionClock={{
+                          startedAt: session.startedAt,
+                          serverTime: session.serverTime,
+                          endedAt: session.endedAt,
+                          receivedAt: metadata.dataUpdatedAt || current.dataUpdatedAt,
+                        }}
+                      />
+                    ) : (
+                      '—'
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-400">Time Live</p>
+                </div>
+              </div>
+            </section>
           </div>
+
+          {/* Column 2: Chat */}
           <aside
             aria-label="Stream chat"
-            className="flex h-[520px] min-w-0 flex-col overflow-hidden transform-gpu rounded-2xl border border-brand-border bg-brand-card xl:sticky xl:top-6 xl:h-[600px]"
+            className="flex h-[520px] min-w-0 flex-col overflow-hidden transform-gpu rounded-xl border border-brand-border bg-brand-card xl:sticky xl:top-2.5 xl:h-[calc(100dvh-1.25rem)] xl:min-h-[540px]"
           >
-            <div className="flex flex-wrap items-center gap-3 border-b border-brand-border px-5 py-3.5">
-              <h2 className="font-outfit text-sm font-bold text-gray-400">Stream Chat</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-border px-4 py-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-gray-400" />
+                <h2 className="font-outfit text-sm font-bold text-white">Stream Chat</h2>
+              </div>
               {session && (
                 <StreamViewerCount
                   count={session.currentViewerCount}
@@ -268,7 +246,7 @@ function Dashboard({ userId }: { userId: string }) {
                 />
               )}
             </div>
-            {id ? (
+            {id && activeSession ? (
               <StreamChatPanel
                 embedded
                 sessionId={id}
@@ -280,44 +258,39 @@ function Dashboard({ userId }: { userId: string }) {
                 role="status"
                 className="flex flex-1 items-center justify-center bg-[#08080a] p-5 text-center text-sm text-gray-400"
               >
-                Create a stream session to open chat.
+                {status === 'ENDED' || lastEndedAt
+                  ? 'This stream has ended. Chat will open automatically when a new stream starts.'
+                  : 'Chat opens automatically when you start streaming in OBS.'}
               </div>
             )}
           </aside>
+
+          {/* Column 3: Stream Information */}
+          <div className="min-w-0 xl:sticky xl:top-2.5">
+            <StreamInfoPanel
+              initial={{
+                title: streamConfig.title || '',
+                categoryId: streamConfig.categoryId || '',
+              }}
+              categories={categories.data || []}
+              categoriesLoading={categories.isPending}
+              categoriesError={categories.isError}
+              onRetryCategories={() => void categories.refetch()}
+              configStatus={streamConfig.status}
+              pending={pending === 'save'}
+              onSubmit={saveSetup}
+            />
+          </div>
         </div>
-        {dialog && session && !ended && (
-          <EndDialog
-            ready={status === 'READY'}
-            pending={pending === 'end'}
-            onClose={() => setDialog(false)}
-            onConfirm={() => void end()}
-          />
-        )}
       </div>
     </main>
   )
 }
 
 export function StreamerDashboardPage() {
-  const { user, isAuthenticated, isCheckingAuth, openAuthModal } = useAuthStore()
-  if (isCheckingAuth)
-    return (
-      <main className="p-8">
-        <h1 className="font-outfit text-3xl font-bold">Stream Manager</h1>
-        <p className="mt-8 text-gray-400" role="status">
-          Checking your session…
-        </p>
-      </main>
-    )
-  if (!isAuthenticated || !user)
-    return (
-      <main className="p-8">
-        <h1 className="font-outfit text-3xl font-bold">Stream Manager</h1>
-        <p className="mt-6 text-gray-400">Log in to manage your stream.</p>
-        <Button className="mt-4" onClick={() => openAuthModal('login')}>
-          Log in
-        </Button>
-      </main>
-    )
-  return <Dashboard key={user.userId} userId={user.userId} />
+  return (
+    <StreamAuthGate title="Stream Manager" loginMessage="Log in to manage your stream.">
+      {(userId) => <Dashboard key={userId} userId={userId} />}
+    </StreamAuthGate>
+  )
 }

@@ -2,16 +2,32 @@ package com.reallive.streamservice.stream.service;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
+
 import java.util.UUID;
 
 public interface StreamEligibilityService {
+
     /**
-     * Synchronously resolves verified streamer, channel ownership and active-category context before DB writes.
+     * Resolves verified streamer and channel ownership context for an authenticated user without
+     * requiring a category.
+     *
+     * @param authenticatedUserId the user ID extracted from the trusted authenticated principal
+     * @return validated streamer and channel ownership identifiers
+     * @throws AppException if identity is unauthenticated, ineligible to publish, channel is
+     *     missing or upstream fails
+     */
+    StreamPublishContext requireChannelContext(UUID authenticatedUserId);
+
+    /**
+     * Synchronously resolves verified streamer, channel ownership and active-category context
+     * before DB writes.
      *
      * @param authenticatedUserId the user ID extracted from the trusted authenticated principal
      * @param categoryId the requested stream category identifier
-     * @return validated identity and channel identifiers without provisioning media or issuing tokens
-     * @throws AppException if identity/category is invalid, publishing is forbidden or an upstream service is unavailable
+     * @return validated identity and channel identifiers without provisioning media or issuing
+     *     tokens
+     * @throws AppException if identity/category is invalid, publishing is forbidden or an upstream
+     *     service is unavailable
      */
     StreamPublishContext requirePublishContext(UUID authenticatedUserId, UUID categoryId);
 }

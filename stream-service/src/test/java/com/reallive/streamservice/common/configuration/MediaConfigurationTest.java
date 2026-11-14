@@ -1,23 +1,25 @@
 package com.reallive.streamservice.common.configuration;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.reallive.streamservice.stream.MediaTestSupport;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+
 import java.time.Duration;
 import java.util.Base64;
-import static org.junit.jupiter.api.Assertions.*;
 
 class MediaConfigurationTest {
     private final MediaConfiguration configuration = new MediaConfiguration();
 
     @Test
-    void loadsMatchingKeysAndEightHourFiveMinuteDefaults() {
+    void loadsMatchingKeysAndDefaults() {
         var properties = MediaTestSupport.properties();
         var keys = configuration.mediaKeyMaterial(properties);
         assertEquals(2048, keys.publicKey().getModulus().bitLength());
-        assertEquals(Duration.ofHours(8), properties.getPublishTokenTtl());
         assertEquals(Duration.ofMinutes(5), properties.getReadTokenTtl());
-        assertEquals(Duration.ofMinutes(5), properties.getControlTokenTtl());
+        assertEquals("rtmp://localhost:1935/ingest", properties.getRtmpPublicUrl());
         assertFalse(properties.toString().contains(properties.getPrivateKeyBase64()));
         assertFalse(keys.toString().contains(keys.privateKey().getPrivateExponent().toString()));
     }
@@ -25,13 +27,26 @@ class MediaConfigurationTest {
     @Test
     void rejectsMismatchedMalformedOrMissingSecretsWithoutEchoingThem() {
         var properties = MediaTestSupport.properties();
-        properties.setPublicKeyBase64(Base64.getEncoder().encodeToString(MediaTestSupport.generateKeys().getPublic().getEncoded()));
-        var mismatch = assertThrows(IllegalStateException.class, () -> configuration.mediaKeyMaterial(properties));
+        properties.setPublicKeyBase64(
+                Base64.getEncoder()
+                        .encodeToString(MediaTestSupport.generateKeys().getPublic().getEncoded()));
+        var mismatch =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> configuration.mediaKeyMaterial(properties));
         assertFalse(mismatch.getMessage().contains(properties.getPrivateKeyBase64()));
-        properties.setPrivateKeyBase64("bad-private-secret-value");
-        var malformed = assertThrows(IllegalStateException.class, () -> configuration.mediaKeyMaterial(properties));
+
+        var badPrivate = MediaTestSupport.properties();
+        badPrivate.setPrivateKeyBase64("bad-private-secret-value");
+        var malformed =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> configuration.mediaKeyMaterial(badPrivate));
         assertFalse(malformed.getMessage().contains("bad-private-secret-value"));
-        assertThrows(IllegalStateException.class, () -> configuration.mediaKeyMaterial(new MediaProperties()));
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> configuration.mediaKeyMaterial(new MediaProperties()));
     }
 
     @Test
@@ -42,15 +57,15 @@ class MediaConfigurationTest {
         properties.setReadTokenTtl(Duration.ofMinutes(5));
         properties.setRtmpPublicUrl("http://wrong-ingest");
         assertThrows(IllegalStateException.class, () -> configuration.mediaKeyMaterial(properties));
-        properties.setRtmpPublicUrl("rtmp://localhost/live?token=secret");
+        properties.setRtmpPublicUrl("rtmp://localhost/ingest?token=secret");
         assertThrows(IllegalStateException.class, () -> configuration.mediaKeyMaterial(properties));
-        properties.setRtmpPublicUrl("rtmp://localhost/live");
+        properties.setRtmpPublicUrl("rtmp://localhost:1935/ingest");
     }
 
     @Test
     void startupFailsWhenRequiredConfigurationIsMissing() {
-        new ApplicationContextRunner().withUserConfiguration(MediaConfiguration.class).run(context -> {
-            assertNotNull(context.getStartupFailure());
-        });
+        new ApplicationContextRunner()
+                .withUserConfiguration(MediaConfiguration.class)
+                .run(context -> assertNotNull(context.getStartupFailure()));
     }
 }

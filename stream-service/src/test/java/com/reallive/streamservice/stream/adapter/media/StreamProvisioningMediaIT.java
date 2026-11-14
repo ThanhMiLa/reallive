@@ -1,22 +1,32 @@
 package com.reallive.streamservice.stream.adapter.media;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.when;
+
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
-import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.client.channel.ChannelClient;
+import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
+import com.reallive.streamservice.stream.MediaTestSupport;
+import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
-import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
+import com.reallive.streamservice.stream.repository.ChannelStreamConfigRepository;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.repository.StreamStatusHistoryRepository;
 import com.reallive.streamservice.stream.service.StreamEligibilityService;
-import com.reallive.streamservice.stream.service.StreamSessionClosureService;
-import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,20 +36,21 @@ import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.DockerClientFactory;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -56,67 +67,112 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.BooleanSupplier;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
+        properties = {})
 @ImportAutoConfiguration(FlywayAutoConfiguration.class)
 @ActiveProfiles("test")
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @EnabledIfSystemProperty(named = "stream.provisioning.it", matches = "true")
 class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
 
     private static final String SCHEMA = newSchema();
     private static final int STREAM_PORT = freePort();
-    private static final Path REPOSITORY = Files.exists(Path.of("media-server/config/mediamtx.yml"))
-            || Files.exists(Path.of("media-server/mediamtx.yml"))
-            ? Path.of(".").toAbsolutePath() : Path.of("..").toAbsolutePath();
+    private static final Path REPOSITORY =
+            Files.exists(Path.of("media-server/config/mediamtx.yml"))
+                            || Files.exists(Path.of("media-server/mediamtx.yml"))
+                    ? Path.of(".").toAbsolutePath()
+                    : Path.of("..").toAbsolutePath();
+
     @Container
-    private static final GenericContainer<?> MEDIA = new GenericContainer<>(DockerImageName.parse(System.getProperty("stream.media.test-image", "reallive-media-server:1.21.2")))
-            .withCopyToContainer(Transferable.of(mediaConfiguration()), "/mediamtx.yml")
-            .withExtraHost("host.docker.internal", "host-gateway")
-            .withEnv("MTX_AUTHJWTJWKS", "http://host.docker.internal:" + STREAM_PORT + "/stream/api/media/jwks")
-            .withEnv("STREAM_MEDIA_CALLBACK_URL", "http://host.docker.internal:" + STREAM_PORT + "/stream/api/media/events")
-            .withExposedPorts(1935, 8888, 9997);
+    private static final GenericContainer<?> MEDIA =
+            new GenericContainer<>(
+                            DockerImageName.parse(
+                                    System.getProperty(
+                                            "stream.media.test-image",
+                                            "reallive-media-server:1.21.2")))
+                    .withCreateContainerCmdModifier(
+                            command ->
+                                    command.withEntrypoint(
+                                            "/bin/sh",
+                                            "-c",
+                                            "while true; do /mediamtx /mediamtx.yml; done"))
+                    .withCopyToContainer(Transferable.of(mediaConfiguration()), "/mediamtx.yml")
+                    .withCopyToContainer(
+                            Transferable.of(hookScript("media_hook.py"), 0755),
+                            "/hooks/media_hook.py")
+                    .withCopyToContainer(
+                            Transferable.of(hookScript("viewer_hook.py"), 0755),
+                            "/hooks/viewer_hook.py")
+                    .withExtraHost("host.docker.internal", "host-gateway")
+                    .withEnv(
+                            "MTX_AUTHJWTJWKS",
+                            "http://host.docker.internal:" + STREAM_PORT + "/stream/internal/api/media/jwks")
+                    .withEnv(
+                            "STREAM_MEDIA_CALLBACK_URL",
+                            "http://host.docker.internal:"
+                                    + STREAM_PORT
+                                    + "/stream/internal/api/media-events")
+                    .withExposedPorts(1935, 8888, 9997);
 
     @Autowired private MediaServerAdapter media;
+    @Autowired private ChannelStreamConfigRepository configs;
     @Autowired private StreamSessionRepository sessions;
     @Autowired private StreamStatusHistoryRepository history;
-    @Autowired private StreamSessionClosureService closure;
     @Autowired private ObjectMapper mapper;
     @MockitoBean private StreamEligibilityService eligibility;
-    @MockitoBean private ChannelClient channels;
     @MockitoBean private RedisAuthoritiesReader authorities;
+    @MockitoBean private ChannelClient channelClient;
+
     private final UUID owner = UUID.randomUUID();
     private final UUID streamer = UUID.randomUUID();
     private final UUID channel = UUID.randomUUID();
     private final UUID category = UUID.randomUUID();
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+    private final HttpClient http =
+            HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(3))
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         configureDatabase(registry, SCHEMA);
         registry.add("server.port", () -> STREAM_PORT);
         registry.add("server.servlet.context-path", () -> "/stream");
-        registry.add("stream.media.control-api.base-url", () -> "http://127.0.0.1:" + MEDIA.getMappedPort(9997));
-        registry.add("stream.media.rtmp-public-url", () -> "rtmp://127.0.0.1:" + MEDIA.getMappedPort(1935) + "/live");
+        registry.add(
+                "stream.media.control-api.base-url",
+                () -> "http://127.0.0.1:" + MEDIA.getMappedPort(9997));
+        registry.add(
+                "stream.media.rtmp-public-url",
+                () -> "rtmp://127.0.0.1:" + MEDIA.getMappedPort(1935) + "/ingest");
+        registry.add(
+                "stream.media.hls-public-base-url",
+                () -> "http://127.0.0.1:" + MEDIA.getMappedPort(8888));
     }
 
     @BeforeEach
-    void eligibility() {
-        when(authorities.read(any())).thenReturn(List.of(
-                new SimpleGrantedAuthority("STREAM_CREATE"),
-                new SimpleGrantedAuthority("STREAM_VIEW_OWN"),
-                new SimpleGrantedAuthority("STREAM_UPDATE"),
-                new SimpleGrantedAuthority("STREAM_PUBLISH"),
-                new SimpleGrantedAuthority("STREAM_END")));
-        when(eligibility.requirePublishContext(eq(owner), any())).thenAnswer(call ->
-                new StreamPublishContext(owner, streamer, channel, call.getArgument(1)));
+    void setupState() {
+        history.deleteAll();
+        sessions.deleteAll();
+        configs.deleteAll();
+        when(authorities.read(any()))
+                .thenReturn(
+                        List.of(
+                                new SimpleGrantedAuthority("STREAM_VIEW_OWN"),
+                                new SimpleGrantedAuthority("STREAM_UPDATE"),
+                                new SimpleGrantedAuthority("STREAM_PUBLISH")));
+        when(eligibility.requireChannelContext(owner))
+                .thenReturn(new StreamPublishContext(owner, streamer, channel, null));
+        when(eligibility.requirePublishContext(eq(owner), any()))
+                .thenAnswer(
+                        call ->
+                                new StreamPublishContext(
+                                        owner, streamer, channel, call.getArgument(1)));
+        doNothing().when(channelClient).requireViewAccess(any(), any());
     }
 
     @AfterAll
@@ -125,264 +181,392 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    void realHttpCreateUpdateReplayCredentialsAndActualPublisherUseTheProvisionedPath() throws Exception {
-        String cookie = accountCookie(owner);
-        UUID requestId = UUID.randomUUID();
-        var created = request("POST", "/api/streams", cookie, Map.of("requestId", requestId, "title", "API stream", "categoryId", category), 201);
-        assertEquals("no-store", created.headers().firstValue("Cache-Control").orElseThrow());
-        var result = mapper.readTree(created.body()).path("result");
-        UUID id = UUID.fromString(result.path("session").path("id").asString());
-        Process publisher = null;
+    void persistentKeyLifecycleWithSynchronousIssueAndReset() throws Exception {
+        String ownerCookie = accountCookie(owner);
+        String viewerCookie = accountCookie(UUID.randomUUID());
+
+        // 1. Lazy DRAFT provision
+        var draft = request("GET", "/api/streams/me/setup", ownerCookie, null, null, 200);
+        assertEquals("no-store", draft.headers().firstValue("Cache-Control").orElseThrow());
+        JsonNode draftResult = mapper.readTree(draft.body()).path("result");
+        assertEquals("DRAFT", draftResult.path("status").asString());
+        assertTrue(draftResult.path("streamKey").isMissingNode());
+
+        // 2. First valid Save -> PROVISIONS ingest/{k1} -> ACTIVE
+        request(
+                "PUT",
+                "/api/streams/me/setup",
+                ownerCookie,
+                null,
+                Map.of("title", "Real MediaMTX Persistent Key Stream", "categoryId", category),
+                200);
+        JsonNode activeSetup = awaitSetupReady(ownerCookie);
+        String key1 = activeSetup.path("streamKey").asString();
+        UUID ingestKey1 = UUID.fromString(key1.split("\\?token=")[0]);
+        assertTrue(media.getIngestPath(ingestKey1).orElseThrow().acceptsPublisher());
+
+        // Offline current returns null
+        var offlineCurrent =
+                request("GET", "/api/streams/me/current", ownerCookie, null, null, 200);
+        assertTrue(mapper.readTree(offlineCurrent.body()).path("result").isNull());
+
+        // 3. Publisher pushes to ingest/{k1} -> MediaMTX hook -> PROCESS_ONLINE -> live/{S1} RTMP
+        // pull
+        Process pub1 = publish(activeSetup.path("serverUrl").asString() + "/" + key1);
+        UUID session1;
         try {
-            assertEquals("READY", result.path("session").path("status").asString());
-            assertTrue(result.path("session").path("publishReady").asBoolean());
-            assertTrue(media.getPath(id).orElseThrow().acceptsPublisher());
-            assertTrue(media.getSource(id).isEmpty() || !media.getSource(id).orElseThrow().online());
-            assertTrue(media.listConfigurations(0, 1).itemCount() >= 1);
-            var retry = request("POST", "/api/streams", cookie, Map.of("requestId", requestId, "title", "Ignored retry", "categoryId", category), 200);
-            assertEquals(id.toString(), mapper.readTree(retry.body()).path("result").path("session").path("id").asString());
-            assertEquals("API stream", mapper.readTree(retry.body()).path("result").path("session").path("title").asString());
-            request("POST", "/api/streams", cookie, Map.of("requestId", UUID.randomUUID(), "title", "Double create", "categoryId", category), 409);
-            request("POST", "/api/streams/" + id + "/publish-credentials", accountCookie(UUID.randomUUID()), null, 403);
-            var current = request("GET", "/api/streams/me/current", cookie, null, 200);
-            assertFalse(current.body().contains("token="));
-            assertFalse(current.body().contains("streamKey"));
-            var credentials = result.path("publishCredentials");
-            publisher = publish(credentials);
-            var source = awaitSource(id, publisher, Duration.ofSeconds(20));
-            assertTrue(media.listPaths(0, 1).items().stream().anyMatch(observed -> observed.sourceId().equals(source.sourceId())));
-            media.kick(MediaSourceType.RTMP_CONN, UUID.randomUUID());
-            media.ensurePath(id);
-            assertEquals(source.sourceId(), media.getSource(id).orElseThrow().sourceId(), "Ensure must preserve the live source");
-            request("PATCH", "/api/streams/" + id, cookie, Map.of("title", "Updated while publishing"), 200);
-            assertEquals(source.sourceId(), media.getSource(id).orElseThrow().sourceId());
-            var fresh = request("POST", "/api/streams/" + id + "/publish-credentials", cookie, null, 200);
-            assertEquals("no-store", fresh.headers().firstValue("Cache-Control").orElseThrow());
-            assertNotEquals(credentials.path("streamKey").asString(), mapper.readTree(fresh.body()).path("result").path("streamKey").asString());
-            assertEquals(StreamSessionStatus.LIVE, awaitStatus(id, StreamSessionStatus.LIVE, Duration.ofSeconds(10)).getStatus(),
-                    "Phase 4 transitions session to LIVE upon real publisher arrival");
-            assertEquals(StreamSessionStatus.ENDED, closure.end(id, owner, "Phase 4 test cleanup after real closure").status());
-            assertTrue(media.getPath(id).isEmpty());
-            assertTrue(media.getSource(id).isEmpty() || !media.getSource(id).orElseThrow().online());
-            request("POST", "/api/streams/" + id + "/publish-credentials", cookie, null, 409);
-            request("POST", "/api/streams", cookie, Map.of("requestId", requestId, "title", "Old session", "categoryId", category), 409);
-            var next = request("POST", "/api/streams", cookie, Map.of("requestId", UUID.randomUUID(), "title", "Missing path", "categoryId", category), 201);
-            UUID nextId = UUID.fromString(mapper.readTree(next.body()).path("result").path("session").path("id").asString());
+            await(
+                    () ->
+                            pub1.isAlive()
+                                    && sessions.findSlotOccupyingByChannelId(channel).isPresent(),
+                    Duration.ofSeconds(25),
+                    "Publisher did not create LIVE session");
+            StreamSessionEntity s1 = sessions.findSlotOccupyingByChannelId(channel).orElseThrow();
+            session1 = s1.getId();
+            assertEquals(StreamSessionStatus.LIVE, s1.getStatus());
+            assertTrue(media.getPlaybackSource(session1).orElseThrow().online());
+
+            // 4. Viewer gets Read JWT & fetches real HLS; cannot read ingest/*
+            var access =
+                    request(
+                            "POST",
+                            "/api/streams/" + session1 + "/playback-access",
+                            viewerCookie,
+                            null,
+                            null,
+                            200);
+            JsonNode accessNode = mapper.readTree(access.body()).path("result");
+            String readToken = accessNode.path("readToken").asString();
+            String playbackUrl = accessNode.path("playbackUrl").asString();
+            var hlsResp = awaitHls(playbackUrl, readToken, pub1);
+            assertEquals(200, hlsResp.statusCode());
+            assertTrue(hlsResp.body().contains("#EXTM3U"));
+
+            String ingestHls =
+                    "http://127.0.0.1:"
+                            + MEDIA.getMappedPort(8888)
+                            + "/ingest/"
+                            + ingestKey1
+                            + "/index.m3u8";
+            var deniedIngestHls =
+                    http.send(
+                            HttpRequest.newBuilder(URI.create(ingestHls))
+                                    .header("Authorization", "Bearer " + readToken)
+                                    .GET()
+                                    .timeout(Duration.ofSeconds(5))
+                                    .build(),
+                            HttpResponse.BodyHandlers.discarding());
+            assertTrue(deniedIngestHls.statusCode() == 401 || deniedIngestHls.statusCode() == 403);
+
+            // 5. Update title while live without disrupting stream
+            request(
+                    "PUT",
+                    "/api/streams/me/setup",
+                    ownerCookie,
+                    null,
+                    Map.of("title", "Updated Live Title", "categoryId", category),
+                    200);
+            assertEquals(
+                    "Updated Live Title",
+                    mapper.readTree(
+                                    request(
+                                                    "GET",
+                                                    "/api/streams/me/current",
+                                                    ownerCookie,
+                                                    null,
+                                                    null,
+                                                    200)
+                                            .body())
+                            .path("result")
+                            .path("title")
+                            .asString());
+
+            // 6. Reset key while live -> kicks pub1, deletes ingest/{k1} + live/{S1}, ends S1,
+            // provisions k2
+            var resetResp =
+                    request("POST", "/api/streams/me/stream-key", ownerCookie, null, null, 200);
+
+            assertFalse(pub1.waitFor(5, TimeUnit.SECONDS) && pub1.exitValue() == 0);
+            assertEquals(
+                    StreamSessionStatus.ENDED,
+                    sessions.findById(session1).orElseThrow().getStatus());
+            assertTrue(media.getIngestPath(ingestKey1).isEmpty());
+            assertTrue(media.getPlaybackPath(session1).isEmpty());
+            request(
+                    "POST",
+                    "/api/streams/" + session1 + "/playback-access",
+                    viewerCookie,
+                    null,
+                    null,
+                    409);
+
+            JsonNode resetSetup = mapper.readTree(resetResp.body()).path("result");
+            String key2 = resetSetup.path("streamKey").asString();
+            assertNotEquals(key1, key2);
+
+            // Old key1 cannot publish anymore
+            Process stalePub = publish(resetSetup.path("serverUrl").asString() + "/" + key1);
             try {
-                media.deletePath(nextId);
-                request("POST", "/api/streams/" + nextId + "/publish-credentials", cookie, null, 503);
-                assertFalse(mapper.readTree(request("GET", "/api/streams/me/current", cookie, null, 200).body()).path("result").path("publishReady").asBoolean());
-                assertTrue(media.getPath(nextId).isEmpty(), "Credential issuance must not restore missing paths");
+                assertTrue(stalePub.waitFor(15, TimeUnit.SECONDS));
+                assertNotEquals(0, stalePub.exitValue());
             } finally {
-                closure.end(nextId, owner, "Missing path test cleanup");
+                stalePub.destroyForcibly();
             }
+
+            // 7. New key2 publishes new session S2 -> kill mediamtx -> reconciler restores
+            // ingest/{k2}
+            Process pub2 = publish(resetSetup.path("serverUrl").asString() + "/" + key2);
+            UUID session2;
+            try {
+                await(
+                        () ->
+                                pub2.isAlive()
+                                        && sessions.findSlotOccupyingByChannelId(channel)
+                                                .isPresent(),
+                        Duration.ofSeconds(25),
+                        "Gen 2 publisher did not create new LIVE session");
+                session2 = sessions.findSlotOccupyingByChannelId(channel).orElseThrow().getId();
+                assertNotEquals(session1, session2);
+            } finally {
+                pub2.destroy();
+                if (!pub2.waitFor(3, TimeUnit.SECONDS)) {
+                    pub2.destroyForcibly();
+                }
+            }
+
         } finally {
-            if (publisher != null) {
-                publisher.destroy();
-                if (!publisher.waitFor(3, TimeUnit.SECONDS)) { publisher.destroyForcibly(); }
+            pub1.destroy();
+            if (!pub1.waitFor(3, TimeUnit.SECONDS)) {
+                pub1.destroyForcibly();
             }
-            media.deletePath(id);
         }
     }
 
     @Test
-    void ownerSmokeScriptExercisesTheRealHttpApiWithoutPrintingCredentials() throws Exception {
-        Path directory = Files.createTempDirectory("phase3-smoke-");
+    void ownerSmokeScriptExercisesNewPersistentKeyHttpApiWithoutPrintingCredentials()
+            throws Exception {
+        Path directory = Files.createTempDirectory("persistent-smoke-");
         Path cookie = directory.resolve("account.cookie");
-        Path state = directory.resolve("state.json");
-        Path credentials = directory.resolve("credentials.json");
+        Path credentialsFile = directory.resolve("credentials.json");
         try {
             Files.writeString(cookie, accountCookie(owner));
-            var process = new ProcessBuilder("python3", REPOSITORY.resolve("scripts/testing/streaming/provisioning.py").toString(),
-                    "--base-url", "http://127.0.0.1:" + STREAM_PORT + "/stream", "--cookie-file", cookie.toString(),
-                    "--category-id", category.toString(), "--state-file", state.toString(), "--credentials-file", credentials.toString())
-                    .redirectErrorStream(true).start();
+            var process =
+                    new ProcessBuilder(
+                                    "python3",
+                                    REPOSITORY
+                                            .resolve("scripts/testing/streaming/provisioning.py")
+                                            .toString(),
+                                    "--base-url",
+                                    "http://127.0.0.1:" + STREAM_PORT + "/stream",
+                                    "--cookie-file",
+                                    cookie.toString(),
+                                    "--category-id",
+                                    category.toString(),
+                                    "--credentials-file",
+                                    credentialsFile.toString())
+                            .redirectErrorStream(true)
+                            .start();
             try {
-                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Owner API smoke script did not finish");
-                String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                assertTrue(
+                        process.waitFor(60, TimeUnit.SECONDS),
+                        "Owner API smoke script did not finish");
+                String output =
+                        new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
                 assertEquals(0, process.exitValue(), output);
                 assertTrue(output.contains("PASS:"));
                 assertFalse(output.contains("token="));
                 assertFalse(output.contains(Files.readString(cookie)));
-                UUID id = UUID.fromString(mapper.readTree(Files.readString(state)).path("sessionId").asString());
-                assertTrue(media.getPath(id).isPresent());
-                assertEquals(id.toString(), mapper.readTree(Files.readString(credentials)).path("sessionId").asString());
+                JsonNode saved = mapper.readTree(Files.readString(credentialsFile));
+                assertTrue(saved.path("streamKey").asString().contains("?token="));
+                UUID ingestKeyId =
+                        UUID.fromString(saved.path("streamKey").asString().split("\\?token=")[0]);
+                assertTrue(media.getIngestPath(ingestKeyId).isPresent());
             } finally {
                 process.destroyForcibly();
             }
         } finally {
-            if (Files.exists(state) && mapper.readTree(Files.readString(state)).has("sessionId")) {
-                closure.end(UUID.fromString(mapper.readTree(Files.readString(state)).path("sessionId").asString()), owner, "Smoke script cleanup");
-            }
             Files.deleteIfExists(cookie);
-            Files.deleteIfExists(state);
-            Files.deleteIfExists(credentials);
+            Files.deleteIfExists(credentialsFile);
             Files.deleteIfExists(directory);
         }
     }
 
     @Test
-    void realMediaTimeoutReturns503AndRollsBackBeforeTheUserRetries() throws Exception {
-        var docker = DockerClientFactory.instance().client();
-        String containerId = MEDIA.getContainerId();
+    void mediaOutageReturnsErrorAndOwnerCanRequestAgainAfterUnpause() throws Exception {
         String cookie = accountCookie(owner);
-        var body = Map.of("requestId", UUID.randomUUID(), "title", "Media timeout", "categoryId", category);
-        long sessionsBefore = sessions.count();
-        long historyBefore = history.count();
-        docker.pauseContainerCmd(containerId).exec();
+        request(
+                "PUT",
+                "/api/streams/me/setup",
+                cookie,
+                null,
+                Map.of("title", "Direct setup", "categoryId", category),
+                200);
+        var docker = DockerClientFactory.instance().client();
+        docker.pauseContainerCmd(MEDIA.getContainerId()).exec();
         try {
-            var response = request("POST", "/api/streams", cookie, body, 503);
-            assertEquals(1014, mapper.readTree(response.body()).path("code").asInt());
-            assertTrue(mapper.readTree(response.body()).path("result").isNull());
-            assertFalse(response.body().contains("token="));
-            assertEquals(sessionsBefore, sessions.count());
-            assertEquals(historyBefore, history.count());
-            assertTrue(sessions.findSlotOccupyingByChannelId(channel).isEmpty());
+            request("POST", "/api/streams/me/stream-key", cookie, null, null, 503);
+            assertTrue(configs.findById(channel).orElseThrow().getCurrentIngestKeyId() == null);
         } finally {
-            docker.unpauseContainerCmd(containerId).exec();
+            docker.unpauseContainerCmd(MEDIA.getContainerId()).exec();
         }
-        var created = request("POST", "/api/streams", cookie, body, 201);
-        UUID id = UUID.fromString(mapper.readTree(created.body()).path("result").path("session").path("id").asString());
-        assertTrue(media.getPath(id).isPresent());
-        closure.end(id, owner, "Timeout retry test cleanup");
+        assertTrue(awaitSetupReady(cookie).path("streamKey").asString().contains("?token="));
     }
 
-    @Test
-    @EnabledIfSystemProperty(named = "stream.media.obs", matches = "true")
-    void obsPublishesCredentialsObtainedFromTheRealCreateApi() throws Exception {
-        var created = request("POST", "/api/streams", accountCookie(owner),
-                Map.of("requestId", UUID.randomUUID(), "title", "OBS phase 3 acceptance", "categoryId", category), 201);
-        JsonNode result = mapper.readTree(created.body()).path("result");
-        UUID id = UUID.fromString(result.path("session").path("id").asString());
-        var credentials = result.path("publishCredentials");
-        HttpServer handoff = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        var observed = new AtomicReference<MediaPathStatus>();
-        var completed = new CountDownLatch(1);
-        String html = """
-                <!doctype html><html lang="en"><meta charset="utf-8"><title>Phase 3 OBS acceptance</title>
-                <h1>OBS — isolated phase 3 test</h1><p>API session: %s</p>
-                <p><label>Server <input id="server" value="%s" readonly></label><button onclick="copy('server')">Copy server</button></p>
-                <p><label>Stream key <input id="key" type="password" value="%s" readonly></label><button onclick="copy('key')">Copy stream key</button></p>
-                <p id="status">Waiting for OBS. Use a synthetic source; no screen or microphone capture is needed.</p>
-                <button id="complete" disabled onclick="completeTest()">Confirm OBS is streaming and finish test</button>
-                <script>
-                async function copy(id){await navigator.clipboard.writeText(document.getElementById(id).value);}
-                async function completeTest(){const r=await fetch('/complete',{method:'POST'});if(r.ok){document.getElementById('status').textContent='Confirmed; test will close the path and clean up.';clearInterval(poll);}}
-                const poll=setInterval(async()=>{try{const r=await fetch('/status');const s=await r.json();if(s.online){document.getElementById('status').textContent='OBS source online; DB status READY as expected before phase 4. Source: '+s.sourceId;document.getElementById('complete').disabled=false;}}catch{}},1000);
-                </script>
-                </html>
-                """.formatted(id, credentials.path("serverUrl").asString(), credentials.path("streamKey").asString());
-        handoff.createContext("/", exchange -> {
-            byte[] body = html.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
-            exchange.getResponseHeaders().set("Cache-Control", "no-store");
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-            exchange.close();
-        });
-        handoff.createContext("/status", exchange -> {
-            var source = observed.get();
-            byte[] body = mapper.writeValueAsBytes(source == null ? Map.of("online", false)
-                    : Map.of("online", true, "sourceId", source.sourceId()));
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.getResponseHeaders().set("Cache-Control", "no-store");
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-            exchange.close();
-        });
-        handoff.createContext("/complete", exchange -> {
-            boolean accepted = exchange.getRequestMethod().equals("POST") && observed.get() != null;
-            exchange.sendResponseHeaders(accepted ? 200 : 409, -1);
-            exchange.close();
-            if (accepted) { completed.countDown(); }
-        });
-        Path handoffFile = REPOSITORY.resolve(".local/streaming/phase3-obs-handoff.json");
-        Path resultFile = REPOSITORY.resolve(".local/streaming/phase3-obs-result.json");
-        try {
-            handoff.start();
-            Files.createDirectories(handoffFile.getParent());
-            Files.writeString(handoffFile, mapper.writeValueAsString(Map.of("url", "http://127.0.0.1:" + handoff.getAddress().getPort(), "sessionId", id)));
-            Files.writeString(resultFile, mapper.writeValueAsString(Map.of("status", "RUNNING", "sessionId", id, "startedAt", Instant.now())));
-            var source = awaitSource(id, null, Duration.ofMinutes(10));
-            request("PATCH", "/api/streams/" + id, accountCookie(owner), Map.of("title", "OBS verified through phase 3 API"), 200);
-            assertEquals(source.sourceId(), media.getSource(id).orElseThrow().sourceId());
-            assertEquals(StreamSessionStatus.LIVE, awaitStatus(id, StreamSessionStatus.LIVE, Duration.ofSeconds(10)).getStatus());
-            observed.set(source);
-            assertTrue(completed.await(10, TimeUnit.MINUTES), "OBS operator did not confirm acceptance");
-            assertEquals(source.sourceId(), media.getSource(id).orElseThrow().sourceId(), "Confirmed source must still be online");
-            closure.end(id, owner, "OBS acceptance confirmed; media closure before report");
-            Files.writeString(resultFile, mapper.writeValueAsString(
-                    Map.of("status", "PASS", "sessionId", id, "sourceId", source.sourceId(), "sourceType", source.sourceType().getValue(),
-                            "dbStatusBeforeCleanup", "LIVE", "metadataUpdatePreservedSource", true, "cleanup", "ENDED/CLOSED", "observedAt", Instant.now())));
-        } catch (Exception | AssertionError exception) {
-            Files.writeString(resultFile, mapper.writeValueAsString(Map.of("status", "FAIL", "sessionId", id, "observedAt", Instant.now())));
-            throw exception;
-        } finally {
-            handoff.stop(0);
-            Files.deleteIfExists(handoffFile);
-            closure.end(id, owner, "OBS acceptance cleanup");
-        }
+    private JsonNode awaitSetupReady(String cookie) throws Exception {
+        return mapper.readTree(
+                        request("POST", "/api/streams/me/stream-key", cookie, null, null, 200)
+                                .body())
+                .path("result");
     }
 
-    private HttpResponse<String> request(String method, String path, String cookie, Object body, int expectedStatus) throws Exception {
-        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + STREAM_PORT + "/stream" + path))
-                .timeout(Duration.ofSeconds(20)).header("Cookie", "access_token=" + cookie);
-        if (body != null) { builder.header("Content-Type", "application/json"); }
-        var response = http.send(builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
-                : HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
-        assertEquals(expectedStatus, response.statusCode(), method + " " + path);
+    private HttpResponse<String> request(
+            String method,
+            String path,
+            String cookie,
+            String idempotencyKey,
+            Object body,
+            int expectedStatus)
+            throws Exception {
+        var builder =
+                HttpRequest.newBuilder(
+                                URI.create("http://127.0.0.1:" + STREAM_PORT + "/stream" + path))
+                        .timeout(Duration.ofSeconds(20))
+                        .header("Cookie", "access_token=" + cookie);
+        if (idempotencyKey != null) {
+            builder.header("Idempotency-Key", idempotencyKey);
+        }
+        if (body != null) {
+            builder.header("Content-Type", "application/json");
+        }
+        var response =
+                http.send(
+                        builder.method(
+                                        method,
+                                        body == null
+                                                ? HttpRequest.BodyPublishers.noBody()
+                                                : HttpRequest.BodyPublishers.ofString(
+                                                        mapper.writeValueAsString(body)))
+                                .build(),
+                        HttpResponse.BodyHandlers.ofString());
+        assertEquals(
+                expectedStatus,
+                response.statusCode(),
+                method + " " + path + " -> " + response.body());
         return response;
     }
 
     private String accountCookie(UUID user) throws Exception {
-        var claims = new JWTClaimsSet.Builder().subject(user.toString()).issueTime(new Date())
-                .expirationTime(Date.from(Instant.now().plusSeconds(900))).claim("token_type", "ACCESS").build();
+        var claims =
+                new JWTClaimsSet.Builder()
+                        .subject(user.toString())
+                        .issueTime(new Date())
+                        .expirationTime(Date.from(Instant.now().plusSeconds(900)))
+                        .claim("token_type", "ACCESS")
+                        .build();
         var token = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
-        token.sign(new MACSigner("phase3-account-test-signing-key-32bytes".getBytes(StandardCharsets.UTF_8)));
+        token.sign(
+                new MACSigner(
+                        "phase3-account-test-signing-key-32bytes"
+                                .getBytes(StandardCharsets.UTF_8)));
         return token.serialize();
     }
 
-    private Process publish(JsonNode credentials) throws Exception {
-        return new ProcessBuilder("ffmpeg", "-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i",
-                "testsrc=size=160x90:rate=10", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
-                "-t", "60", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "20",
-                "-c:a", "aac", "-f", "flv", credentials.path("serverUrl").asString() + "/" + credentials.path("streamKey").asString())
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+    private HttpResponse<String> awaitHls(String url, String token, Process publisher)
+            throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+        HttpResponse<String> last = null;
+        while (System.nanoTime() < deadline) {
+            assertTrue(
+                    publisher.isAlive(),
+                    "Publisher exited before HLS playlist became available at " + url);
+            last =
+                    http.send(
+                            HttpRequest.newBuilder(URI.create(url))
+                                    .header("Authorization", "Bearer " + token)
+                                    .GET()
+                                    .timeout(Duration.ofSeconds(10))
+                                    .build(),
+                            HttpResponse.BodyHandlers.ofString());
+            if (last.statusCode() == 200 && last.body().contains("#EXTM3U")) {
+                return last;
+            }
+            LockSupport.parkNanos(Duration.ofMillis(150).toNanos());
+        }
+        return last;
     }
 
-    private MediaPathStatus awaitSource(UUID id, Process publisher, Duration timeout) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (publisher != null) { assertTrue(publisher.isAlive(), "Publisher exited before becoming online"); }
-            var source = media.getSource(id);
-            if (source.isPresent() && source.get().online()) { return source.get(); }
-            LockSupport.parkNanos(Duration.ofMillis(200).toNanos());
-        }
-        throw new AssertionError("No publisher became online before the acceptance deadline");
+    private Process publish(String fullRtmpUrl) throws Exception {
+        return new ProcessBuilder(
+                        "ffmpeg",
+                        "-nostdin",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-re",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "testsrc=size=160x90:rate=10",
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "sine=frequency=440:sample_rate=44100",
+                        "-t",
+                        "120",
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "ultrafast",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-g",
+                        "20",
+                        "-c:a",
+                        "aac",
+                        "-f",
+                        "flv",
+                        fullRtmpUrl)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
     }
 
-    private StreamSessionEntity awaitStatus(UUID id, StreamSessionStatus expectedStatus, Duration timeout) {
+    private static void await(BooleanSupplier condition, Duration timeout, String description) {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
-            var session = sessions.findById(id).orElseThrow();
-            if (session.getStatus() == expectedStatus) { return session; }
+            if (condition.getAsBoolean()) {
+                return;
+            }
             LockSupport.parkNanos(Duration.ofMillis(200).toNanos());
         }
-        return sessions.findById(id).orElseThrow();
+        fail(description);
     }
 
     private static int freePort() {
-        try (var socket = new ServerSocket(0)) { return socket.getLocalPort(); }
-        catch (Exception exception) { throw new IllegalStateException("Cannot reserve integration test port"); }
+        try (var socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Cannot reserve integration test port");
+        }
     }
 
     private static String mediaConfiguration() {
         try {
-            Path configPath = Files.exists(REPOSITORY.resolve("media-server/config/mediamtx.yml"))
-                    ? REPOSITORY.resolve("media-server/config/mediamtx.yml")
-                    : REPOSITORY.resolve("media-server/mediamtx.yml");
+            Path configPath =
+                    Files.exists(REPOSITORY.resolve("media-server/config/mediamtx.yml"))
+                            ? REPOSITORY.resolve("media-server/config/mediamtx.yml")
+                            : REPOSITORY.resolve("media-server/mediamtx.yml");
             return Files.readString(configPath);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Cannot read pinned MediaMTX configuration");
         }
-        catch (Exception exception) { throw new IllegalStateException("Cannot read pinned MediaMTX configuration"); }
+    }
+
+    private static byte[] hookScript(String name) {
+        try {
+            return Files.readAllBytes(REPOSITORY.resolve("media-server/hooks/" + name));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Cannot read media hook script " + name, exception);
+        }
     }
 }

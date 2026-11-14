@@ -2,7 +2,7 @@
 
 ## Ownership and request flow
 
-User Service owns account status, roles, permissions and all writes to auth-state keys. API Gateway verifies signed JWTs and token revocation before reading the authenticated account's status on protected endpoints. Downstream services authenticate any supplied access-token cookie and load current authorities from Redis, including on public endpoints. Spring method authorization applies the endpoint's access rules. Business services do not check `users.status`.
+User Service owns account status, roles, permissions and all writes to auth-state keys. API Gateway verifies signed JWTs and token revocation before reading the authenticated account's status on protected endpoints. On client-facing endpoints, downstream services authenticate any supplied access-token cookie and load current authorities from Redis, including on public endpoints. Spring method authorization applies the endpoint's access rules. Business services do not check `users.status`.
 
 JWTs contain `sub`, `iss`, `iat`, `exp`, `jti` and `type` (`ACCESS` or `REFRESH`). They carry no role or permission claims. Existing signed tokens containing `scope` remain usable, but their scope is ignored.
 
@@ -27,11 +27,13 @@ The three account keys share a minimum lifetime of `AUTH_REFRESH_TOKEN_TTL + AUT
 | Insufficient authorities | 403 | Downstream method authorization rejects the operation |
 | Redis error, timeout, missing or corrupt auth state | 503 | Reject without executing the business operation; retain valid cookies |
 
-Public endpoints allow requests without an access-token cookie and do not require an account-status lookup at Gateway. Supplied token cookies are still validated by Gateway according to its cookie contract. Downstream cookie resolvers do not skip public or internal paths: when an access token is supplied, it is decoded and current authorities are loaded from Redis so the JWT principal is available to the endpoint. Without an access token, no authorities lookup is performed. Invalid supplied tokens are rejected; unavailable authorities return 503 even on public endpoints. Token issuance uses a centralized eligibility policy; public password recovery performs its own OTP/reset-token checks without an account-active business validator.
+Public endpoints allow requests without an access-token cookie and do not require an account-status lookup at Gateway. Supplied token cookies are still validated by Gateway according to its cookie contract. Downstream cookie resolvers do not skip client-facing public paths: when an access token is supplied, it is decoded and current authorities are loaded from Redis so the JWT principal is available to the endpoint. Without an access token, no authorities lookup is performed. Invalid supplied tokens are rejected; unavailable authorities return 503 even on public endpoints. Token issuance uses a centralized eligibility policy; public password recovery performs its own OTP/reset-token checks without an account-active business validator.
 
 `GET /channel/api/channels` supports optional authentication through the same filter chain as other Channel Service endpoints. Without an access-token cookie it lists active, non-deleted channels without ownership/follow exclusions or user-interest lookup. With a valid access token it retains the user's ownership/follow exclusions and interest-based ordering when no explicit filters are supplied. `GET /channel/api/channels/following` remains protected.
 
-`GET /stream/api/media/jwks` and `POST /stream/api/media/events` are served directly by Stream Service for local MediaMTX access without going through API Gateway, permitting direct media requests without account cookies. Supplied account cookies still follow the rules above; media JWTs cannot replace account tokens. Business Stream endpoints remain protected through Gateway.
+Internal service-to-service endpoints use `permitAll` scoped to their supported paths and HTTP methods and require no service tokens. Stream Service declares these matchers in its main `SecurityConfig`; callers send no account cookies. Any supplied account cookie follows the standard JWT policy. Other Java services currently use a separate internal chain, while Media Worker has no internal-token guard. This includes Stream Service callbacks at `POST /stream/internal/api/media-events`, `POST /stream/internal/api/viewer-events` and `POST /stream/internal/api/thumbnail-results`, plus Media Worker's `POST /internal/api/thumbnail-jobs/batch`. Gateway routes expose only client-facing `/api/**` prefixes, excluding internal endpoints. Backend services must remain on trusted private networks; local configuration binds Java backends and published Worker ports to loopback by default. Runtime network isolation must be checked in the deployment environment.
+
+`GET /stream/internal/api/media/jwks` is permitted for direct MediaMTX access, is excluded from Gateway routes, and follows Stream Service's optional account-cookie policy above. MediaMTX publish/read JWT verification and external-provider webhook verification remain enabled. Only the internal MediaMTX Control API action api is excluded from JWT authentication; callers send no Control JWT and access relies on trusted networking. Business Stream endpoints remain protected through Gateway.
 
 Normal requests never fetch auth state from User Service on a Redis miss. Login or refresh republishes it. Dependent services must use the same Redis host, logical database and key serialization. Development backends bind to `127.0.0.1` by default through `BACKEND_BIND_ADDRESS`. If overridden for deployment, backend ports must remain restricted to trusted callers because downstream JWT decoders trust gateway validation.
 
@@ -43,13 +45,13 @@ All paths below are relative to `/stream/api/streams`. The `STREAMER` role recei
 
 | Endpoint | Method authorization |
 |---|---|
-| `POST /` | Both `STREAM_CREATE` and `STREAM_PUBLISH`, because creation also returns publish credentials |
+| `GET /me/setup` | `STREAM_VIEW_OWN` and `STREAM_PUBLISH` |
+| `PUT /me/setup` | `STREAM_UPDATE` and `STREAM_PUBLISH` |
+| `POST /me/stream-key` | `STREAM_PUBLISH`; synchronous issue/replace, key returned once |
 | `GET /me/current` | `STREAM_VIEW_OWN` |
 | `GET /{sessionId}` | Authentication only; no dedicated permission |
+| `GET /{sessionId}/details` | Authentication only; no dedicated permission |
 | `POST /{sessionId}/playback-access` | Authentication only; no dedicated permission |
-| `PATCH /{sessionId}` | `STREAM_UPDATE` |
-| `POST /{sessionId}/publish-credentials` | `STREAM_PUBLISH` |
-| `POST /{sessionId}/end` | `STREAM_END` |
 
 Controller method authorization rejects missing permissions before calling business services. Session ownership, public visibility, lifecycle state and streaming eligibility remain service-level checks; possessing a permission does not bypass them.
 
