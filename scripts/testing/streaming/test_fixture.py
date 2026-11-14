@@ -61,11 +61,10 @@ class FixtureTest(unittest.TestCase):
             self.state, self.fixtures['relayReadToken'], 'read', self.fixtures['ingestPath'], allow_permanent=True)
         self.assertNotIn('exp', relay_payload)
         self.assertEqual('relay-internal', relay_payload['sub'])
-        for action, ttl in [('read', 300), ('api', 300)]:
-            with self.subTest(action=action):
-                payload = fixture.verify(self.state, self.fixtures[action + 'Token'], action, self.fixtures['path'])
-                self.assertEqual(ttl, payload['exp'] - payload['iat'])
-                self.assertEqual(1, len(payload['mediamtx_permissions']))
+        payload = fixture.verify(self.state, self.fixtures['readToken'], 'read', self.fixtures['path'])
+        self.assertEqual(300, payload['exp'] - payload['iat'])
+        self.assertEqual(1, len(payload['mediamtx_permissions']))
+        self.assertNotIn('apiToken', self.fixtures)
 
     def test_invalid_signature_expiry_path_and_action_are_rejected(self):
         for name, token in self.fixtures['negativeTokens'].items():

@@ -126,11 +126,8 @@ def run(state):
 
     try:
         status, _ = media.request(state, 'GET', '/v3/config/paths/list')
-        require(status == 200, 'Control API api token failed')
-        for action, token_path in [('publish', ingest_path), ('read', path)]:
-            status, _ = media.request(state, 'GET', '/v3/config/paths/list', token=fixture.issue(state, action, token_path, 300))
-            require(status in [401, 403], 'Control API accepted client token')
-        passed('control-api-permission-separation')
+        require(status == 200, 'Control API unavailable without credentials')
+        passed('control-api-without-authentication')
 
         status, _ = media.request(state, 'POST', '/v3/config/paths/add/' + escaped_ingest,
                                   {'source': 'publisher', 'overridePublisher': False,

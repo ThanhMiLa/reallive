@@ -17,7 +17,6 @@ import com.nimbusds.jwt.SignedJWT;
 import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.streamservice.common.configuration.MediaKeyMaterial;
 import com.reallive.streamservice.common.configuration.MediaProperties;
-import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.PostgresIntegrationTestSupport;
 import com.reallive.streamservice.stream.adapter.media.impl.MediaJwtIssuerImpl;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
@@ -43,7 +42,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.junit.jupiter.Container;
@@ -61,12 +59,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +87,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
     private static final String SCHEMA = newSchema();
     private static final int STREAM_PORT = freePort();
 
-    private static final Path TOKEN_DIRECTORY = tokenDirectory();
     private static final Path REPOSITORY =
             Files.exists(Path.of("media-server/config/mediamtx.yml"))
                     ? Path.of(".").toAbsolutePath()
@@ -130,8 +124,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                     .withCopyToContainer(
                             Transferable.of(hookScript("viewer_hook.py"), 0755),
                             "/hooks/viewer_hook.py")
-                    .withFileSystemBind(
-                            TOKEN_DIRECTORY.toString(), "/run/media-hook", BindMode.READ_ONLY)
                     .withExtraHost("host.docker.internal", "host-gateway")
                     .withEnv(
                             "MTX_AUTHJWTJWKS",
@@ -147,7 +139,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                             "http://host.docker.internal:"
                                     + STREAM_PORT
                                     + "/stream/internal/api/viewer-events")
-                    .withEnv("MEDIA_CONTROL_TOKEN_FILE", "/run/media-hook/control.jwt")
                     .withExposedPorts(1935, 8888, 9997);
 
     @Autowired private StreamSetupService setupService;
@@ -159,7 +150,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
     @Autowired private MediaProperties properties;
     @Autowired private StreamViewerPresenceStore presence;
     @Autowired private CcuReconciliationScheduler reconciliation;
-    @Autowired private CcuControlTokenPublisher tokenPublisher;
     @Autowired private ObjectMapper mapper;
     @Autowired private org.springframework.data.redis.core.StringRedisTemplate redis;
     @MockitoBean private StreamEligibilityService eligibility;
@@ -177,10 +167,7 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("spring.data.redis.password", () -> "");
         registry.add("stream.ccu.enabled", () -> "true");
-        registry.add("stream.ccu.control-token-directory", TOKEN_DIRECTORY::toString);
         registry.add("stream.ccu.reconcile-delay", () -> "3600000");
-        registry.add("stream.ccu.token-publish-delay", () -> "3600000");
-        registry.add("stream.media.control-token-ttl", () -> "2h");
         registry.add(
                 "stream.media.control-api.base-url",
                 () -> "http://127.0.0.1:" + MEDIA.getMappedPort(9997));
@@ -197,11 +184,7 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
         MEDIA.stop();
         REDIS.stop();
         dropSchema(SCHEMA);
-        try (var paths = Files.walk(TOKEN_DIRECTORY)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(path);
-            }
-        }
+
     }
 
     @Test
@@ -251,10 +234,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
             assertTrue(
                     presence.readers(liveSession).isEmpty(),
                     "Technical relay reader must not enter viewer index");
-            assertTrue(
-                    Files.isRegularFile(TOKEN_DIRECTORY.resolve("control.jwt")),
-                    "Hook credential must be published before viewing");
-
             try (var ownerPreview =
                             open(liveSession, issuer.issueRead(liveSession, owner).value());
                     var worker = open(liveSession, issuer.issueWorkerRead(liveSession).value());
@@ -262,11 +241,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                 UUID firstReader = awaitReader(liveSession, viewerA, 1);
                 awaitCount(liveSession, viewerA, 1);
 
-                byte[] before = credentialDigest();
-                tokenPublisher.publish();
-                assertFalse(
-                        Arrays.equals(before, credentialDigest()),
-                        "Publishing must replace the hook credential");
                 var shortToken = shortRead(liveSession, viewerA);
                 try (var refreshed = open(liveSession, shortToken.value());
                         var secondUser =
@@ -486,9 +460,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
         var response =
                 http.send(
                         HttpRequest.newBuilder(url)
-                                .header(
-                                        "Authorization",
-                                        "Bearer " + issuer.issueControlApi().value())
                                 .timeout(Duration.ofSeconds(5))
                                 .POST(HttpRequest.BodyPublishers.noBody())
                                 .build(),
@@ -528,11 +499,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                                 .build(),
                         HttpResponse.BodyHandlers.discarding());
         assertEquals(200, response.statusCode());
-    }
-
-    private byte[] credentialDigest() throws Exception {
-        return MessageDigest.getInstance("SHA-256")
-                .digest(Files.readAllBytes(TOKEN_DIRECTORY.resolve("control.jwt")));
     }
 
     private String accountCookie(UUID user) throws Exception {
@@ -611,14 +577,6 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
             return socket.getLocalPort();
         } catch (IOException exception) {
             throw new IllegalStateException("Cannot reserve isolated CCU backend port");
-        }
-    }
-
-    private static Path tokenDirectory() {
-        try {
-            return Files.createTempDirectory("stream-ccu-media-it-");
-        } catch (IOException exception) {
-            throw new IllegalStateException("Cannot prepare isolated CCU credential directory");
         }
     }
 

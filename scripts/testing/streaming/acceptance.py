@@ -55,7 +55,7 @@ def evaluate(state, session_id=None, access_source='fixture'):
     protocol_file = state / 'smoke-results.json'
     protocol = json.loads(protocol_file.read_text()) if protocol_file.exists() else {}
     expected = {
-        'control-api-permission-separation', 'provisioning-alone-is-not-online',
+        'control-api-without-authentication', 'provisioning-alone-is-not-online',
         'publish-h264-aac-and-online-hook', 'second-publisher-cannot-replace-live-source',
         'cors-authorization-preflight-and-origin-allowlist',
         'authenticated-hls-playlist-init-segment-and-av-decode',

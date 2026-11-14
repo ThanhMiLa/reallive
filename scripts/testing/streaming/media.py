@@ -12,11 +12,10 @@ import fixture
 CONTROL = 'http://127.0.0.1:9997'
 
 
-def request(state, method, endpoint, body=None, token=None):
-    token = fixture.issue(state, 'api', '', 300) if token is None else token
+def request(state, method, endpoint, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = Request(CONTROL + endpoint, data=data, method=method,
-                  headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+                  headers={'Content-Type': 'application/json'})
     try:
         with urlopen(req, timeout=5) as response:
             raw = response.read()
@@ -41,13 +40,8 @@ def main():
     ingest_path = quote(values['ingestPath'], safe='/') if 'ingestPath' in values else None
     if args.command == 'probe':
         status, _ = request(state, 'GET', '/v3/config/paths/list')
-        assert status == 200, 'Control API did not accept api JWT: ' + str(status)
-        for action in ['publish', 'read']:
-            token_path = values.get('ingestPath', values['path']) if action == 'publish' else values['path']
-            status, _ = request(state, 'GET', '/v3/config/paths/list',
-                                token=fixture.issue(state, action, token_path, 300))
-            assert status in [401, 403], 'Control API accepted ' + action + ' JWT'
-        print('PASS: Control API accepts api JWT and rejects publish/read JWTs')
+        assert status == 200, 'Control API unavailable without credentials: ' + str(status)
+        print('PASS: internal Control API accepts requests without credentials')
     elif args.command == 'create':
         if ingest_path and 'relayReadToken' in values:
             status, _ = request(state, 'GET', '/v3/config/paths/get/' + ingest_path)

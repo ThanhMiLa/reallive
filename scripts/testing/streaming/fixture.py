@@ -26,7 +26,6 @@ ISSUER = 'reallive-stream'
 AUDIENCE = 'reallive-media'
 KEY_ID = 'stream-rs256-v1'
 READ_TTL = 5 * 60
-CONTROL_TTL = 5 * 60
 JWKS_PATH = '/stream/internal/api/media/jwks'
 EVENTS_PATH = '/stream/internal/api/media-events'
 MAX_BODY = 16384
@@ -88,7 +87,7 @@ def issue(state, action, path, ttl=None, now=None, subject=None):
     now = int(time.time()) if now is None else now
     if subject is None:
         subject = '22222222-2222-4222-8222-222222222222' if action == 'read' else '11111111-1111-4111-8111-111111111111'
-    permission = {'action': action, 'path': '' if action == 'api' else path}
+    permission = {'action': action, 'path': path}
     header = {'alg': 'RS256', 'kid': KEY_ID, 'typ': 'JWT'}
     payload = {'iss': ISSUER, 'aud': AUDIENCE, 'sub': subject, 'iat': now,
                'jti': str(uuid4()), 'mediamtx_permissions': [permission]}
@@ -121,7 +120,7 @@ def verify(state, token, action, path, now=None, allow_permanent=None):
             raise ValueError('Expired JWT')
     elif not permanent_allowed:
         raise ValueError('Missing JWT expiry')
-    expected = {'action': action, 'path': '' if action == 'api' else path}
+    expected = {'action': action, 'path': path}
     if payload.get('mediamtx_permissions') != [expected]:
         raise ValueError('Unexpected permissions')
     return payload
@@ -155,7 +154,7 @@ def prepare(state):
                 'streamKey': ingest_key_id + '?token=' + publish,
                 'playbackUrl': 'http://localhost:8898/' + path + '/index.m3u8',
                 'publishToken': publish, 'relayReadToken': relay_read,
-                'readToken': read, 'apiToken': issue(state, 'api', '', CONTROL_TTL),
+                'readToken': read,
                 'negativeTokens': {
                     'expiredPublish': issue(state, 'publish', ingest_path, -1),
                     'expiredRead': issue(state, 'read', path, -1),
@@ -554,11 +553,12 @@ def main():
         prepare(state)
     elif args.command == 'verify':
         fixtures = json.loads((state / 'fixtures.json').read_text())
-        for action in ['publish', 'read', 'api']:
-            verify(state, fixtures[action + 'Token'], action, fixtures['path'])
+        for action in ['publish', 'read']:
+            path = fixtures['ingestPath'] if action == 'publish' else fixtures['path']
+            verify(state, fixtures[action + 'Token'], action, path)
         if set(jwks(state)['keys'][0]) != {'kty', 'kid', 'alg', 'use', 'n', 'e'}:
             raise ValueError('Unexpected JWKS parameters')
-        print('PASS: publish/read/api signatures, claims and exact permissions; JWKS is public-only.')
+        print('PASS: publish/read signatures, claims and exact permissions; JWKS is public-only.')
     else:
         with make_server(state, args.host, args.port, backend=backend) as server:
             mode = 'backend account' if backend else 'local fixture tokens'

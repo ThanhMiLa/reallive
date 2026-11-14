@@ -1,6 +1,6 @@
 package com.reallive.streamservice.stream.scheduler;
 
-import com.reallive.streamservice.stream.adapter.media.CcuMediaReader;
+import com.reallive.streamservice.stream.adapter.media.dto.CcuMediaReader;
 import com.reallive.streamservice.stream.adapter.media.CcuMediaSessions;
 import com.reallive.streamservice.stream.adapter.redis.CcuMaintenanceStore;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;

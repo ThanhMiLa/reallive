@@ -7,7 +7,6 @@ import signal
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
@@ -19,9 +18,6 @@ HOOK = Path(__file__).resolve().parents[3] / 'media-server/hooks/viewer_hook.py'
 
 class ViewerHookTest(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.token_file = Path(self.directory.name) / 'control.jwt'
-        self.token_file.write_text('fixture-control-token-do-not-log\n')
         self.control_requests = []
         self.callback_requests = []
         self.callback_gets = []
@@ -105,7 +101,6 @@ class ViewerHookTest(unittest.TestCase):
         self.environment = dict(os.environ,
                                 STREAM_CCU_ENABLED='true',
                                 MEDIA_CONTROL_BASE_URL=self.control_base,
-                                MEDIA_CONTROL_TOKEN_FILE=str(self.token_file),
                                 STREAM_VIEWER_CALLBACK_URL=self.callback_url,
                                 MTX_PATH='live/' + self.session_id,
                                 MTX_READER_ID=self.reader_id,
@@ -121,7 +116,6 @@ class ViewerHookTest(unittest.TestCase):
             server.server_close()
         for thread in self.threads:
             thread.join()
-        self.directory.cleanup()
 
     @staticmethod
     def next_status(statuses):
@@ -135,8 +129,7 @@ class ViewerHookTest(unittest.TestCase):
     def finish(self, expected=0, timeout=12):
         stdout, stderr = self.process.communicate(timeout=timeout)
         self.assertEqual(expected, self.process.returncode, stderr.decode())
-        for value in [b'fixture-control-token-do-not-log', b'fixture-internal-token-do-not-log',
-                      b'fixture-query-token-do-not-log', b'fixture-server-body-do-not-log']:
+        for value in [b'fixture-query-token-do-not-log', b'fixture-server-body-do-not-log']:
             self.assertNotIn(value, stdout + stderr)
             self.assertNotIn(value, b''.join(request['body'] for request in self.callback_requests))
         return stdout, stderr
@@ -145,7 +138,7 @@ class ViewerHookTest(unittest.TestCase):
         self.launch()
         self.finish()
         self.assertEqual([{'path': '/v3/hls/sessions/get/' + self.reader_id,
-                           'authorization': 'Bearer fixture-control-token-do-not-log'}], self.control_requests)
+                           'authorization': None}], self.control_requests)
         self.assertEqual(1, len(self.callback_requests))
         callback = self.callback_requests[0]
         self.assertEqual('/stream/internal/api/viewer-events', callback['path'])
@@ -161,8 +154,7 @@ class ViewerHookTest(unittest.TestCase):
         self.assertEqual(self.session_id, event['sessionId'])
         self.assertEqual('hlsSession', event['readerType'])
 
-    def test_unread_never_looks_up_user_or_reads_control_token(self):
-        self.token_file.unlink()
+    def test_unread_never_looks_up_user(self):
         self.launch('unread')
         self.finish()
         self.assertEqual([], self.control_requests)
@@ -221,26 +213,18 @@ class ViewerHookTest(unittest.TestCase):
                 self.finish(expected=1)
         self.assertEqual([], self.callback_requests)
 
-    def test_missing_control_token_fails_without_lookup(self):
-        self.token_file.unlink()
-        self.launch()
-        self.finish(expected=1)
-        self.assertEqual([], self.control_requests + self.callback_requests)
-
-    def test_control_unauthorized_reloads_token_once(self):
-        self.control_statuses = [401, 200]
-        self.control_action = lambda: self.token_file.write_text('fixture-rotated-token')
+    def test_control_lookup_needs_no_credentials(self):
         self.launch()
         self.finish()
-        self.assertEqual(['Bearer fixture-control-token-do-not-log', 'Bearer fixture-rotated-token'],
-                         [request['authorization'] for request in self.control_requests])
+        self.assertEqual(1, len(self.control_requests))
+        self.assertIsNone(self.control_requests[0]['authorization'])
         self.assertEqual(1, len(self.callback_requests))
 
-    def test_control_repeated_unauthorized_stops_after_one_reload(self):
+    def test_control_unauthorized_is_rejected_without_retry(self):
         self.control_statuses = [401]
         self.launch()
         self.finish(expected=1)
-        self.assertEqual(2, len(self.control_requests))
+        self.assertEqual(1, len(self.control_requests))
         self.assertEqual([], self.callback_requests)
 
     def test_transient_control_failure_retries(self):

@@ -46,7 +46,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         controllers = InternalViewerPresenceController.class,
         properties = {
                 "stream.ccu.enabled=true",
-                "stream.ccu.control-token-directory=/tmp/unused-viewer-mvc-test",
                 "auth.cookie.access-token.name=access_token",
                 "ACCESS_TOKEN_COOKIE_NAME=access_token",
                 "STREAM_DB_PASSWORD=test-placeholder-only"

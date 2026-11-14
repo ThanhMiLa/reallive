@@ -103,14 +103,7 @@ class MediaJwtIssuerImplTest {
     }
 
     @Test
-    void apiTokenHasFiveMinuteTtlAndJwksExposesOnlyPublicParameters() throws Exception {
-        var api = issuer.issueControlApi();
-        var claims = SignedJWT.parse(api.value()).getJWTClaimsSet();
-        assertEquals(List.of(Map.of("action", "api")), claims.getClaim("mediamtx_permissions"));
-        assertEquals("stream-service", claims.getSubject());
-        assertEquals(clock.instant().plusSeconds(300), claims.getExpirationTime().toInstant());
-        assertFalse(api.toString().contains(api.value()));
-
+    void jwksExposesOnlyPublicParameters() throws Exception {
         var set = JWKSet.parse(issuer.publicJwks());
         assertEquals(1, set.getKeys().size());
         assertFalse(set.getKeys().getFirst().isPrivate());

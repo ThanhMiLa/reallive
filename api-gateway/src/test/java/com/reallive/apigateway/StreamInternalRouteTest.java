@@ -87,6 +87,9 @@ class StreamInternalRouteTest {
 
     @ParameterizedTest
     @CsvSource({
+            "GET, /v3/info",
+            "GET, /v3/config/paths/list",
+            "POST, /v3/config/paths/add/ingest/test",
             "GET, /stream/internal/api/media/jwks",
             "POST, /stream/internal/api/media-events",
             "POST, /stream/internal/api/viewer-events",

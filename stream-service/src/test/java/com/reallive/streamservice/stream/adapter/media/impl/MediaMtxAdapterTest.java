@@ -2,13 +2,10 @@ package com.reallive.streamservice.stream.adapter.media.impl;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.nimbusds.jwt.SignedJWT;
 import com.reallive.streamservice.common.configuration.MediaControlProperties;
-import com.reallive.streamservice.common.configuration.MediaKeyMaterial;
 import com.reallive.streamservice.common.configuration.WebClientConfig;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
-import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
 import com.sun.net.httpserver.HttpServer;
 
@@ -21,9 +18,6 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -87,16 +81,10 @@ class MediaMtxAdapterTest {
         properties = new MediaControlProperties();
         properties.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
         properties.setRequestTimeout(Duration.ofSeconds(2));
-        var keys =
-                new MediaKeyMaterial(
-                        (RSAPrivateKey) MediaTestSupport.KEYS.getPrivate(),
-                        (RSAPublicKey) MediaTestSupport.KEYS.getPublic());
-        var issuer = new MediaJwtIssuerImpl(keys, MediaTestSupport.properties(), Clock.systemUTC());
         adapter =
                 new MediaMtxAdapter(
                         new WebClientConfig().mediaControlWebClient(properties),
                         properties,
-                        issuer,
                         mapper);
     }
 
@@ -108,7 +96,7 @@ class MediaMtxAdapterTest {
     }
 
     @Test
-    void ensureIngestPathAddsPublisherWithDisabledReadHooksAndApiAuth() throws Exception {
+    void ensureIngestPathAddsPublisherWithoutControlApiCredentials() throws Exception {
         respond =
                 call -> {
                     if (calls.size() == 1) {
@@ -127,8 +115,7 @@ class MediaMtxAdapterTest {
         assertEquals("", payload.path("runOnRead").asString());
         assertEquals("", payload.path("runOnUnread").asString());
         for (Call call : calls) {
-            var claims = SignedJWT.parse(call.authorization().substring(7)).getJWTClaimsSet();
-            assertEquals(List.of(Map.of("action", "api")), claims.getClaim("mediamtx_permissions"));
+            assertNull(call.authorization());
         }
     }
 

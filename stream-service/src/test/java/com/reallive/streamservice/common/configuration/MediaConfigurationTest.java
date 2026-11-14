@@ -19,7 +19,6 @@ class MediaConfigurationTest {
         var keys = configuration.mediaKeyMaterial(properties);
         assertEquals(2048, keys.publicKey().getModulus().bitLength());
         assertEquals(Duration.ofMinutes(5), properties.getReadTokenTtl());
-        assertEquals(Duration.ofMinutes(5), properties.getControlTokenTtl());
         assertEquals("rtmp://localhost:1935/ingest", properties.getRtmpPublicUrl());
         assertFalse(properties.toString().contains(properties.getPrivateKeyBase64()));
         assertFalse(keys.toString().contains(keys.privateKey().getPrivateExponent().toString()));

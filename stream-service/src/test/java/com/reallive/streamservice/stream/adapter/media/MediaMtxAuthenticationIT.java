@@ -141,7 +141,6 @@ class MediaMtxAuthenticationIT {
         String api = "http://127.0.0.1:" + media.getMappedPort(9997);
         String hls = "http://127.0.0.1:" + media.getMappedPort(8888);
         String rtmpBase = "rtmp://127.0.0.1:" + media.getMappedPort(1935) + "/";
-        String control = issuer.issueControlApi().value();
 
         UUID ingestKeyId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();
@@ -156,25 +155,15 @@ class MediaMtxAuthenticationIT {
         assertNull(SignedJWT.parse(publishToken.value()).getJWTClaimsSet().getExpirationTime());
         assertNull(SignedJWT.parse(relayReadToken.value()).getJWTClaimsSet().getExpirationTime());
 
-        assertEquals(
-                200, request("GET", api + "/v3/config/paths/list", control, null).statusCode());
-        assertDenied(
-                request("GET", api + "/v3/config/paths/list", publishToken.value(), null)
-                        .statusCode());
-        assertDenied(
-                request(
-                                "GET",
-                                api + "/v3/config/paths/list",
-                                issuer.issueRead(sessionId, owner).value(),
-                                null)
-                        .statusCode());
+        assertEquals(200, request("GET", api + "/v3/config/paths/list", null, null).statusCode());
+        assertEquals(200, request("GET", api + "/v3/info", null, null).statusCode());
 
         assertEquals(
                 200,
                 request(
                                 "POST",
                                 api + "/v3/config/paths/add/" + ingestPath,
-                                control,
+                                null,
                                 "{\"source\":\"publisher\",\"overridePublisher\":false,\"runOnRead\":\"\",\"runOnUnread\":\"\"}")
                         .statusCode());
         String relayUrl =
@@ -184,15 +173,15 @@ class MediaMtxAuthenticationIT {
                 request(
                                 "POST",
                                 api + "/v3/config/paths/add/" + playbackPath,
-                                control,
+                                null,
                                 mapper.writeValueAsString(
                                         Map.of("source", relayUrl, "sourceOnDemand", false)))
                         .statusCode());
 
         Process publisher = publish(rtmpBase + ingestPath + "?token=" + publishToken.value(), 45);
         try {
-            awaitSource(api, ingestPath, control, publisher);
-            awaitSource(api, playbackPath, control, publisher);
+            awaitSource(api, ingestPath, publisher);
+            awaitSource(api, playbackPath, publisher);
 
             String playbackHls = hls + "/" + playbackPath + "/index.m3u8";
             String ingestHls = hls + "/" + ingestPath + "/index.m3u8";
@@ -271,8 +260,8 @@ class MediaMtxAuthenticationIT {
             if (!publisher.waitFor(3, TimeUnit.SECONDS)) {
                 publisher.destroyForcibly();
             }
-            request("DELETE", api + "/v3/config/paths/delete/" + playbackPath, control, null);
-            request("DELETE", api + "/v3/config/paths/delete/" + ingestPath, control, null);
+            request("DELETE", api + "/v3/config/paths/delete/" + playbackPath, null, null);
+            request("DELETE", api + "/v3/config/paths/delete/" + ingestPath, null, null);
         }
 
         // Viewer Read JWT cannot publish to ingest/*
@@ -283,7 +272,7 @@ class MediaMtxAuthenticationIT {
                 request(
                                 "POST",
                                 api + "/v3/config/paths/add/" + deniedIngestPath,
-                                control,
+                                null,
                                 "{\"source\":\"publisher\"}")
                         .statusCode());
         try {
@@ -300,7 +289,7 @@ class MediaMtxAuthenticationIT {
                         "Invalid publisher did not terminate");
                 assertNotEquals(0, denied.exitValue(), "Read JWT must not publish");
                 var observed =
-                        request("GET", api + "/v3/paths/get/" + deniedIngestPath, control, null);
+                        request("GET", api + "/v3/paths/get/" + deniedIngestPath, null, null);
                 assertTrue(
                         observed.statusCode() == 404
                                 || mapper.readTree(observed.body()).path("source").isNull());
@@ -308,7 +297,7 @@ class MediaMtxAuthenticationIT {
                 denied.destroyForcibly();
             }
         } finally {
-            request("DELETE", api + "/v3/config/paths/delete/" + deniedIngestPath, control, null);
+            request("DELETE", api + "/v3/config/paths/delete/" + deniedIngestPath, null, null);
         }
     }
 
@@ -366,13 +355,13 @@ class MediaMtxAuthenticationIT {
                 HttpResponse.BodyHandlers.ofString());
     }
 
-    private void awaitSource(String api, String path, String control, Process publisher)
+    private void awaitSource(String api, String path, Process publisher)
             throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (System.nanoTime() < deadline) {
             assertTrue(
                     publisher.isAlive(), "Publisher exited before source became online on " + path);
-            var response = request("GET", api + "/v3/paths/get/" + path, control, null);
+            var response = request("GET", api + "/v3/paths/get/" + path, null, null);
             if (response.statusCode() == 200
                     && mapper.readTree(response.body()).path("source").isObject()) {
                 return;
