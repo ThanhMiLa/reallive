@@ -9,7 +9,10 @@ import com.reallive.notificationservice.email.entity.EmailNotificationStatus;
 import com.reallive.notificationservice.email.repository.EmailDeliveryEventRepository;
 import com.reallive.notificationservice.email.repository.EmailNotificationRepository;
 import com.reallive.notificationservice.email.service.SendGridWebhookService;
+import jakarta.persistence.EntityManagerFactory;
 import jakarta.servlet.http.Cookie;
+import org.hibernate.SessionFactory;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -23,6 +26,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -39,6 +43,7 @@ import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -46,6 +51,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -58,7 +65,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:email_webhooks;MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
+@SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class SendGridWebhookIntegrationTest {
@@ -74,6 +81,7 @@ class SendGridWebhookIntegrationTest {
     static final String PATH = "/api/webhooks/sendgrid";
     static final String TIMESTAMP = "1700000000";
     static final KeyPair KEYS = keys();
+    static final String SCHEMA = "email_webhooks_" + UUID.randomUUID().toString().replace("-", "");
 
     @Autowired
     MockMvc mvc;
@@ -83,6 +91,8 @@ class SendGridWebhookIntegrationTest {
     EmailDeliveryEventRepository deliveryEvents;
     @Autowired
     SendGridWebhookService service;
+    @Autowired
+    EntityManagerFactory entityManagerFactory;
 
     EmailNotificationEntity notification;
 
@@ -90,6 +100,18 @@ class SendGridWebhookIntegrationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("notification.email.sendgrid.webhook-verification-public-key",
                 () -> Base64.getEncoder().encodeToString(KEYS.getPublic().getEncoded()));
+        registry.add("spring.datasource.url", () -> System.getProperty("notification.test.database-url",
+                "jdbc:h2:mem:email_webhooks;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"));
+        registry.add("spring.datasource.username", () -> System.getProperty("notification.test.database-username", "sa"));
+        registry.add("spring.datasource.password", () -> System.getProperty("notification.test.database-password", ""));
+        registry.add("spring.flyway.schemas", () -> SCHEMA);
+        registry.add("spring.flyway.default-schema", () -> SCHEMA);
+        registry.add("spring.jpa.properties.hibernate.default_schema", () -> "\"" + SCHEMA + "\"");
+    }
+
+    @AfterAll
+    static void dropTestSchema(@Autowired JdbcTemplate jdbc) {
+        jdbc.execute("DROP SCHEMA \"" + SCHEMA + "\" CASCADE");
     }
 
     @BeforeEach
@@ -124,6 +146,65 @@ class SendGridWebhookIntegrationTest {
         assertEquals(1, deliveryEvents.count());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {1, 50, 100, 501})
+    void queriesAndInsertsAreBatchedInsteadOfExecutedPerEvent(int count) throws Exception {
+        String json = IntStream.range(0, count).mapToObj(index -> {
+            EmailNotificationEntity parent = index == 0 ? notification : notification();
+            return event("delivered", "batch-" + index, 1700000000)
+                    .replace(notification.getEventId().toString(), parent.getEventId().toString());
+        }).map(event -> event.substring(1, event.length() - 1)).collect(Collectors.joining(",", "[", "]"));
+        var statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+
+        receive(json).andExpect(status().isOk());
+
+        int queryChunks = (count + 499) / 500;
+        assertEquals(2L * queryChunks, statistics.getQueryExecutionCount());
+        assertEquals(2L * queryChunks + 1, statistics.getPrepareStatementCount());
+        assertEquals(count, statistics.getEntityInsertCount());
+        assertEquals(count, deliveryEvents.count());
+    }
+
+    @Test
+    void batchSkipsStoredEventsAndDeduplicatesNewEventsBeforeWriting() throws Exception {
+        String stored = event("processed", "stored", 1700000000);
+        String fresh = event("delivered", "fresh", 1700000010);
+        receive(stored).andExpect(status().isOk());
+
+        receive(batch(stored, batch(fresh, fresh))).andExpect(status().isOk());
+
+        assertEquals(2, deliveryEvents.count());
+        assertEquals(EmailDeliveryEventType.PROCESSED,
+                deliveryEvents.findBySgEventId("stored").orElseThrow().getEventType());
+    }
+
+    @Test
+    void unknownNotificationDoesNotHideKnownEventWithSameProviderId() throws Exception {
+        String known = event("delivered", "shared", 1700000000);
+        String unknown = known.replace(notification.getEventId().toString(), UUID.randomUUID().toString());
+
+        receive(batch(unknown, known)).andExpect(status().isOk());
+
+        assertEquals(1, deliveryEvents.count());
+        assertEquals(notification.getId(), deliveryEvents.findBySgEventId("shared").orElseThrow().getNotification().getId());
+    }
+
+    @Test
+    void duplicateProviderIdKeepsFirstCorrelatedEventInBatch() throws Exception {
+        String first = event("processed", "shared", 1700000000);
+        EmailNotificationEntity another = notification();
+        String second = event("delivered", "shared", 1700000010)
+                .replace(notification.getEventId().toString(), another.getEventId().toString());
+
+        receive(batch(first, second)).andExpect(status().isOk());
+
+        var saved = deliveryEvents.findBySgEventId("shared").orElseThrow();
+        assertEquals(notification.getId(), saved.getNotification().getId());
+        assertEquals(EmailDeliveryEventType.PROCESSED, saved.getEventType());
+        assertEquals(1, deliveryEvents.count());
+    }
+
     @Test
     void concurrentRedeliveryCreatesOneEvent() throws Exception {
         concurrently(event("delivered", "concurrent", 1700000000), event("delivered", "concurrent", 1700000000));
@@ -141,6 +222,22 @@ class SendGridWebhookIntegrationTest {
     }
 
     @Test
+    void overlappingBatchesAcrossQueryChunksLockNotificationsInSameOrder() throws Exception {
+        List<String> events = IntStream.range(0, 501).mapToObj(index -> {
+            EmailNotificationEntity parent = index == 0 ? notification : notification();
+            return event("delivered", "overlap-" + index, 1700000000)
+                    .replace(notification.getEventId().toString(), parent.getEventId().toString());
+        }).map(event -> event.substring(1, event.length() - 1)).collect(Collectors.toList());
+        String first = "[" + String.join(",", events) + "]";
+        Collections.reverse(events);
+        String second = "[" + String.join(",", events) + "]";
+
+        concurrently(first, second);
+
+        assertEquals(501, deliveryEvents.count());
+    }
+
+    @Test
     void eventsReceivedOutOfOrderRemainSeparateAndReadChronologically() throws Exception {
         receive(event("delivered", "later", 1700000010)).andExpect(status().isOk());
         receive(event("processed", "earlier", 1700000000)).andExpect(status().isOk());
@@ -154,13 +251,13 @@ class SendGridWebhookIntegrationTest {
     void databaseFailureRollsBackWholeBatchAndAllowsProviderRetry() throws Exception {
         AtomicInteger writes = new AtomicInteger();
         doAnswer(invocation -> {
-            if (writes.incrementAndGet() == 2) {
+            List<EmailDeliveryEventEntity> saved = deliveryEvents.saveAll(invocation.getArgument(0));
+            deliveryEvents.flush();
+            if (writes.getAndIncrement() == 0) {
                 throw new DataAccessResourceFailureException("test database failure");
             }
-            EmailDeliveryEventEntity saved = deliveryEvents.save(invocation.getArgument(0));
-            deliveryEvents.flush();
             return saved;
-        }).when(deliveryEvents).saveAndFlush(any(EmailDeliveryEventEntity.class));
+        }).when(deliveryEvents).saveAllAndFlush(any());
         String batch = batch(event("processed", "first", 1700000000), event("delivered", "second", 1700000010));
         receive(batch).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value(1009));
         assertEquals(0, deliveryEvents.count());
