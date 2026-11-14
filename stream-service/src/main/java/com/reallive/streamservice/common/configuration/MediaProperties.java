@@ -26,8 +26,6 @@ public class MediaProperties {
 
     @ToString.Include Duration readTokenTtl = Duration.ofMinutes(5);
 
-    @ToString.Include Duration controlTokenTtl = Duration.ofMinutes(5);
-
     @ToString.Include String rtmpPublicUrl = "rtmp://localhost:1935/ingest";
 
     @ToString.Include String hlsPublicBaseUrl = "http://localhost:8898";

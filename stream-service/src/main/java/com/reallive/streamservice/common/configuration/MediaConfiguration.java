@@ -66,7 +66,6 @@ public class MediaConfiguration {
                 || blank(properties.getIssuer())
                 || blank(properties.getAudience())
                 || !positive(properties.getReadTokenTtl())
-                || !positive(properties.getControlTokenTtl())
                 || !validUrl(properties.getRtmpPublicUrl(), Set.of("rtmp", "rtmps"))
                 || !validUrl(properties.getHlsPublicBaseUrl(), Set.of("http", "https"))) {
             throw new IllegalStateException(
