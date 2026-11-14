@@ -12,7 +12,6 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -26,12 +25,22 @@ import org.springframework.security.web.SecurityFilterChain;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
-@Import(InternalEndpointSecurityConfiguration.class)
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class SecurityConfig {
+
+    private static final String[] INTERNAL_ENDPOINTS_GET = {
+            "/internal/api/media/jwks",
+            "/internal/api/streams/*/chat-context"
+    };
+
+    private static final String[] INTERNAL_ENDPOINTS_POST = {
+            "/internal/api/media-events",
+            "/internal/api/viewer-events",
+            "/internal/api/thumbnail-results"
+    };
 
     CustomJwtDecoder customJwtDecoder;
     JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
@@ -55,23 +64,17 @@ public class SecurityConfig {
                         auth ->
                                 auth.dispatcherTypeMatchers(DispatcherType.ERROR)
                                         .permitAll()
-                                        .requestMatchers(HttpMethod.GET, "/api/media/jwks")
-                                        .permitAll()
-                                        .anyRequest()
-                                        .authenticated())
-                .exceptionHandling(
-                        exceptions ->
-                                exceptions
+                                        .requestMatchers(HttpMethod.GET, INTERNAL_ENDPOINTS_GET).permitAll()
+                                        .requestMatchers(HttpMethod.POST, INTERNAL_ENDPOINTS_POST).permitAll()
+                                        .anyRequest().authenticated())
+                .exceptionHandling(exceptions -> exceptions
                                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                                         .accessDeniedHandler(jwtAccessDeniedHandler))
                 .oauth2ResourceServer(
-                        oauth2 ->
-                                oauth2.bearerTokenResolver(bearerTokenResolver)
-                                        .jwt(
-                                                jwt ->
-                                                        jwt.decoder(customJwtDecoder)
-                                                                .jwtAuthenticationConverter(
-                                                                        jwtAuthenticationConverter))
+                        oauth2 -> oauth2.bearerTokenResolver(bearerTokenResolver)
+                                        .jwt(jwt -> jwt
+                                                .decoder(customJwtDecoder)
+                                                .jwtAuthenticationConverter(jwtAuthenticationConverter))
                                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                                         .accessDeniedHandler(jwtAccessDeniedHandler));
 

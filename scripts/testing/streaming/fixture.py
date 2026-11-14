@@ -27,7 +27,7 @@ AUDIENCE = 'reallive-media'
 KEY_ID = 'stream-rs256-v1'
 READ_TTL = 5 * 60
 CONTROL_TTL = 5 * 60
-JWKS_PATH = '/stream/api/media/jwks'
+JWKS_PATH = '/stream/internal/api/media/jwks'
 EVENTS_PATH = '/stream/internal/api/media-events'
 MAX_BODY = 16384
 

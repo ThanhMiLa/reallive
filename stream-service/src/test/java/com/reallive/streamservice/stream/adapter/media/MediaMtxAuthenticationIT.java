@@ -78,7 +78,7 @@ class MediaMtxAuthenticationIT {
                         ? Path.of(".").toAbsolutePath()
                         : Path.of("..").toAbsolutePath();
 
-        String jwksUrl = "http://127.0.0.1:" + streamPort + "/stream/api/media/jwks";
+        String jwksUrl = "http://127.0.0.1:" + streamPort + "/stream/internal/api/media/jwks";
         var jwks = mapper.readTree(request("GET", jwksUrl, null, null).body());
         assertEquals("RSA", jwks.path("keys").get(0).path("kty").asString());
         assertFalse(jwks.path("keys").get(0).has("d"));
@@ -130,7 +130,7 @@ class MediaMtxAuthenticationIT {
                                 "MTX_AUTHJWTJWKS",
                                 "http://host.docker.internal:"
                                         + streamPort
-                                        + "/stream/api/media/jwks")
+                                        + "/stream/internal/api/media/jwks")
                         .withExposedPorts(1935, 8888, 9997)) {
             media.start();
             verifyTwoPathMediaAuth(media);

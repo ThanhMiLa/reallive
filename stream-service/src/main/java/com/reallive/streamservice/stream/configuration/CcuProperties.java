@@ -10,7 +10,6 @@ import java.nio.file.Path;
 @ConfigurationProperties(prefix = "stream.ccu")
 public class CcuProperties {
     private boolean enabled;
-    private String callbackToken;
     private Path controlTokenDirectory;
     private long tokenPublishDelay = 60_000;
 }

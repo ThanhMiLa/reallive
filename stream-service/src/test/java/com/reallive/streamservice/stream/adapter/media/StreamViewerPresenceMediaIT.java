@@ -135,7 +135,7 @@ class StreamViewerPresenceMediaIT extends PostgresIntegrationTestSupport {
                     .withExtraHost("host.docker.internal", "host-gateway")
                     .withEnv(
                             "MTX_AUTHJWTJWKS",
-                            "http://host.docker.internal:" + STREAM_PORT + "/stream/api/media/jwks")
+                            "http://host.docker.internal:" + STREAM_PORT + "/stream/internal/api/media/jwks")
                     .withEnv(
                             "STREAM_MEDIA_CALLBACK_URL",
                             "http://host.docker.internal:"

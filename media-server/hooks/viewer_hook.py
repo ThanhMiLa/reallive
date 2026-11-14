@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enrich HLS reader events and send bounded, authenticated viewer callbacks."""
+"""Enrich HLS reader events and send bounded internal viewer callbacks."""
 
 from datetime import datetime, timezone
 import json
@@ -82,7 +82,7 @@ class ViewerHook:
             raise HookFailure('control-credential-unavailable') from None
         return secret(token.strip())
 
-    def request(self, method, url, body=None, callback_token=None):
+    def request(self, method, url, body=None):
         control = method == 'GET'
         reloaded_after_unauthorized = False
         for attempt in range(MAX_ATTEMPTS):
@@ -92,7 +92,6 @@ class ViewerHook:
                 headers['Authorization'] = 'Bearer ' + self.control_token()
             else:
                 headers['Content-Type'] = 'application/json'
-                headers['X-Internal-Token'] = callback_token
             request = Request(url, data=body, headers=headers, method=method)
             try:
                 with self.opener.open(request, timeout=timeout) as response:
@@ -137,7 +136,6 @@ class ViewerHook:
         callback_url = endpoint(self.environment.get(
             'STREAM_VIEWER_CALLBACK_URL',
             'http://host.docker.internal:8082/stream/internal/api/viewer-events'))
-        callback_token = secret(self.environment.get('STREAM_CCU_CALLBACK_TOKEN', ''))
         event = {
             'eventId': str(uuid4()),
             'eventType': action.upper(),
@@ -162,7 +160,7 @@ class ViewerHook:
                 # Technical readers such as media-worker are not viewer accounts.
                 return
         body = json.dumps(event, separators=(',', ':')).encode()
-        self.request('POST', callback_url, body=body, callback_token=callback_token)
+        self.request('POST', callback_url, body=body)
 
 
 def cancelled(_signal, _frame):

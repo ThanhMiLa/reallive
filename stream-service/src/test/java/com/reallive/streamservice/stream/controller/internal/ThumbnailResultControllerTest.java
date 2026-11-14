@@ -4,7 +4,9 @@ import com.reallive.streamservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
-import com.reallive.streamservice.common.security.InternalEndpointSecurityConfiguration;
+import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
+import com.reallive.streamservice.common.security.CustomJwtDecoder;
+import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.configuration.ThumbnailProperties;
 import com.reallive.streamservice.stream.dto.response.ThumbnailResultOutcome;
 import com.reallive.streamservice.stream.dto.response.ThumbnailResultResponse;
@@ -15,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -24,10 +25,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -45,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         }
 )
 @EnableConfigurationProperties(ThumbnailProperties.class)
-@Import({InternalEndpointSecurityConfiguration.class, JwtAuthenticationEntryPoint.class})
+@Import({SecurityConfig.class, CustomJwtDecoder.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class})
 @ActiveProfiles("dev")
 class ThumbnailResultControllerTest {
 
@@ -54,8 +55,8 @@ class ThumbnailResultControllerTest {
     @Autowired
     private MockMvc mvc;
 
-    @Autowired
-    private ApplicationContext context;
+    @MockitoBean
+    private RedisAuthoritiesReader authorities;
 
     @MockitoBean
     private ThumbnailResultService resultService;
@@ -129,19 +130,22 @@ class ThumbnailResultControllerTest {
     }
 
     @Test
-    void callbackIgnoresMalformedAccountCookie() throws Exception {
-        when(resultService.apply(any())).thenReturn(
-                new ThumbnailResultResponse(ThumbnailResultOutcome.APPLIED));
+    void suppliedMalformedAccountCookieUsesTheStandardAuthenticationPolicy() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
                         .cookie(new Cookie("access_token", "a.b.c"))
                         .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isOk());
-        verify(resultService).apply(any());
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(resultService, authorities);
     }
 
     @Test
-    void callbackDoesNotDependOnRedisAuthorities() {
-        assertThat(context.getBeansOfType(RedisAuthoritiesReader.class)).isEmpty();
+    void callbackWithoutCookiesDoesNotLoadRedisAuthorities() throws Exception {
+        when(resultService.apply(any())).thenReturn(
+                new ThumbnailResultResponse(ThumbnailResultOutcome.APPLIED));
+        mvc.perform(post(PATH).contextPath("/stream")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        verifyNoInteractions(authorities);
     }
 
     @Test

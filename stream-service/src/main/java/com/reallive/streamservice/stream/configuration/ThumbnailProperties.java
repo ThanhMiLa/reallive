@@ -53,10 +53,6 @@ public class ThumbnailProperties {
     @ToString.Include
     int maxJpegBytes = 5_242_880;
 
-    String internalToken;
-
-    String callbackInternalToken;
-
     /**
      * Validates the settings required to dispatch thumbnail jobs.
      *
@@ -68,11 +64,10 @@ public class ThumbnailProperties {
                 || !positive(workerConnectTimeout) || !positive(workerReadTimeout)
                 || batchSize < 1 || batchSize > 50
                 || !origin(workerBaseUrl) || !origin(internalHlsBaseUrl)
-                || blank(internalToken) || internalToken.length() < 32
                 || mediaProperties.getReadTokenTtl() == null
                 || mediaProperties.getReadTokenTtl().compareTo(jobDeadline) < 0) {
             throw new IllegalStateException("Invalid thumbnail dispatch configuration: require positive intervals, "
-                    + "batch size 1-50, origin Worker/HLS URLs, a 32+ character internal token and a read token "
+                    + "batch size 1-50, origin Worker/HLS URLs and a read token "
                     + "TTL at least as long as the job deadline");
         }
     }
@@ -80,13 +75,12 @@ public class ThumbnailProperties {
     /**
      * Validates the settings required to accept thumbnail result callbacks.
      *
-     * @throws IllegalStateException when the callback token or public base URL is invalid
+     * @throws IllegalStateException when the public base URL or JPEG size limit is invalid
      */
     public void validateCallback() {
-        if (blank(callbackInternalToken) || callbackInternalToken.length() < 32
-                || !validPublicBaseUrl(publicBaseUrl) || maxJpegBytes < 1_024) {
-            throw new IllegalStateException("Invalid thumbnail callback configuration: require a 32+ character "
-                    + "internal token, an HTTP(S) public base URL without credentials, query or fragment, and a "
+        if (!validPublicBaseUrl(publicBaseUrl) || maxJpegBytes < 1_024) {
+            throw new IllegalStateException("Invalid thumbnail callback configuration: require "
+                    + "an HTTP(S) public base URL without credentials, query or fragment, and a "
                     + "JPEG size limit of at least 1024 bytes");
         }
     }

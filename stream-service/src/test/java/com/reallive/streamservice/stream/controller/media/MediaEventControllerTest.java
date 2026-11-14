@@ -13,7 +13,6 @@ import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.common.security.CustomJwtDecoder;
 import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
-import com.reallive.streamservice.common.security.InternalEndpointSecurityConfiguration;
 import com.reallive.streamservice.common.security.SecurityConfig;
 import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.dto.MediaEventOutcome;
@@ -33,7 +32,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import tools.jackson.databind.ObjectMapper;
 
-import jakarta.servlet.http.Cookie;
 
 import java.time.Instant;
 import java.util.Map;
@@ -44,7 +42,6 @@ import java.util.UUID;
         properties = {"auth.cookie.access-token.name=access_token"})
 @Import({
     SecurityConfig.class,
-    InternalEndpointSecurityConfiguration.class,
     MediaConfiguration.class,
     CustomJwtDecoder.class,
     JwtAuthenticationEntryPoint.class,
@@ -80,7 +77,6 @@ class MediaEventControllerTest {
         mvc.perform(post("/internal/api/media-events")
                         .header("X-Internal-Token", "ignored")
                         .header("Authorization", "Bearer malformed")
-                        .cookie(new Cookie("access_token", "malformed"))
                         .contentType("application/json").content(body))
                 .andExpect(status().isOk());
         verify(lifecycleService, times(2)).onOnline(any());

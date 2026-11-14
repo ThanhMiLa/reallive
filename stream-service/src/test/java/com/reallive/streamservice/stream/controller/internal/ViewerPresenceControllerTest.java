@@ -7,14 +7,12 @@ import com.reallive.streamservice.common.security.CustomJwtDecoder;
 import com.reallive.streamservice.common.security.JwtAccessDeniedHandler;
 import com.reallive.streamservice.common.security.JwtAuthenticationEntryPoint;
 import com.reallive.streamservice.common.security.SecurityConfig;
-import com.reallive.streamservice.common.security.InternalEndpointSecurityConfiguration;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
 import com.reallive.streamservice.stream.configuration.CcuProperties;
 import com.reallive.streamservice.stream.entity.StreamSessionEntity;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
 import com.reallive.streamservice.stream.service.impl.StreamViewerPresenceServiceImpl;
-import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         }
 )
 @EnableConfigurationProperties(CcuProperties.class)
-@Import({InternalEndpointSecurityConfiguration.class, SecurityConfig.class,
+@Import({SecurityConfig.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         StreamViewerPresenceServiceImpl.class})
 @ActiveProfiles("dev")
@@ -150,9 +148,8 @@ class ViewerPresenceControllerTest {
     }
 
     @Test
-    void malformedAccountCookieAndBearerTokenAreIgnored() throws Exception {
+    void authorizationHeaderDoesNotTriggerAccountAuthentication() throws Exception {
         mvc.perform(post(PATH).contextPath("/stream")
-                        .cookie(new Cookie("access_token", "a.b.c"))
                         .header("Authorization", "Bearer malformed")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());

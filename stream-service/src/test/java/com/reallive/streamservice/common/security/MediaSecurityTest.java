@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = MediaJwksController.class, properties = "auth.cookie.access-token.name=access_token")
-@Import({SecurityConfig.class, InternalEndpointSecurityConfiguration.class, CustomJwtDecoder.class,
+@Import({SecurityConfig.class, CustomJwtDecoder.class,
         JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         MediaConfiguration.class, StreamClockConfig.class, MediaJwtIssuerImpl.class})
 class MediaSecurityTest {
@@ -51,7 +51,7 @@ class MediaSecurityTest {
 
     @Test
     void anonymousJwksIsRawPublicJsonWithoutAnyRedisLookup() throws Exception {
-        mvc.perform(get("/api/media/jwks")).andExpect(status().isOk())
+        mvc.perform(get("/internal/api/media/jwks")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.keys", hasSize(1))).andExpect(jsonPath("$.keys[0].kty").value("RSA"))
                 .andExpect(jsonPath("$.keys[0].n").exists()).andExpect(jsonPath("$.keys[0].e").exists())
                 .andExpect(jsonPath("$.keys[0].d").doesNotExist()).andExpect(jsonPath("$.keys[0].p").doesNotExist())
@@ -61,28 +61,29 @@ class MediaSecurityTest {
 
     @Test
     void wrongMethodsChildrenAndLegacyEventRoutesRemainProtected() throws Exception {
-        mvc.perform(post("/api/media/jwks")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/media/jwks/other")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/internal/api/media/jwks")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/api/media/jwks/other")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/media/jwks")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/media/events")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/media/events")).andExpect(status().isUnauthorized());
         mvc.perform(get("/internal/api/media-events")).andExpect(status().isUnauthorized());
         mvc.perform(post("/internal/api/media-events/child")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams")).andExpect(status().isUnauthorized());
         mvc.perform(get("/error")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/media/jwks").cookie(new Cookie("access_token", "broken"))).andExpect(status().isUnauthorized());
+        mvc.perform(get("/internal/api/media/jwks").cookie(new Cookie("access_token", "broken"))).andExpect(status().isUnauthorized());
     }
 
     @Test
     void validSuppliedCookieStillRequiresAvailableAuthorities() throws Exception {
         var media = issuer.issueRead(UUID.randomUUID(), UUID.randomUUID());
         when(authorities.read(any())).thenThrow(new AppException(ErrorCode.AUTH_STATE_UNAVAILABLE));
-        mvc.perform(get("/api/media/jwks").cookie(new Cookie("access_token", media.value())))
+        mvc.perform(get("/internal/api/media/jwks").cookie(new Cookie("access_token", media.value())))
                 .andExpect(status().isServiceUnavailable());
         verify(authorities).read(any());
     }
 
     @Test
-    void internalMediaCallbackWithoutTokenBypassesCookieAuth() throws Exception {
+    void internalEndpointsAcceptRequestsWithoutCredentials() throws Exception {
         byte[] body = mapper.writeValueAsBytes(Map.of(
                 "eventId", UUID.randomUUID(),
                 "eventType", "ONLINE",
@@ -92,12 +93,10 @@ class MediaSecurityTest {
                 "occurredAt", Instant.now()
         ));
         mvc.perform(post("/internal/api/media-events")
-                        .cookie(new Cookie("access_token", "malformed"))
                         .contentType("application/json")
                         .content(body))
                 .andExpect(status().isNotFound());
-        mvc.perform(get("/internal/api/streams/" + UUID.randomUUID() + "/chat-context")
-                        .cookie(new Cookie("access_token", "malformed")))
+        mvc.perform(get("/internal/api/streams/" + UUID.randomUUID() + "/chat-context"))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(authorities);
     }

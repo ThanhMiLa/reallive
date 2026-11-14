@@ -26,7 +26,7 @@ python3 scripts/testing/streaming/fixture.py serve
 | Endpoint | Hành vi |
 |---|---|
 | `GET http://localhost:18082/health` | Trạng thái fixture |
-| `GET http://localhost:18082/stream/api/media/jwks` | JWKS public, không bọc ApiResponse |
+| `GET http://localhost:18082/stream/internal/api/media/jwks` | JWKS public, không bọc ApiResponse |
 | `POST http://localhost:18082/stream/api/media/events` | Receiver nhận JSON event hợp lệ và dedupe eventId |
 
 Callback theo contract ở [Implementation Plan](../../../docs/Implement%20Plan/Streaming%20MVP%20Implementation%20Plan.md): gửi POST JSON trực tiếp tới endpoint callback.

@@ -24,12 +24,9 @@ public class CcuConfiguration {
         if (!properties.isEnabled()) {
             return;
         }
-        String token = properties.getCallbackToken();
         var directory = properties.getControlTokenDirectory();
-        if (token == null || token.length() < 32 || token.length() > 16_384
-                || token.chars().anyMatch(Character::isWhitespace)
-                || directory == null || directory.toString().isBlank() || !directory.isAbsolute()) {
-            throw new IllegalStateException("CCU requires a non-whitespace 32+ character callback token and an absolute control token directory");
+        if (directory == null || directory.toString().isBlank() || !directory.isAbsolute()) {
+            throw new IllegalStateException("CCU requires an absolute control token directory");
         }
         long delay = properties.getTokenPublishDelay();
         if (delay < 1_000 || delay > Duration.ofHours(24).toMillis()

@@ -55,7 +55,7 @@ def inspect(session_id, state, output, backend_client=None):
     fixture.write_private_json(output / 'report.json', report)
     try:
         if backend_client is None:
-            with urlopen('http://127.0.0.1:8082/stream/api/media/jwks', timeout=5) as response:
+            with urlopen('http://127.0.0.1:8082/stream/internal/api/media/jwks', timeout=5) as response:
                 backend = json.load(response)
             public = fixture.jwks(state)
             expected = {(key.get('kid'), key.get('n'), key.get('e')) for key in backend.get('keys', [])}
