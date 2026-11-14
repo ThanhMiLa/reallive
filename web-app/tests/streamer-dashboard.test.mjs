@@ -181,9 +181,26 @@ test('dashboard route renders dedicated streamer layout with sidebar navbar and 
     // Dedicated Streamer Navigation sidebar
     assert.match(html, /aria-label="Streamer navigation"/)
     assert.match(html, /Stream Manager/)
+    assert.match(html, /Stream URL &amp; Key/)
+    assert.match(html, /href="\/dashboard\/stream-key"/)
+    assert.match(html, /My Channel/)
     assert.match(html, /Back to home/)
+    // OBS connection / Stream URL & Key panel is no longer rendered inside Stream Manager
+    assert.doesNotMatch(html, /OBS connection/)
+    assert.doesNotMatch(html, />Stream URL</)
+    assert.doesNotMatch(html, />Stream Key</)
     // Must not show the browsing site header search bar
     assert.doesNotMatch(html, /Search streams, categories, or streamers\.\.\./)
+
+    const streamKeyHtml = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(MemoryRouter, { initialEntries: ['/dashboard/stream-key'] }, createElement(AppRoutes))
+      )
+    )
+    assert.match(streamKeyHtml, /aria-label="Streamer navigation"/)
+    assert.match(streamKeyHtml, /Stream URL &amp; Key/)
   } finally {
     client.clear()
   }

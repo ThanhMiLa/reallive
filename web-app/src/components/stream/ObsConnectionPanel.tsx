@@ -1,119 +1,184 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import type { StreamSetup, StreamKeyCredentials } from '@/types/stream.types'
 
 interface Props {
   setup: StreamSetup
   credentials: StreamKeyCredentials | null
-  onCredentialsCopied: () => void
   resetPending: boolean
   onRequestReset: () => void
 }
 
-export function ObsConnectionPanel({ setup, credentials, onCredentialsCopied, resetPending, onRequestReset }: Props) {
-  const [showKey, setShowKey] = useState(false)
+const MASKED_PLACEHOLDER = '•'.repeat(44)
 
-  const copy = async (value: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(value)
-      toast.success(`${label} copied`)
-      if (label === 'Stream key') onCredentialsCopied()
-    } catch {
-      toast.error(`Could not copy ${label.toLowerCase()}. Select the value and copy it manually.`)
-    }
-  }
-
-  const ready = credentials !== null
+function CredentialCard({
+  id,
+  title,
+  value,
+  visible,
+  revealLabel,
+  hideLabel,
+  onToggleVisibility,
+  action,
+  footer,
+}: {
+  id: string
+  title: string
+  value: string | null
+  visible: boolean
+  revealLabel: string
+  hideLabel: string
+  onToggleVisibility: () => void
+  action?: ReactNode
+  footer?: ReactNode
+}) {
+  const hasValue = value !== null
+  const isRevealed = hasValue && visible
 
   return (
-    <section className="rounded-2xl border border-brand-border bg-brand-card p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-outfit text-lg font-bold text-white">OBS connection</h2>
+    <section className="rounded-xl border border-brand-border bg-[#08080a]">
+      <div className="border-b border-brand-border px-5 py-3.5">
+        <h2 className="font-outfit text-base font-bold text-white">{title}</h2>
       </div>
-      <p className="mt-3 text-sm text-gray-400">
-        {setup.categoryId
-          ? 'Your key works across broadcasts. Copy it when generated; it cannot be shown again.'
-          : 'Save a stream title and category before generating your stream key.'}
-      </p>
-      {setup.status === 'BLOCKED' && <p role="alert">{setup.blockedReason || 'Streaming access is blocked.'}</p>}
-      <Button type="button" className="mt-4" onClick={onRequestReset} isLoading={resetPending}
-        disabled={resetPending || !setup.categoryId || setup.status === 'BLOCKED'}>
-        {setup.hasStreamKey ? 'Generate new stream key' : 'Generate stream key'}
-      </Button>
-
-      {ready && (
-        <div className="mt-5 space-y-4">
-          <div>
-            <label
-              htmlFor="obs-server"
-              className="mb-1.5 block text-xs font-semibold text-gray-300"
+      <div className="p-5">
+        <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap">
+          <div className="relative flex min-w-0 flex-1 items-center">
+            <label htmlFor={id} className="sr-only">
+              {title}
+            </label>
+            <input
+              id={id}
+              type={isRevealed ? 'text' : 'password'}
+              value={value ?? ''}
+              placeholder={hasValue ? undefined : MASKED_PLACEHOLDER}
+              readOnly
+              onFocus={(e) => {
+                if (isRevealed) e.currentTarget.select()
+              }}
+              className="w-full rounded-lg border border-brand-border bg-black py-2.5 pl-3.5 pr-11 text-sm text-gray-100 placeholder:tracking-[0.2em] placeholder:text-gray-300 focus:border-[#ff2b42] focus:outline-none focus:ring-1 focus:ring-[#ff2b42]"
+            />
+            <button
+              type="button"
+              aria-label={isRevealed ? hideLabel : revealLabel}
+              aria-pressed={isRevealed}
+              onClick={onToggleVisibility}
+              className="absolute right-2 rounded-md p-1.5 text-gray-400 transition hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42] cursor-pointer"
             >
-              Server URL
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="obs-server"
-                value={credentials!.serverUrl}
-                readOnly
-                onFocus={(e) => e.currentTarget.select()}
-                className="min-w-0 flex-1 rounded-lg border border-brand-border bg-black px-3 py-2 text-sm text-gray-200"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void copy(credentials!.serverUrl, 'Server URL')}
-              >
-                Copy
-              </Button>
-            </div>
+              {isRevealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
-
-          <div>
-            <label htmlFor="obs-key" className="mb-1.5 block text-xs font-semibold text-gray-300">
-              Stream key
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="obs-key"
-                type={showKey ? 'text' : 'password'}
-                value={credentials!.streamKey}
-                readOnly
-                onFocus={(e) => e.currentTarget.select()}
-                className="min-w-0 flex-1 rounded-lg border border-brand-border bg-black px-3 py-2 text-sm text-gray-200"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                aria-label={showKey ? 'Hide stream key' : 'Show stream key'}
-                onClick={() => setShowKey((prev) => !prev)}
-              >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void copy(credentials!.streamKey, 'Stream key')}
-              >
-                Copy
-              </Button>
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-400">Copy the key into OBS. These credentials disappear after copying the key or leaving this page.</p>
+          {action}
         </div>
+        {footer}
+      </div>
+    </section>
+  )
+}
+
+export function ObsConnectionPanel({
+  setup,
+  credentials,
+  resetPending,
+  onRequestReset,
+}: Props) {
+  const [revealedUrlFor, setRevealedUrlFor] = useState<string | null>(null)
+  const [revealedKeyFor, setRevealedKeyFor] = useState<string | null>(null)
+  const [unavailableHint, setUnavailableHint] = useState(false)
+
+  const isUrlVisible = Boolean(credentials && revealedUrlFor === credentials.streamKey)
+  const isKeyVisible = Boolean(credentials && revealedKeyFor === credentials.streamKey)
+
+  const handleToggleUrl = () => {
+    if (!credentials) {
+      setUnavailableHint(true)
+      return
+    }
+    setUnavailableHint(false)
+    setRevealedUrlFor(isUrlVisible ? null : credentials.streamKey)
+  }
+
+  const handleToggleKey = () => {
+    if (!credentials) {
+      setUnavailableHint(true)
+      return
+    }
+    setUnavailableHint(false)
+    setRevealedKeyFor(isKeyVisible ? null : credentials.streamKey)
+  }
+
+  const keyGuidance = credentials
+    ? 'Your new Stream URL and Stream Key are ready. Click the eye icon to reveal and copy them into OBS before leaving this page.'
+    : unavailableHint
+      ? setup.hasStreamKey
+        ? 'Existing credentials cannot be viewed again after reload. Click Reset to generate a new Stream URL and Stream Key.'
+        : 'No Stream URL or Stream Key has been generated yet. Click Reset to generate one.'
+      : setup.hasStreamKey
+        ? 'Your key works across broadcasts. Click Reset to issue a new Stream URL and Stream Key.'
+        : 'Click Reset to generate your Stream URL and Stream Key.'
+
+  return (
+    <div className="space-y-4">
+      {setup.status === 'BLOCKED' && (
+        <p
+          role="alert"
+          className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+        >
+          {setup.blockedReason || 'Streaming access is blocked.'}
+        </p>
       )}
 
-      <div className="mt-6 border-t border-brand-border pt-5 space-y-5">
+      <CredentialCard
+        id="obs-server"
+        title="Stream URL"
+        value={credentials?.serverUrl ?? null}
+        visible={isUrlVisible}
+        revealLabel="Show stream URL"
+        hideLabel="Hide stream URL"
+        onToggleVisibility={handleToggleUrl}
+      />
+
+      <CredentialCard
+        id="obs-key"
+        title="Stream Key"
+        value={credentials?.streamKey ?? null}
+        visible={isKeyVisible}
+        revealLabel="Show stream key"
+        hideLabel="Hide stream key"
+        onToggleVisibility={handleToggleKey}
+        action={
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setUnavailableHint(false)
+              onRequestReset()
+            }}
+            isLoading={resetPending}
+            disabled={resetPending || setup.status === 'BLOCKED'}
+            className="shrink-0 border-[#2f3336] bg-[#18181f] px-4 py-2.5 text-white hover:bg-[#23232e]"
+          >
+            Reset
+          </Button>
+        }
+        footer={
+          <p
+            role={unavailableHint && !credentials ? 'status' : undefined}
+            className={`mt-2.5 text-xs ${
+              unavailableHint && !credentials ? 'text-amber-300' : 'text-gray-400'
+            }`}
+          >
+            {keyGuidance}
+          </p>
+        }
+      />
+
+      <section className="rounded-xl border border-brand-border bg-[#08080a] p-5 space-y-5">
         <div>
           <h3 className="text-sm font-semibold text-white">Go live with OBS</h3>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-5 text-gray-400">
             <li>Open OBS settings and select Stream.</li>
-            <li>Choose Custom, then paste the Server URL and Stream Key.</li>
+            <li>Choose Custom, then paste the Stream URL and Stream Key.</li>
             <li>Click Start Streaming in OBS — your broadcast goes live automatically.</li>
           </ol>
         </div>
@@ -124,7 +189,7 @@ export function ObsConnectionPanel({ setup, credentials, onCredentialsCopied, re
             window, the session ends automatically (starting again afterward opens a new session).
           </p>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   )
 }

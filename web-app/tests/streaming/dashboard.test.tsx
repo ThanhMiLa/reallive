@@ -2,8 +2,10 @@ import { StrictMode, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { StreamerDashboardLayout } from '@/components/layout/StreamerDashboardLayout'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
+import { StreamUrlKeyPage } from '@/pages/dashboard/StreamUrlKeyPage'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ChatMessage, ChatPage } from '@/types/chat.types'
 import type {
@@ -191,14 +193,26 @@ function deferred<T>() {
 }
 
 let client: QueryClient
-function mount(node: ReactNode = <StreamerDashboardPage />) {
+function mount(node: ReactNode = <StreamerDashboardPage />, initialEntries = ['/dashboard']) {
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>{node}</MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>{node}</MemoryRouter>
     </QueryClientProvider>,
+  )
+}
+
+function mountDashboardRoutes(initialEntries = ['/dashboard']) {
+  return mount(
+    <Routes>
+      <Route element={<StreamerDashboardLayout />}>
+        <Route path="/dashboard" element={<StreamerDashboardPage />} />
+        <Route path="/dashboard/stream-key" element={<StreamUrlKeyPage />} />
+      </Route>
+    </Routes>,
+    initialEntries,
   )
 }
 
@@ -324,8 +338,8 @@ describe('Stream Manager (persistent stream key)', () => {
 
     expect(await screen.findByLabelText('Stream preview')).toBeTruthy()
     await waitFor(() => expect(mocks.access).toHaveBeenCalledTimes(1))
-    const header = screen.getByRole('heading', { name: 'Stream Manager' }).closest('header')!
-    expect(within(header).getByText('LIVE')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Stream Manager' })).toBeNull()
+    expect(within(screen.getByLabelText('Session Info')).getByText('LIVE')).toBeTruthy()
   })
 
   it('uses authenticated media requests only for the current stream path', async () => {
@@ -393,11 +407,13 @@ describe('Stream Manager (persistent stream key)', () => {
     expect(mocks.hls).toHaveLength(0)
   })
 
-  it('preserves dirty StreamInfoForm input across polled setup and metadata updates', async () => {
+  it('preserves dirty Edit Stream Info modal input across polled setup and metadata updates', async () => {
     mocks.current.mockResolvedValue(liveSession)
     mocks.metadata.mockResolvedValue(liveSession)
     mount()
-    const input = (await screen.findByLabelText('Stream title')) as HTMLInputElement
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit stream information' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Stream Info' })
+    const input = within(dialog).getByLabelText(/Stream title/i) as HTMLTextAreaElement
     fireEvent.change(input, { target: { value: 'Unsaved Draft Title' } })
     act(() => {
       client.setQueryData(['stream', 'setup', 'owner'], {
@@ -536,64 +552,159 @@ it('cancels a scheduled HLS reopen when the preview unmounts', async () => {
   expect(mocks.access).toHaveBeenCalledTimes(1)
 })
 
-it('saves metadata separately and reveals a newly issued key only until copied', async () => {
+it('renders Stream Manager in 3 columns with Edit Stream Info popup and moves Stream URL & Key to nav', async () => {
   mocks.setup.mockResolvedValue({ ...draftSetup, title: 'Morning', categoryId })
   mocks.saveSetup.mockResolvedValue({ ...draftSetup, title: 'Changed', categoryId })
-  mount()
-  const title = await screen.findByLabelText('Stream title')
+  mountDashboardRoutes(['/dashboard'])
+
+  const streamInfoPanel = await screen.findByLabelText('Stream Information')
+  expect(screen.getByLabelText('Session Info')).toBeTruthy()
+  expect(screen.getByLabelText('Stream chat')).toBeTruthy()
+  expect(within(streamInfoPanel).getByText('Morning')).toBeTruthy()
+  expect(within(streamInfoPanel).getByText('Gaming')).toBeTruthy()
+  expect(within(streamInfoPanel).queryByText('Public')).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Stream Manager' })).toBeNull()
+  expect(screen.queryByRole('dialog', { name: 'Edit Stream Info' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Stream URL' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: 'Stream Key' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull()
+
+  fireEvent.click(within(streamInfoPanel).getByRole('button', { name: 'Edit stream information' }))
+  const cancelDialog = await screen.findByRole('dialog', { name: 'Edit Stream Info' })
+  fireEvent.change(within(cancelDialog).getByLabelText(/Stream title/i), {
+    target: { value: 'Discarded' },
+  })
+  fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('dialog', { name: 'Edit Stream Info' })).toBeNull()
+  expect(within(streamInfoPanel).getByText('Morning')).toBeTruthy()
+  expect(mocks.saveSetup).not.toHaveBeenCalled()
+
+  fireEvent.click(within(streamInfoPanel).getByRole('button', { name: 'Edit stream information' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Edit Stream Info' })
+  const title = within(dialog).getByLabelText(/Stream title/i) as HTMLTextAreaElement
+  expect(title.value).toBe('Morning')
   fireEvent.change(title, { target: { value: 'Changed' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(mocks.saveSetup).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Stream Info' })).toBeNull())
+  expect(within(screen.getByLabelText('Stream Information')).getByText('Changed')).toBeTruthy()
   expect(mocks.issueKey).not.toHaveBeenCalled()
-  expect(screen.queryByLabelText('Stream key')).toBeNull()
+
+  const nav = screen.getByRole('navigation', { name: 'Streamer navigation' })
+  fireEvent.click(within(nav).getByRole('link', { name: 'Stream URL & Key' }))
+
+  expect(await screen.findByRole('heading', { name: 'Stream URL & Key' })).toBeTruthy()
+  expect(await screen.findByRole('heading', { name: 'Stream URL' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Stream Key' })).toBeTruthy()
+  expect(screen.queryByLabelText('Stream title')).toBeNull()
+
+  const initialUrl = screen.getByLabelText('Stream URL') as HTMLInputElement
+  const initialKey = screen.getByLabelText('Stream Key') as HTMLInputElement
+  expect(initialUrl.type).toBe('password')
+  expect(initialKey.type).toBe('password')
+  expect(initialUrl.value).toBe('')
+  expect(initialKey.value).toBe('')
+
   mocks.setup.mockResolvedValue(activeSetup)
-  fireEvent.click(screen.getByRole('button', { name: 'Generate stream key' }))
-  const key = await screen.findByLabelText('Stream key') as HTMLInputElement
-  expect(key.type).toBe('password')
-  expect(key.value).toBe(issuedKey.streamKey)
+  fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+
+  await waitFor(() => {
+    expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe(issuedKey.streamKey)
+  })
+  const urlAfterReset = screen.getByLabelText('Stream URL') as HTMLInputElement
+  const keyAfterReset = screen.getByLabelText('Stream Key') as HTMLInputElement
+  expect(urlAfterReset.type).toBe('password')
+  expect(urlAfterReset.value).toBe(issuedKey.serverUrl)
+  expect(keyAfterReset.type).toBe('password')
   expect(JSON.stringify(client.getQueryCache().getAll().map((query) => query.state.data)))
     .not.toContain('secret-jwt-1')
-  Object.defineProperty(navigator, 'clipboard', { configurable: true,
-    value: { writeText: vi.fn().mockResolvedValue(undefined) } })
-  fireEvent.click(within(key.parentElement!).getByRole('button', { name: 'Copy' }))
-  await waitFor(() => expect(screen.queryByLabelText('Stream key')).toBeNull())
-  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+
+  // Leaving Stream URL & Key clears issued credentials from local page state.
+  fireEvent.click(within(nav).getByRole('link', { name: 'Stream Manager' }))
+  expect(await screen.findByLabelText('Stream Information')).toBeTruthy()
+  fireEvent.click(within(nav).getByRole('link', { name: 'Stream URL & Key' }))
+  await screen.findByRole('button', { name: 'Reset' })
+  expect((screen.getByLabelText('Stream URL') as HTMLInputElement).value).toBe('')
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
 })
 
-it('never reveals an existing key on reload and requires confirmation to generate another', async () => {
-  mount()
-  await screen.findByRole('button', { name: 'Generate new stream key' })
-  expect(screen.queryByLabelText('Stream key')).toBeNull()
-  expect(mocks.issueKey).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Generate new stream key' }))
+it('always displays Stream URL and Stream Key and toggles visibility via eye icons after Reset', async () => {
+  mocks.setup.mockResolvedValue(activeSetup)
+  mount(<StreamUrlKeyPage />)
+
+  const urlInput = (await screen.findByLabelText('Stream URL')) as HTMLInputElement
+  const keyInput = screen.getByLabelText('Stream Key') as HTMLInputElement
+  expect(urlInput.type).toBe('password')
+  expect(keyInput.type).toBe('password')
+  expect(keyInput.value).toBe('')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show stream key' }))
+  expect(keyInput.type).toBe('password')
+  expect(screen.getByRole('status').textContent).toContain('Click Reset to generate')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
   const dialog = await screen.findByRole('dialog')
   fireEvent.click(within(dialog).getByRole('button', { name: 'Reset stream key' }))
-  await screen.findByDisplayValue(issuedKey.streamKey)
-  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
-  cleanup()
-  mount()
-  await screen.findByRole('button', { name: 'Generate new stream key' })
-  expect(screen.queryByLabelText('Stream key')).toBeNull()
+
+  await waitFor(() => expect(keyInput.value).toBe(issuedKey.streamKey))
+  expect(urlInput.value).toBe(issuedKey.serverUrl)
+  expect(urlInput.type).toBe('password')
+  expect(keyInput.type).toBe('password')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Show stream URL' }))
+  expect(urlInput.type).toBe('text')
+  fireEvent.click(screen.getByRole('button', { name: 'Show stream key' }))
+  expect(keyInput.type).toBe('text')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Hide stream URL' }))
+  expect(urlInput.type).toBe('password')
+  fireEvent.click(screen.getByRole('button', { name: 'Hide stream key' }))
+  expect(keyInput.type).toBe('password')
 })
 
-it('keeps one-time credentials visible when copying fails', async () => {
-  mocks.setup.mockResolvedValue({ ...activeSetup, hasStreamKey: false })
-  Object.defineProperty(navigator, 'clipboard', { configurable: true,
-    value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } })
-  mount()
-  fireEvent.click(await screen.findByRole('button', { name: 'Generate stream key' }))
-  const key = await screen.findByLabelText('Stream key')
-  fireEvent.click(within(key.parentElement!).getByRole('button', { name: 'Copy' }))
-  await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Could not copy stream key')))
-  expect(screen.getByLabelText('Stream key')).toBeTruthy()
+it('never reveals an existing key on reload and requires confirmation to reset an existing key', async () => {
+  mocks.current.mockResolvedValue(liveSession)
+  mount(<StreamUrlKeyPage />)
+  await screen.findByRole('button', { name: 'Reset' })
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
+  expect(mocks.issueKey).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText(/active broadcast will end immediately/i)).toBeTruthy()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reset stream key' }))
+  await screen.findByDisplayValue(issuedKey.streamKey)
+  await screen.findByDisplayValue(issuedKey.serverUrl)
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
+  cleanup()
+  mount(<StreamUrlKeyPage />)
+  await screen.findByRole('button', { name: 'Reset' })
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
+})
+
+it('keeps Reset enabled without category setup and explains backend 400 setup requirement', async () => {
+  mocks.setup.mockResolvedValue(draftSetup)
+  mocks.issueKey.mockRejectedValue({ isAxiosError: true, response: { status: 400 } })
+  mount(<StreamUrlKeyPage />)
+  const resetBtn = (await screen.findByRole('button', { name: 'Reset' })) as HTMLButtonElement
+  expect(resetBtn.disabled).toBe(false)
+  fireEvent.click(resetBtn)
+  await waitFor(() =>
+    expect(mocks.toast).toHaveBeenCalledWith(
+      expect.stringContaining('Save a stream title and category in Stream Manager'),
+    ),
+  )
+  expect(mocks.issueKey).toHaveBeenCalledTimes(1)
 })
 
 it('returns a synchronous issuance error without polling or retrying key generation', async () => {
   mocks.setup.mockResolvedValue({ ...activeSetup, hasStreamKey: false })
   mocks.issueKey.mockRejectedValue({ isAxiosError: true, response: { status: 503 } })
-  mount()
-  fireEvent.click(await screen.findByRole('button', { name: 'Generate stream key' }))
-  await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('unavailable')))
+  mount(<StreamUrlKeyPage />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset' }))
+  await waitFor(() =>
+    expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('unavailable')),
+  )
   expect(mocks.issueKey).toHaveBeenCalledTimes(1)
-  expect(screen.queryByLabelText('Stream key')).toBeNull()
+  expect((screen.getByLabelText('Stream URL') as HTMLInputElement).value).toBe('')
+  expect((screen.getByLabelText('Stream Key') as HTMLInputElement).value).toBe('')
 })

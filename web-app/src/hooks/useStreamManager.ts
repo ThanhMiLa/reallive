@@ -26,33 +26,85 @@ export function streamErrorMessage(error: unknown) {
   return 'Unable to connect. Please try again.'
 }
 
-export function useStreamManager(userId: string) {
-  const queryClient = useQueryClient()
-  const [pending, setPending] = useState<'save' | 'key' | null>(null)
-  const [resetDialogOpen, setResetDialogOpen] = useState(false)
-  const [credentials, setCredentials] = useState<StreamKeyCredentials | null>(null)
-  const [lastEndedAt, setLastEndedAt] = useState<string | null>(null)
-  const [now, setNow] = useState(() => Date.now())
-  const active = useRef(true)
-  const busy = useRef(false)
-  const request = useRef<AbortController | null>(null)
-
-  const setup = useQuery({
+function useStreamSetupQuery(userId: string) {
+  return useQuery({
     queryKey: setupKey(userId),
     queryFn: ({ signal }) => streamApi.setup(signal),
     retry: false,
     refetchOnWindowFocus: false,
   })
-  const current = useQuery({
+}
+
+function useStreamCurrentQuery(userId: string, poll: boolean) {
+  return useQuery({
     queryKey: currentKey(userId),
     queryFn: ({ signal }) => streamApi.current(signal),
     retry: false,
-    refetchInterval: (query) => isAxiosError(query.state.error) &&
-      [401, 403].includes(query.state.error.response?.status || 0) ? false : 3000,
+    refetchInterval: poll
+      ? (query) =>
+          isAxiosError(query.state.error) &&
+          [401, 403].includes(query.state.error.response?.status || 0)
+            ? false
+            : 3000
+      : false,
     refetchIntervalInBackground: false,
   })
+}
+
+function useAbortableRunner<T extends string>() {
+  const [pending, setPending] = useState<T | null>(null)
+  const active = useRef(true)
+  const busy = useRef(false)
+  const request = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+      request.current?.abort()
+    }
+  }, [])
+
+  const run = useCallback(
+    async (
+      kind: T,
+      action: (signal: AbortSignal) => Promise<void>,
+      formatError: (error: unknown) => string = streamErrorMessage,
+    ) => {
+      if (busy.current) return false
+      busy.current = true
+      const controller = new AbortController()
+      request.current = controller
+      setPending(kind)
+      try {
+        await action(controller.signal)
+        return active.current && !controller.signal.aborted
+      } catch (error) {
+        if (active.current) toast.error(formatError(error))
+        return false
+      } finally {
+        busy.current = false
+        if (active.current) setPending(null)
+      }
+    },
+    [],
+  )
+
+  return { pending, active, run }
+}
+
+export function useStreamManager(userId: string) {
+  const queryClient = useQueryClient()
+  const [lastEndedAt, setLastEndedAt] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  const { pending, active, run } = useAbortableRunner<'save'>()
+
+  const setup = useStreamSetupQuery(userId)
+  const current = useStreamCurrentQuery(userId, true)
   const categories = useQuery({
-    queryKey: ['categories'], queryFn: ({ signal }) => channelApi.getCategories(signal), staleTime: 600_000,
+    queryKey: ['categories'],
+    queryFn: ({ signal }) => channelApi.getCategories(signal),
+    staleTime: 600_000,
   })
   const id = current.data?.id
   const metadata = useQuery({
@@ -60,12 +112,17 @@ export function useStreamManager(userId: string) {
     queryFn: ({ signal }) => streamApi.metadata(id!, signal),
     enabled: Boolean(id),
     retry: false,
-    refetchInterval: (query) => query.state.data?.status === 'ENDED' ||
-      (isAxiosError(query.state.error) && [401, 403, 404].includes(query.state.error.response?.status || 0)) ? false : 3000,
+    refetchInterval: (query) =>
+      query.state.data?.status === 'ENDED' ||
+      (isAxiosError(query.state.error) &&
+        [401, 403, 404].includes(query.state.error.response?.status || 0))
+        ? false
+        : 3000,
     refetchIntervalInBackground: false,
     initialData: current.data ? ownerMetadata(current.data) : undefined,
   })
-  const session: StreamMetadata | null = metadata.data || (current.data ? ownerMetadata(current.data) : null)
+  const session: StreamMetadata | null =
+    metadata.data || (current.data ? ownerMetadata(current.data) : null)
   const previousSession = useRef<StreamMetadata | null>(null)
   useEffect(() => {
     const previous = previousSession.current
@@ -75,15 +132,14 @@ export function useStreamManager(userId: string) {
         if (active.current) setLastEndedAt(session?.endedAt || new Date().toISOString())
       })
     } else if (session) {
-      void Promise.resolve().then(() => { if (active.current) setLastEndedAt(null) })
+      void Promise.resolve().then(() => {
+        if (active.current) setLastEndedAt(null)
+      })
     }
-  }, [session])
+  }, [active, session])
   useEffect(() => {
-    active.current = true
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => {
-      active.current = false
-      request.current?.abort()
       window.clearInterval(timer)
       void queryClient.cancelQueries({ queryKey: ['stream', 'metadata', userId] })
     }
@@ -95,47 +151,81 @@ export function useStreamManager(userId: string) {
     return result.isError ? null : result.data || null
   }, [refreshMetadataQuery])
 
-  const run = async (kind: 'save' | 'key', action: (signal: AbortSignal) => Promise<void>) => {
-    if (busy.current) return false
-    busy.current = true
-    const controller = new AbortController()
-    request.current = controller
-    setPending(kind)
-    try {
-      await action(controller.signal)
-      return active.current && !controller.signal.aborted
-    } catch (error) {
-      if (active.current) toast.error(streamErrorMessage(error))
-      return false
-    } finally {
-      busy.current = false
-      if (active.current) setPending(null)
+  const saveSetup = (details: SaveStreamSetupRequest) =>
+    run('save', async (signal) => {
+      const saved = await streamApi.saveSetup(details, signal)
+      if (!active.current) return
+      queryClient.setQueryData(setupKey(userId), saved)
+      if (session && session.status !== 'ENDED') {
+        queryClient.setQueryData(metadataKey(userId, session.id), { ...session, ...details })
+      }
+      toast.success('Stream information saved')
+    })
+
+  return {
+    setup,
+    current,
+    categories,
+    metadata,
+    session,
+    id,
+    pending,
+    lastEndedAt,
+    now,
+    refreshMetadata,
+    saveSetup,
+  }
+}
+
+export function useStreamKeyManager(userId: string) {
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [credentials, setCredentials] = useState<StreamKeyCredentials | null>(null)
+  const { pending, active, run } = useAbortableRunner<'key'>()
+
+  const setup = useStreamSetupQuery(userId)
+  const current = useStreamCurrentQuery(userId, false)
+
+  const resetStreamKey = () =>
+    run(
+      'key',
+      async (signal) => {
+        setCredentials(null)
+        const issued = await streamApi.issueKey(signal)
+        if (!active.current) return
+        setCredentials(issued)
+        setResetDialogOpen(false)
+        await Promise.all([setup.refetch(), current.refetch()])
+        toast.success('Stream key reset. Reveal and copy it into OBS now.')
+      },
+      (error) => {
+        setResetDialogOpen(false)
+        if (
+          isAxiosError(error) &&
+          error.response?.status === 400 &&
+          (!setup.data?.categoryId || !setup.data?.title?.trim())
+        ) {
+          return 'Save a stream title and category in Stream Manager before resetting your stream key.'
+        }
+        return streamErrorMessage(error)
+      },
+    )
+
+  const requestReset = () => {
+    if (setup.data?.hasStreamKey) {
+      setResetDialogOpen(true)
+    } else {
+      void resetStreamKey()
     }
   }
 
-  const saveSetup = (details: SaveStreamSetupRequest) => run('save', async (signal) => {
-    const saved = await streamApi.saveSetup(details, signal)
-    if (!active.current) return
-    queryClient.setQueryData(setupKey(userId), saved)
-    if (session && session.status !== 'ENDED') {
-      queryClient.setQueryData(metadataKey(userId, session.id), { ...session, ...details })
-    }
-    toast.success('Stream information saved')
-  })
-
-  const resetStreamKey = () => run('key', async (signal) => {
-    setCredentials(null)
-    const issued = await streamApi.issueKey(signal)
-    if (!active.current) return
-    setCredentials(issued)
-    setResetDialogOpen(false)
-    await Promise.all([setup.refetch(), current.refetch()])
-    toast.success('Copy your stream key now. It will not be shown again.')
-  })
-
   return {
-    setup, current, categories, metadata, session, id, pending, resetDialogOpen, setResetDialogOpen,
-    lastEndedAt, now, refreshMetadata, saveSetup, resetStreamKey, credentials,
-    dismissCredentials: () => setCredentials(null),
+    setup,
+    current,
+    pending,
+    resetDialogOpen,
+    setResetDialogOpen,
+    credentials,
+    resetStreamKey,
+    requestReset,
   }
 }
