@@ -2,6 +2,7 @@ package com.reallive.streamservice.common.exception;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+
 import org.springframework.http.HttpStatus;
 
 @Getter
@@ -11,18 +12,30 @@ public enum ErrorCode {
     ACCESS_DENIED(1002, "Access Denied", HttpStatus.FORBIDDEN),
     STREAM_DATA_UNAVAILABLE(1003, "Stream data unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     STREAM_REQUEST_INVALID(1004, "Invalid stream request", HttpStatus.BAD_REQUEST),
-    AUTH_STATE_UNAVAILABLE(1005, "Authentication state temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
+    AUTH_STATE_UNAVAILABLE(
+            1005, "Authentication state temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     STREAM_SESSION_NOT_FOUND(1006, "Stream session not found", HttpStatus.NOT_FOUND),
-    STREAM_SESSION_NOT_OWNED(1007, "Stream session does not belong to current user", HttpStatus.FORBIDDEN),
-    STREAM_SESSION_ALREADY_ACTIVE(1008, "Channel already has an active stream session", HttpStatus.CONFLICT),
-    STREAM_SESSION_STATE_INVALID(1009, "Stream session state does not allow this operation", HttpStatus.CONFLICT),
-    STREAM_CREATION_REQUEST_CONFLICT(1010, "Creation request identifier is already used for another channel", HttpStatus.CONFLICT),
+    STREAM_SESSION_NOT_OWNED(
+            1007, "Stream session does not belong to current user", HttpStatus.FORBIDDEN),
+    STREAM_SESSION_ALREADY_ACTIVE(
+            1008, "Channel already has an active stream session", HttpStatus.CONFLICT),
+    STREAM_SESSION_STATE_INVALID(
+            1009, "Stream session state does not allow this operation", HttpStatus.CONFLICT),
+    STREAM_CREATION_REQUEST_CONFLICT(
+            1010,
+            "Creation request identifier is already used for another channel",
+            HttpStatus.CONFLICT),
     STREAMER_NOT_ELIGIBLE(1011, "Streamer is not eligible to publish", HttpStatus.FORBIDDEN),
     STREAM_CHANNEL_NOT_ELIGIBLE(1012, "Channel is not eligible to publish", HttpStatus.FORBIDDEN),
     STREAM_CATEGORY_INVALID(1013, "Stream category is invalid or inactive", HttpStatus.BAD_REQUEST),
-    MEDIA_SERVER_UNAVAILABLE(1014, "Media server temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
+    MEDIA_SERVER_UNAVAILABLE(
+            1014, "Media server temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
     THUMBNAIL_RESULT_INVALID(1015, "Invalid thumbnail result", HttpStatus.BAD_REQUEST),
-    VIEWER_PRESENCE_UNAVAILABLE(1016, "Viewer presence temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    VIEWER_PRESENCE_UNAVAILABLE(
+            1016, "Viewer presence temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE),
+    STREAM_KEY_NOT_PROVISIONED(
+            1017, "Stream key has not been provisioned yet", HttpStatus.CONFLICT),
+    STREAM_CONFIG_BLOCKED(1019, "Stream configuration is blocked", HttpStatus.CONFLICT);
 
     private final int code;
     private final String message;
