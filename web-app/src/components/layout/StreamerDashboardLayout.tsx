@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, ChevronLeft, KeyRound, LayoutDashboard, Tv, UserRound } from 'lucide-react'
+import { ChevronLeft, KeyRound, LayoutDashboard, Tv, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import realLiveLogo from '@/assets/RealLive-logo.svg'
@@ -127,8 +127,8 @@ export function StreamerDashboardLayout() {
           ))}
         </nav>
 
-        <div className="space-y-3 border-t border-[#1f1f26] px-4 py-4 md:py-5">
-          {isAuthenticated && user && (
+        {isAuthenticated && user && (
+          <div className="border-t border-[#1f1f26] px-4 py-4 md:py-5">
             <div
               className="flex min-w-0 items-center overflow-hidden"
               title={isCollapsed ? user.displayName || user.email : undefined}
@@ -157,24 +157,8 @@ export function StreamerDashboardLayout() {
                 <p className="truncate text-xs text-gray-400">{user.email}</p>
               </div>
             </div>
-          )}
-          <Link
-            to="/"
-            title={isCollapsed ? 'Back to home' : undefined}
-            className="flex h-9 items-center rounded px-2 text-sm text-gray-400 hover:text-white overflow-hidden whitespace-nowrap transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
-          >
-            <ArrowLeft className="h-5 w-5 shrink-0" />
-            <span
-              className={`overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                isCollapsed
-                  ? 'ml-0 max-w-0 -translate-x-1 opacity-0'
-                  : 'ml-2.5 max-w-[140px] translate-x-0 opacity-100'
-              }`}
-            >
-              Back to home
-            </span>
-          </Link>
-        </div>
+          </div>
+        )}
       </aside>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
         <Outlet />
