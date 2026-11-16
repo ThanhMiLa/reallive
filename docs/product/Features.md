@@ -34,12 +34,11 @@
 - Handle Unexpected Disconnect  ✅
 - Notify Email Followers When Stream Starts
 - Set thumbnail  ✅
+- Ban/Unban User Watch Livestream
 
 ## V - Chat Realtime
-- Send Message
-- Mute User
-- Ban User From Channel Chat
-- Unban User
+- Send Message ✅
+- Ban/Unban User From Chat
 
 ## VI - Donate / Coin / Payment
 - Create Wallet ✅

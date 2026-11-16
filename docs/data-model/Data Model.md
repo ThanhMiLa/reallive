@@ -252,79 +252,187 @@ Composite Index:
 
 ## 3. Stream Service Data Model
 
-Thiết kế đồng bộ V6; xem [Streaming Architecture and Flow](../architecture/Streaming%20Architecture%20and%20Flow.md).
+Synchronized with V6; see [Streaming Architecture and Flow](../architecture/Streaming%20Architecture%20and%20Flow.md).
 
 ### 3.1 Tables
 
 #### 3.1.1 channel_stream_configs
 
-Mỗi kênh một cấu hình, dùng cả trước khi có buổi phát.
+One configuration per channel, used both before and during live sessions.
 
-| Column | Vai trò |
-|---|---|
-| channel_id | UUID primary key, định danh kênh |
-| streamer_id / owner_user_id | Chủ sở hữu, mỗi giá trị unique |
-| title / category_id / visibility | Thông tin dùng khi tạo session; MVP PUBLIC |
-| status | DRAFT / ACTIVE / BLOCKED |
-| current_ingest_key_id | UUID unique nullable, ingest đang được phép publish |
-| blocked_reason | Lý do chặn nếu có |
-| created_at / updated_at | Thời gian tạo/cập nhật |
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| channel_id | UUID | PK, NOT NULL | Primary | Channel ID from Channel Service |
+| streamer_id | UUID | UNIQUE, NOT NULL | UNIQUE | Streamer ID from User Service |
+| owner_user_id | UUID | UNIQUE, NOT NULL | UNIQUE | Owner user ID from User Service |
+| title | VARCHAR(255) | NOT NULL | - | Saved channel stream title |
+| category_id | UUID | - | - | Saved category ID from Channel Service (nullable while `DRAFT`) |
+| visibility | VARCHAR(30) | NOT NULL, DEFAULT `'PUBLIC'` | - | `PUBLIC` (fixed to `PUBLIC` in MVP) |
+| status | VARCHAR(30) | NOT NULL | - | `DRAFT, ACTIVE, BLOCKED` |
+| current_ingest_key_id | UUID | UNIQUE | UNIQUE | Active ingest key UUID allowed to publish `ingest/{current_ingest_key_id}` |
+| blocked_reason | VARCHAR(500) | - | - | Blocking reason (allowed only when `status = 'BLOCKED'`) |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Created time |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Last updated time |
 
-Không lưu Publish/Relay JWT. DRAFT chưa có key; ACTIVE có ingest ID và category hợp lệ. Save chỉ cập nhật thông tin, POST cấp key luôn thay ingest ID hiện hành.
+Constraints:
+- `UNIQUE (owner_user_id)` (`uk_channel_stream_configs_owner`)
+- `UNIQUE (streamer_id)` (`uk_channel_stream_configs_streamer`)
+- `UNIQUE (current_ingest_key_id)` (`uk_channel_stream_configs_ingest_key`)
+- `CHECK (status = 'DRAFT' OR length(btrim(title)) > 0)`
+- `CHECK (visibility = 'PUBLIC')`
+- `CHECK (status IN ('DRAFT', 'ACTIVE', 'BLOCKED'))`
+- `CHECK (status = 'BLOCKED' OR blocked_reason IS NULL)`
+- `CHECK ((status = 'DRAFT' AND current_ingest_key_id IS NULL) OR (status = 'ACTIVE' AND current_ingest_key_id IS NOT NULL AND category_id IS NOT NULL) OR status = 'BLOCKED')`
+
+Publish and Relay JWTs are not persisted. `DRAFT` has no ingest key; `ACTIVE` requires both `current_ingest_key_id` and `category_id`. Saving setup updates metadata only, while issuing or resetting a stream key replaces `current_ingest_key_id`.
 
 #### 3.1.2 stream_sessions
 
-Mỗi buổi phát có session độc lập. Giữ schema V5 gồm ID/owner/channel/streamer, snapshot title/category, visibility, status LIVE/RECONNECTING/ENDED, playback_path unique `/live/{sessionId}/index.m3u8`, ingest_key_id, media_path_state, media_source_id/type, disconnected_at, reconnect_deadline_at, started_at, ended_at và end_requested/end_requested_at/end_reason. creation_request_id nullable giữ tương thích lịch sử.
+Each broadcast creates an independent stream session.
 
-Các cột thumbnail URL/object key/update time và job ID/status/deadline giữ nguyên. Kết thúc phiên xóa job đang chờ và đóng CCU.
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Stream session ID, playback path `live/{id}` |
+| channel_id | UUID | NOT NULL | INDEX | Channel ID from Channel Service |
+| streamer_id | UUID | NOT NULL | INDEX | Streamer ID from User Service |
+| owner_user_id | UUID | NOT NULL | INDEX | Owner user ID from User Service |
+| category_id | UUID | NOT NULL | INDEX | Category ID snapshot from Channel Service |
+| title | VARCHAR(255) | NOT NULL | - | Stream title snapshot, non-blank |
+| visibility | VARCHAR(30) | NOT NULL | INDEX | `PUBLIC, PRIVATE, UNLISTED` (`PUBLIC` used in MVP) |
+| status | VARCHAR(30) | NOT NULL | INDEX | `LIVE, RECONNECTING, ENDED` |
+| playback_path | VARCHAR(500) | UNIQUE, NOT NULL | UNIQUE | HLS playback path `/live/{id}/index.m3u8` |
+| creation_request_id | UUID | - | UNIQUE Composite | Legacy nullable request ID retained for historical compatibility |
+| ingest_key_id | UUID | - | Partial INDEX | Snapshot ingest key UUID used to start the session (no FK after V6) |
+| end_requested | BOOLEAN | NOT NULL, DEFAULT `FALSE` | - | Prevents delayed online events from reviving closing/resetting sessions |
+| end_requested_at | TIMESTAMP | - | - | Timestamp when closure or key reset requested session end |
+| end_reason | VARCHAR(500) | - | - | Reason for requested closure |
+| media_path_state | VARCHAR(30) | NOT NULL | - | Playback path state: `OPEN, CLOSED` |
+| media_source_id | UUID | - | - | Active ingest publisher connection UUID |
+| media_source_type | VARCHAR(30) | - | - | `rtmpConn, rtmpsConn` |
+| disconnected_at | TIMESTAMP | - | - | Timestamp when ingest publisher disconnected |
+| reconnect_deadline_at | TIMESTAMP | - | Partial INDEX | Reconnect grace deadline |
+| started_at | TIMESTAMP | - | INDEX | Actual stream start time |
+| ended_at | TIMESTAMP | - | - | Stream end time |
+| thumbnail_url | VARCHAR(1000) | - | - | Current R2 thumbnail URL |
+| thumbnail_object_key | VARCHAR(500) | - | - | Current R2 thumbnail object key |
+| thumbnail_updated_at | TIMESTAMP | - | Partial INDEX | Last successful thumbnail commit time |
+| thumbnail_job_id | UUID | - | - | Latest thumbnail job ID |
+| thumbnail_job_status | VARCHAR(30) | - | Partial INDEX | `PENDING_DISPATCH, ACCEPTED, SUCCEEDED, FAILED` |
+| thumbnail_job_deadline_at | TIMESTAMP | - | Partial INDEX | Pending or accepted thumbnail job deadline |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | INDEX | Created time |
+| updated_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | - | Last updated time |
 
-- Unique active slot theo channel: status LIVE hoặc RECONNECTING.
-- ingest_key_id là snapshot UUID, không còn FK tới bảng credential đã bỏ.
-- LIVE yêu cầu startedAt/source ID/type, không có reconnect deadline. RECONNECTING yêu cầu disconnectedAt/deadline. ENDED yêu cầu endedAt và media path CLOSED.
-- Tất cả thao tác lifecycle khóa config trước session; Control API chạy đồng bộ trong transaction.
+Constraints & Indexes:
+- `UNIQUE (playback_path)` (`uk_stream_sessions_playback_path`)
+- `UNIQUE (owner_user_id, creation_request_id)` (`uk_stream_sessions_owner_creation_request`)
+- `CHECK (length(btrim(title)) > 0)`, `CHECK (length(btrim(playback_path)) > 0)`
+- `CHECK (visibility IN ('PUBLIC', 'PRIVATE', 'UNLISTED'))`
+- `CHECK (status IN ('LIVE', 'RECONNECTING', 'ENDED'))`
+- `CHECK (media_path_state IN ('OPEN', 'CLOSED'))`
+- `CHECK (media_source_type IS NULL OR media_source_type IN ('rtmpConn', 'rtmpsConn'))`
+- `CHECK (status <> 'RECONNECTING' OR (disconnected_at IS NOT NULL AND reconnect_deadline_at IS NOT NULL))`
+- `CHECK (status <> 'LIVE' OR (started_at IS NOT NULL AND media_source_id IS NOT NULL AND media_source_type IS NOT NULL AND reconnect_deadline_at IS NULL))`
+- `CHECK ((status = 'ENDED' AND ended_at IS NOT NULL) OR (status <> 'ENDED' AND ended_at IS NULL))`
+- `CHECK ((status = 'LIVE' AND media_path_state = 'OPEN') OR (status = 'RECONNECTING' AND media_path_state IN ('OPEN', 'CLOSED')) OR (status = 'ENDED' AND media_path_state = 'CLOSED'))`
+- `CHECK ((end_requested = FALSE AND end_requested_at IS NULL AND end_reason IS NULL) OR (end_requested = TRUE AND end_requested_at IS NOT NULL))`
+- `CHECK (thumbnail_job_status IS NULL OR thumbnail_job_status IN ('PENDING_DISPATCH', 'ACCEPTED', 'SUCCEEDED', 'FAILED'))`
+- `CHECK ((thumbnail_job_status IS NULL AND thumbnail_job_id IS NULL AND thumbnail_job_deadline_at IS NULL) OR (thumbnail_job_status IS NOT NULL AND thumbnail_job_id IS NOT NULL AND thumbnail_job_deadline_at IS NOT NULL))`
+- `UNIQUE INDEX uq_stream_sessions_channel_slot ON stream_sessions (channel_id) WHERE status IN ('LIVE', 'RECONNECTING')`
+- `INDEX idx_stream_sessions_live_discovery ON stream_sessions (visibility, status, started_at DESC, id ASC)`
+- `INDEX idx_stream_sessions_owner_current ON stream_sessions (owner_user_id, created_at DESC, id DESC)`
+- `INDEX idx_stream_sessions_reconnect_deadline ON stream_sessions (status, reconnect_deadline_at) WHERE status = 'RECONNECTING'`
+- `INDEX idx_stream_sessions_channel_id ON stream_sessions (channel_id)`, `idx_stream_sessions_streamer_id ON stream_sessions (streamer_id)`, `idx_stream_sessions_category_id ON stream_sessions (category_id)`
+- `INDEX idx_stream_sessions_ingest_key_id ON stream_sessions (ingest_key_id) WHERE ingest_key_id IS NOT NULL`
+- Thumbnail partial indexes:
+  - `INDEX idx_stream_sessions_thumbnail_due ON stream_sessions (thumbnail_updated_at ASC NULLS FIRST, id ASC) WHERE status = 'LIVE' AND (thumbnail_job_status IS NULL OR thumbnail_job_status NOT IN ('PENDING_DISPATCH', 'ACCEPTED'))`
+  - `INDEX idx_stream_sessions_thumbnail_pending_dispatch ON stream_sessions (thumbnail_job_deadline_at ASC, id ASC) WHERE thumbnail_job_status = 'PENDING_DISPATCH'`
+  - `INDEX idx_stream_sessions_thumbnail_job_deadline ON stream_sessions (thumbnail_job_deadline_at ASC, id ASC) WHERE thumbnail_job_status IN ('PENDING_DISPATCH', 'ACCEPTED')`
+
+All lifecycle operations lock `channel_stream_configs` before `stream_sessions`; MediaMTX Control API calls run synchronously within the lifecycle flow. Ending a session clears pending thumbnail jobs and closes CCU tracking.
 
 #### 3.1.3 stream_status_history
 
-Giữ ID, stream_id, previous_status, status, reason, media_source_id, media_event_id và created_at. Unique media_event_id khi non-null giúp callback lặp không tạo lại transition. Trạng thái READY vẫn được phép ở history để giữ dữ liệu cũ.
+| Column | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| id | UUID | PK, NOT NULL | Primary | Stream status history ID |
+| stream_id | UUID | FK, NOT NULL | INDEX | References `stream_sessions.id`, ON DELETE CASCADE |
+| previous_status | VARCHAR(30) | - | - | Previous status (`READY, LIVE, RECONNECTING, ENDED`) |
+| status | VARCHAR(30) | NOT NULL | - | New status (`READY, LIVE, RECONNECTING, ENDED`) |
+| reason | VARCHAR(500) | - | - | Reason for status change |
+| media_source_id | UUID | - | - | Media publisher connection identifier |
+| media_event_id | UUID | - | UNIQUE Partial | Media callback event ID for deduplication |
+| created_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | INDEX | Transition time |
+
+Constraints & Indexes:
+- `CHECK (previous_status IS NULL OR previous_status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))`
+- `CHECK (status IN ('READY', 'LIVE', 'RECONNECTING', 'ENDED'))` (`READY` remains permitted in history for legacy rows)
+- `INDEX idx_stream_status_history_stream_created_at ON stream_status_history (stream_id, created_at ASC, id ASC)`
+- `UNIQUE INDEX uq_stream_status_history_media_event_id ON stream_status_history (media_event_id) WHERE media_event_id IS NOT NULL`
 
 ### 3.2 Relationships
 
-- Channel 1 — 1 channel_stream_configs.
-- Channel/streamer/category 1 — N stream_sessions.
-- stream_sessions 1 — N stream_status_history.
+- `channels (Channel Service)` 1 — 1 `channel_stream_configs`
+- `streamers (User Service)` 1 — 1 `channel_stream_configs`
+- `users (User Service)` 1 — 1 `channel_stream_configs` (via `owner_user_id`)
+- `channels (Channel Service)` 1 — N `stream_sessions`
+- `streamers (User Service)` 1 — N `stream_sessions`
+- `categories (Channel Service)` 1 — N `stream_sessions`
+- `stream_sessions` 1 — N `stream_status_history`
 
-V6 bỏ channel_stream_credentials, stream_media_operations và stream_media_runtime_state. V1–V5 là lịch sử Flyway bất biến; các bài test migration V5 vẫn kiểm tra schema cũ.
+V6 drops `channel_stream_credentials`, `stream_media_operations`, and `stream_media_runtime_state`. Migrations V1–V5 remain immutable Flyway history; V5 migration tests continue verifying the historical schema.
 
 ---
 
 ## 4. Chat Service Data Model
 
-### 4.1 chat_messages
+Chat Service stores data in MongoDB (no cross-service foreign keys or MongoDB joins to PostgreSQL). See [Chat contract](../contracts/chat/README.md).
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| _id | UUID string | YES | Server message ID |
-| stream_id | UUID string | YES | Session ID; one chat room per session |
-| channel_id | UUID string | YES | Channel resolved from Stream Service |
-| user_id | UUID string | YES | Authenticated sender |
-| client_message_id | UUID string | YES | Stable retry identifier per sender and session |
-| sequence | NUMBER (safe integer) | YES | Monotonic per-session ordering and cursor key |
-| content | STRING | YES | Trimmed text, 1–500 Unicode code points |
-| sender_snapshot.display_name | STRING | YES | Name observed by the server when accepting the message |
-| sender_snapshot.avatar_url | STRING / null | NO | Retained avatar URL at send time |
-| created_at | DATETIME | YES | Server timestamp; sequence orders equal timestamps |
+### 4.1 Collections
 
-Indexes: default `_id`, unique `(stream_id, sequence)`, unique `(stream_id, user_id, client_message_id)`.
+#### 4.1.1 chat_messages
 
-### 4.2 chat_counters
+| Field | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| _id | STRING (UUID) | PK, NOT NULL | Primary | Server message ID |
+| stream_id | STRING (UUID) | NOT NULL | UNIQUE Composite | Stream session ID from Stream Service; one chat room per session |
+| channel_id | STRING (UUID) | NOT NULL | - | Channel ID resolved from Stream Service |
+| user_id | STRING (UUID) | NOT NULL | UNIQUE Composite | Authenticated sender user ID from User Service |
+| client_message_id | STRING (UUID) | NOT NULL | UNIQUE Composite | Stable retry identifier per sender and session |
+| sequence | NUMBER (Safe Integer) | NOT NULL | UNIQUE Composite | Monotonic per-session ordering and cursor key |
+| content | STRING | NOT NULL | - | Trimmed text, 1–500 Unicode code points |
+| sender_snapshot.display_name | STRING | NOT NULL | - | Display name observed by the server when accepting the message |
+| sender_snapshot.avatar_url | STRING | DEFAULT `null` | - | Retained avatar URL snapshot at send time (nullable) |
+| created_at | DATE | NOT NULL | - | Server timestamp; `sequence` orders equal timestamps |
 
-One document per session: `_id` is the session UUID string, `value` is the latest committed sequence. Counter increment and message insert share a MongoDB transaction. Replica set required; application startup does not auto-create indexes.
+Indexes:
+- Default primary index on `_id`
+- `UNIQUE INDEX stream_sequence` on `(stream_id: 1, sequence: 1)`
+- `UNIQUE INDEX stream_sender_request` on `(stream_id: 1, user_id: 1, client_message_id: 1)`
 
-### 4.3 Access and retention
+#### 4.1.2 chat_counters
 
-Chat is readable/writable only during PUBLIC/LIVE or PUBLIC/RECONNECTING, subject to account and channel access. History uses cursor pagination, 50 messages per request. There is no VOD chat replay or offset_ms requirement. No retention TTL is configured yet; ending a stream closes access but does not delete stored messages. User Service retains previous committed avatar objects for historical snapshots.
+One document per stream session tracking the latest committed message sequence.
 
-See [Chat contract](../contracts/chat/README.md). Cross-service identifiers are logical references; no MongoDB join to PostgreSQL or foreign key across services.
+| Field | Type | Constraints | Index | Description |
+|---|---|---|---|---|
+| _id | STRING (UUID) | PK, NOT NULL | Primary | Stream session ID (`stream_sessions.id`) |
+| value | NUMBER (Safe Integer) | NOT NULL | - | Latest committed message sequence for the session |
+
+Indexes & Transaction Semantics:
+- Default primary index on `_id`
+- Counter increment (`$inc: { value: 1 }`, upsert) and `chat_messages` insert execute within a single MongoDB transaction (`snapshot` read concern, `majority` write concern), requiring a replica set.
+- Application startup does not auto-create collections or indexes (`autoIndex: false`, `autoCreate: false`); provision them via `npm run db:indexes`.
+
+### 4.2 Relationships
+
+- `stream_sessions (Stream Service)` 1 — 0...1 `chat_counters` (logical reference via `_id`)
+- `stream_sessions (Stream Service)` 1 — N `chat_messages` (logical reference via `stream_id`)
+- `channels (Channel Service)` 1 — N `chat_messages` (logical reference via `channel_id`)
+- `users (User Service)` 1 — N `chat_messages` (logical reference via `user_id`)
+
+### 4.3 Access and Retention
+
+Chat is readable and writable only during `PUBLIC/LIVE` or `PUBLIC/RECONNECTING`, subject to account and channel access. History uses cursor pagination with 50 messages per request. There is no VOD chat replay or `offset_ms` requirement. No retention TTL is configured yet; ending a stream closes access without deleting stored messages. User Service retains previous committed avatar objects for historical snapshots.
 
 ---
 
