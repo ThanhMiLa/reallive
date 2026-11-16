@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 @Repository
@@ -16,6 +18,9 @@ public interface ProfileRepository extends JpaRepository<ProfileEntity, UUID> {
 
     @EntityGraph(attributePaths = "user")
     Optional<ProfileEntity> findByUserId(UUID userId);
+
+    @EntityGraph(attributePaths = "user")
+    List<ProfileEntity> findByUserIdIn(Collection<UUID> userIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

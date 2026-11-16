@@ -6,8 +6,18 @@ import com.reallive.userservice.user.dto.request.UpdateProfileRequest;
 import com.reallive.userservice.user.dto.response.UserProfileResponse;
 
 import java.util.UUID;
+import java.util.List;
+import com.reallive.userservice.user.dto.response.ChatProfileSnapshot;
 
 public interface ProfileService {
+
+    /**
+     * Retrieves available chat profiles.
+     *
+     * @param userIds requested user IDs
+     * @return matching profiles
+     */
+    List<ChatProfileSnapshot> getChatProfiles(List<UUID> userIds);
 
     /**
      * Retrieves the profile and account details of the specified authenticated user.

@@ -45,6 +45,8 @@ public class SecurityConfig {
             "/internal/api/users/*/chat-profile"
     };
 
+    private static final String[] INTERNAL_ENDPOINTS_POST = {"/internal/api/users/chat-profiles"};
+
     private static final String[] INTERNAL_ENDPOINTS_PATCH = {
             "/internal/api/users/*/channel-profile"
     };
@@ -60,6 +62,7 @@ public class SecurityConfig {
     SecurityFilterChain internalEndpointFilterChain(HttpSecurity http) throws Exception {
         http.securityMatchers(matchers -> matchers
                         .requestMatchers(HttpMethod.GET, INTERNAL_ENDPOINTS_GET)
+                        .requestMatchers(HttpMethod.POST, INTERNAL_ENDPOINTS_POST)
                         .requestMatchers(HttpMethod.PATCH, INTERNAL_ENDPOINTS_PATCH))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

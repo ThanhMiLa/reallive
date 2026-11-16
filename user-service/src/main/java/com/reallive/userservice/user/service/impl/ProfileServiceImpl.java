@@ -23,6 +23,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
+import java.util.List;
+import com.reallive.userservice.user.dto.response.ChatProfileSnapshot;
 
 @Slf4j
 @Service
@@ -34,6 +36,14 @@ public class ProfileServiceImpl implements ProfileService {
     ProfileMapper profileMapper;
     StreamerRepository streamerRepository;
     ChannelClientResolver channelClientResolver;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ChatProfileSnapshot> getChatProfiles(List<UUID> userIds) {
+        return profileRepository.findByUserIdIn(userIds).stream()
+                .map(profile -> new ChatProfileSnapshot(profile.getUser().getId(), profile.getDisplayName(), profile.getAvatarUrl()))
+                .toList();
+    }
 
     @Override
     @Transactional(readOnly = true)
