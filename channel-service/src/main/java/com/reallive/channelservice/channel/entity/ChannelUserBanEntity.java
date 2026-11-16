@@ -21,9 +21,6 @@ public class ChannelUserBanEntity {
     @Column(name = "user_id", nullable = false)
     UUID userId;
 
-    @Column(nullable = false)
-    String action;
-
     @Column(name = "ban_type", nullable = false)
     String banType;
 

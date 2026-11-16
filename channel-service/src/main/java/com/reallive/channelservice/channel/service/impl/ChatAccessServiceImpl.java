@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.stream.Collectors;
 import java.util.UUID;
 
 @Service
@@ -28,12 +27,10 @@ public class ChatAccessServiceImpl implements ChatAccessService {
         var channel = channels.findById(channelId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
         boolean active = channel.getStatus() == ChannelStatus.ACTIVE && channel.getDeletedAt() == null;
-        var types = bans.findCurrent(channelId, userId).stream()
-                .filter(event -> "BAN".equals(event.getAction()))
-                .map(ChannelUserBanRepository.CurrentBan::getBanType)
-                .collect(Collectors.toSet());
-        boolean canView = active && !types.contains("FULL_BAN") && !types.contains("LIVE_VIEW_BAN");
+        String type = userId.equals(channel.getUserId()) ? "" : bans.findByChannelIdAndUserId(channelId, userId)
+                .map(ban -> ban.getBanType()).orElse("");
+        boolean canView = active && !type.equals("FULL_BAN") && !type.equals("LIVE_VIEW_BAN");
         return new ChatAccessResponse(channelId, userId, canView, canView,
-                canView && !types.contains("CHAT_BAN"));
+                canView && !type.equals("CHAT_BAN"));
     }
 }

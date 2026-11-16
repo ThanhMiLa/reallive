@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public interface ChatAccessService {
     /**
-     * Resolves current channel access using the latest action of each ban type.
+     * Resolves current channel access using the current channel ban.
      * @param channelId channel to access
      * @param userId user whose permissions are requested
      * @return effective viewing and chat permissions for the requested user

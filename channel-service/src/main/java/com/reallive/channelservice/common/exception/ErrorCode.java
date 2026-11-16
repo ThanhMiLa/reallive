@@ -28,7 +28,12 @@ public enum ErrorCode {
     CHANNEL_ALREADY_FOLLOWED(1019, "Channel already followed", HttpStatus.CONFLICT),
     CHANNEL_NOT_FOLLOWED(1020, "Channel is not followed", HttpStatus.CONFLICT),
     CANNOT_FOLLOW_OWN_CHANNEL(1021, "Cannot follow own channel", HttpStatus.CONFLICT),
-    USER_NOT_FOUND(1022, "User not found", HttpStatus.NOT_FOUND);
+    USER_NOT_FOUND(1022, "User not found", HttpStatus.NOT_FOUND),
+    CHANNEL_CHAT_ALREADY_BANNED(1023, "User already banned from chat", HttpStatus.CONFLICT),
+    CHANNEL_CHAT_NOT_BANNED(1024, "User is not banned from chat", HttpStatus.CONFLICT),
+    CANNOT_BAN_CHANNEL_OWNER(1025, "Cannot ban channel owner", HttpStatus.CONFLICT),
+    CHANNEL_CHAT_BAN_BLOCKED_BY_HIGHER_BAN(1026, "User has a higher channel ban", HttpStatus.CONFLICT),
+    CHANNEL_CHAT_UNBAN_BLOCKED_BY_HIGHER_BAN(1027, "Higher channel ban cannot be lifted here", HttpStatus.CONFLICT);
 
     private final int code;
     private final String message;

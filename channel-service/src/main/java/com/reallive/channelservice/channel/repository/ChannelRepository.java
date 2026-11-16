@@ -23,6 +23,14 @@ public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID>, J
     @Query("""
             SELECT channel
             FROM ChannelEntity channel
+            WHERE channel.id = :channelId
+            """)
+    Optional<ChannelEntity> findByIdForUpdate(@Param("channelId") UUID channelId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT channel
+            FROM ChannelEntity channel
             WHERE channel.streamerId = :streamerId
             """)
     Optional<ChannelEntity> findByStreamerIdForUpdate(@Param("streamerId") UUID streamerId);
