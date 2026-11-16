@@ -7,13 +7,22 @@ description: Create Git commits for this repository using Conventional Commits. 
 
 Create focused, reviewable commits. Stage only the files that belong to the same logical change; do not use `git add .`.
 
+## Workflow
+
+1. Inspect the working tree and staged/unstaged diffs to identify the requested changes and any unrelated work.
+2. Group changes by purpose, include their relevant tests, and stage specific files or hunks for each commit.
+3. Inspect the staged diff and choose the type, optional scope, and summary that describe it.
+4. Create the commit when requested, then report the commit hash and any remaining changes. A request to draft a message alone does not request creating a commit.
+
 ## Subject line
 
 Use Conventional Commits with a concise imperative summary:
 
 ```text
-<type>: <main change>
+<type>(<scope>): <main change>
 ```
+
+The scope is optional; omit both parentheses when it adds no useful context, for example `docs: update setup instructions`.
 
 Allowed types:
 
@@ -35,11 +44,11 @@ Keep the subject under 72 characters where practical. Do not end it with a perio
 When the commit contains important supporting changes, add a blank line after the subject and list them as bullets. The subject must still state the single main change.
 
 ```text
-feat: add course enrollment checkout
+feat(stream): add livestream thumbnail dispatch
 
-- create enrollment after successful wallet payment
-- prevent duplicate enrollment for an existing student
-- add Vietnamese and English checkout messages
+- send thumbnail batches to the media worker
+- retain pending jobs when acceptance is uncertain
+- cover batch dispatch failures
 ```
 
 Use a body only when it helps reviewers understand meaningful sub-changes, tradeoffs, or impacts. Do not list trivial formatting, generated files, or mechanical renames.

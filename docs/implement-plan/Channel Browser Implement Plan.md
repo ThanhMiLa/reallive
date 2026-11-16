@@ -425,10 +425,10 @@ Kết quả build/test thực tế được ghi tại mục 11; các test tùy c
 - [Data model](../data-model/Data%20Model.md).
 - [Channel Service README](../../channel-service/README.md).
 - [User Service README](../../user-service/README.md).
-- [Code architecture](../../.agents/skills/code-architecture/SKILL.md).
-- [Code style](../../.agents/skills/code-style/SKILL.md).
-- [Service Javadoc](../../.agents/skills/service-javadoc/SKILL.md).
-- [Exception handling](../../.agents/skills/exception-handling/SKILL.md).
+- [Java architecture](../../.agents/rules/java-architecture/RULE.md).
+- [Java code style](../../.agents/rules/java-code-style/RULE.md).
+- [Service interface Javadoc](../../.agents/rules/java-code-style/service-javadoc/RULE.md).
+- [Java exception handling](../../.agents/rules/java-exception-handling/RULE.md).
 
 
 ## 11. Kết quả thực hiện và kiểm chứng

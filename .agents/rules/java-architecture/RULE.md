@@ -1,9 +1,4 @@
----
-name: code-architecture
-description: Apply this repository's common and feature-module package conventions in Java microservices when placing new code, adding integrations, refactoring packages, or reviewing code architecture. Distinguish infrastructure adapters from clients calling other application services.
----
-
-# Service Code Architecture
+# Java Service Architecture
 
 Use a consistent package structure inside each Java backend service: a service-local `common` package alongside business modules such as `auth`, `user`, and `streamer`. Organize by business module first, then by responsibility inside that module. Do not apply this Java package layout to frontend, Android, or NestJS code.
 
@@ -64,9 +59,9 @@ com.reallive.<service>/
 - `common.security`: security configuration and shared authentication/authorization infrastructure.
 - `common.util`: helpers genuinely reused across modules, such as `AuthenticationUserId` and `UserValidator` in User Service. A helper used only for one feature belongs in that module's `util`; do not move business workflows into utilities.
 - `common.entity.BaseEntity`: shared persistence fields. User Service's reference is a JPA `@MappedSuperclass` with `createdAt` and `updatedAt`; identifiers remain in concrete entities. Reuse the local base entity for entities needing these fields instead of duplicating them. Do not force inheritance onto entities with a different persistence model.
-- `common.exception`: the service-wide application error model and HTTP error handler. Use `AppException(ErrorCode)` and follow [exception-handling](../exception-handling/SKILL.md) when adding or changing errors. Feature modules use these definitions rather than creating their own exception hierarchy.
+- `common.exception`: the service-wide application error model and HTTP error handler. Follow [Java exception handling](../java-exception-handling/RULE.md) when adding or changing errors.
 - `common.dto`: response envelopes or other contracts shared across the service, such as `ApiResponse`; feature request/response DTOs stay in the feature module.
-- Shared services and integrations can also live under `common` when actually reused across modules. User Service already has `common.service.R2StorageService` and `common.service.impl.R2StorageServiceImpl`; preserve their location during unrelated changes. For new shared integrations, use `common.adapter` or `common.client` according to the rules below.
+- Shared services and integrations can also live under `common` when actually reused across modules. User Service's existing `common.service.R2StorageService` and `common.service.impl.R2StorageServiceImpl` are legacy placements to preserve during unrelated changes. For new shared integrations, use `common.adapter` or `common.client` according to the rules below.
 
 Do not place a feature in `common` merely because another module calls it; keep the feature under its business owner.
 
@@ -92,7 +87,7 @@ Choose the package by the responsibility of the target system, not by the librar
 
 - **Adapter:** integrates with supplied infrastructure or external providers, such as Kafka, Redis, RabbitMQ, object storage, or a Media Server such as MediaMTX/SRS. Group by technology/provider when useful: `adapter.kafka`, `adapter.redis`, `adapter.rabbitmq`, or `adapter.media`. An HTTP integration with a Media Server still belongs in an adapter even if it uses `WebClient`.
 - **Client:** calls another application microservice's API, such as Channel Service, User Service, or Notification Service. Put Feign clients (`@FeignClient`), WebClient wrappers, and related remote API DTOs under the owning module's `client` package, with target-specific subpackages when useful. Feign and WebClient are implementation choices, not mandatory dependencies.
-- For Feign integrations, follow [feign-client](../feign-client/SKILL.md): use a `<Target>ApiClient` interface for the HTTP contract and a concrete `<Target>Client` wrapper for credentials, request preparation and transport-error handling. Business services consume the wrapper.
+- For Feign interface and wrapper naming, follow [Feign client naming](../feign-client/RULE.md).
 - Broker communication remains in `adapter.kafka` or `adapter.rabbitmq` even when the event is consumed by another application service. For example, requesting a verification email through Kafka uses an adapter; requesting it through Notification Service's HTTP API uses a client.
 - Keep integration contracts and implementations together as appropriate. User Service uses `user.adapter.kafka.EmailVerificationEmailPublisher` with `KafkaEmailVerificationEmailPublisher`, and `user.adapter.redis.EmailVerificationOtpStore` with `RedisEmailVerificationOtpStore`. Reuse this pattern where it helps isolate the integration; do not introduce an interface solely to fill the package tree.
 - Keep broker message types near the adapter, following `user.adapter.kafka.message`. Keep remote API request/response types near their client rather than importing entities from the destination service.
@@ -102,6 +97,6 @@ Choose the package by the responsibility of the target system, not by the librar
 
 Inspect the target service's packages before editing. User Service is the reference implementation, including [BaseEntity](../../../user-service/src/main/java/com/reallive/userservice/common/entity/BaseEntity.java) and [EmailVerificationServiceImpl](../../../user-service/src/main/java/com/reallive/userservice/user/service/impl/EmailVerificationServiceImpl.java).
 
-Follow [code-style](../code-style/SKILL.md) for Java implementation and [service-javadoc](../service-javadoc/SKILL.md) when creating or editing service interfaces. When moving code, update package declarations, imports, Spring/JPA discovery configuration where applicable, and tests; mirror the production packages under `src/test/java`.
+Follow [Java code style](../java-code-style/RULE.md) for implementation and service-interface documentation. When moving code, update package declarations, imports, Spring/JPA discovery configuration where applicable, and tests; mirror the production packages under `src/test/java`.
 
 Apply the convention to the requested work without turning a focused change into a service-wide package migration. Validate affected behavior with the module's relevant tests and build checks when implementation changes are made.

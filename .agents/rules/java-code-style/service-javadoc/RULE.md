@@ -1,9 +1,6 @@
----
-name: service-javadoc
-description: Write or review mandatory English Javadoc for every method declared in a Java service interface in this repository. Apply when creating or editing interfaces in service packages.
----
-
 # Service Interface Javadoc
+
+Apply when creating, editing, or reviewing Java service interfaces.
 
 Every method declared in a Java interface in a `service` package or its subpackages must have an English Javadoc block immediately above the declaration, even when its name appears self-explanatory. Apply this to all declared methods in a service interface being created or edited, including default and static methods.
 

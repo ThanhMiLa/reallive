@@ -588,7 +588,7 @@ com.reallive.streamservice/
 - Reuse Spring Security/Nimbus JOSE đang có theo dependency BOM; không nâng phiên bản Spring hoặc thêm thư viện JWT khác nếu không cần.
 - Chỉ tạo class/interface có use case thực tế; không sinh folder/class rỗng theo sơ đồ.
 - Mọi method của service interface có English Javadoc, mô tả ownership, idempotency, trạng thái trả về và side effect có ý nghĩa.
-- Áp dụng [code-architecture](../../.agents/skills/code-architecture/SKILL.md), [code-style](../../.agents/skills/code-style/SKILL.md), [exception-handling](../../.agents/skills/exception-handling/SKILL.md), [service-javadoc](../../.agents/skills/service-javadoc/SKILL.md).
+- Áp dụng rule [Java architecture](../../.agents/rules/java-architecture/RULE.md), [Java code style](../../.agents/rules/java-code-style/RULE.md), [Java exception handling](../../.agents/rules/java-exception-handling/RULE.md) và [Service interface Javadoc](../../.agents/rules/java-code-style/service-javadoc/RULE.md).
 
 ### 11.2. User Service
 
