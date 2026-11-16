@@ -56,20 +56,26 @@ class ChatAccessIntegrationTest {
     }
 
     @Test
-    void resolvesEachBanTypeAndLatestUnbanWithoutClearingOtherBans() throws Exception {
+    void resolvesEachCurrentBanType() throws Exception {
         assertAccess(true, true);
         event("CHAT_BAN", "BAN");
         assertAccess(true, false);
+        event("CHAT_BAN", "UNBAN");
+        assertAccess(true, true);
         event("LIVE_VIEW_BAN", "BAN");
         assertAccess(false, false);
         event("LIVE_VIEW_BAN", "UNBAN");
-        assertAccess(true, false);
-        event("CHAT_BAN", "UNBAN");
         assertAccess(true, true);
         event("FULL_BAN", "BAN");
-        event("CHAT_BAN", "UNBAN");
         assertAccess(false, false);
         event("FULL_BAN", "UNBAN");
+        assertAccess(true, true);
+    }
+
+    @Test
+    void channelOwnerRemainsAllowedEvenIfBanWasInsertedOutsideModerationApi() throws Exception {
+        jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", userId, channelId);
+        event("FULL_BAN", "BAN");
         assertAccess(true, true);
     }
 
@@ -138,9 +144,11 @@ class ChatAccessIntegrationTest {
     private String path() { return "/internal/api/channels/" + channelId + "/chat-access"; }
     private String body() { return "{\"userId\":\"" + userId + "\"}"; }
     private void event(String type, String action) {
-        // Equal timestamps deliberately exercise the event_order tie breaker.
-        jdbc.update("INSERT INTO channel_user_bans (id, channel_id, user_id, action, ban_type, performed_by, created_at) VALUES (?, ?, ?, ?, ?, ?, TIMESTAMP '2026-11-11 10:00:00')",
-                UUID.randomUUID(), channelId, userId, action, type, UUID.randomUUID());
+        jdbc.update("DELETE FROM channel_user_bans WHERE channel_id = ? AND user_id = ?", channelId, userId);
+        if ("BAN".equals(action)) {
+            jdbc.update("INSERT INTO channel_user_bans (id, channel_id, user_id, ban_type, performed_by, created_at) VALUES (?, ?, ?, ?, ?, TIMESTAMP '2026-11-11 10:00:00')",
+                    UUID.randomUUID(), channelId, userId, type, UUID.randomUUID());
+        }
     }
     private void assertAccess(boolean read, boolean send) throws Exception {
         mvc.perform(post(path())

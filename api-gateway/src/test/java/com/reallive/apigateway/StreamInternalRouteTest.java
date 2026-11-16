@@ -96,6 +96,7 @@ class StreamInternalRouteTest {
             "POST, /stream/internal/api/thumbnail-results",
             "GET, /stream/internal/api/streams/id/chat-context",
             "GET, /user/internal/api/users/id/chat-profile",
+            "POST, /user/internal/api/users/chat-profiles",
             "GET, /user/internal/api/streamers/by-user/id/streaming-eligibility",
             "GET, /channel/internal/api/channels/by-streamer/id/streaming-context",
             "POST, /channel/internal/api/channels",

@@ -88,10 +88,45 @@ class ChannelPersistenceTest {
     @Test
     void migrationCreatesAllTablesAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("5", flyway.info().current().getVersion().toString());
+        assertEquals("6", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         for (String name : List.of("channels", "categories", "channel_categories", "channel_followers", "channel_user_bans")) {
             assertNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM " + table(name), Integer.class));
+        }
+    }
+
+    @Test
+    void activeBanMigrationPreservesHighestCurrentBanAndRemovesOwnerBan() {
+        String schema = "ban_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway initial = Flyway.configure().dataSource(jdbc.getDataSource())
+                .schemas(schema).defaultSchema(schema).target("5").load();
+        try {
+            initial.migrate();
+            UUID channelId = UUID.randomUUID();
+            UUID owner = UUID.randomUUID();
+            UUID target = UUID.randomUUID();
+            UUID unbanned = UUID.randomUUID();
+            String channelTable = "\"" + schema + "\".channels";
+            String banTable = "\"" + schema + "\".channel_user_bans";
+            jdbc.update("INSERT INTO " + channelTable + " (id, streamer_id, user_id, name, slug, status) VALUES (?, ?, ?, ?, ?, ?)",
+                    channelId, UUID.randomUUID(), owner, "Ban migration", "ban-migration", "ACTIVE");
+            for (String[] event : List.of(new String[]{"CHAT_BAN", "BAN"}, new String[]{"CHAT_BAN", "UNBAN"},
+                    new String[]{"LIVE_VIEW_BAN", "BAN"}, new String[]{"FULL_BAN", "BAN"})) {
+                jdbc.update("INSERT INTO " + banTable + " (id, channel_id, user_id, action, ban_type, performed_by, created_at) VALUES (?, ?, ?, ?, ?, ?, TIMESTAMP '2026-11-11 10:00:00')",
+                        UUID.randomUUID(), channelId, target, event[1], event[0], owner);
+            }
+            jdbc.update("INSERT INTO " + banTable + " (id, channel_id, user_id, action, ban_type, performed_by) VALUES (?, ?, ?, 'BAN', 'CHAT_BAN', ?)",
+                    UUID.randomUUID(), channelId, owner, owner);
+            for (String action : List.of("BAN", "UNBAN")) {
+                jdbc.update("INSERT INTO " + banTable + " (id, channel_id, user_id, action, ban_type, performed_by, created_at) VALUES (?, ?, ?, ?, 'CHAT_BAN', ?, TIMESTAMP '2026-11-11 10:00:00')",
+                        UUID.randomUUID(), channelId, unbanned, action, owner);
+            }
+            Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource()).schemas(schema).defaultSchema(schema).load();
+            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM " + banTable, Integer.class));
+            assertEquals("FULL_BAN", jdbc.queryForObject("SELECT ban_type FROM " + banTable + " WHERE user_id = ?", String.class, target));
+        } finally {
+            jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
         }
     }
 
@@ -110,7 +145,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(4, upgraded.migrate().migrationsExecuted);
+            assertEquals(5, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             assertEquals(0L, jdbc.queryForObject("SELECT follower_count FROM " + channelsTable
                     + " WHERE id = ?", Long.class, channelId));
@@ -181,7 +216,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(2, upgraded.migrate().migrationsExecuted);
+            assertEquals(3, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             expectedRows.forEach((channelId, expected) -> assertEquals(expected,
                     jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId)));

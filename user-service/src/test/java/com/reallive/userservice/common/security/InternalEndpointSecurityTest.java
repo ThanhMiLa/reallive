@@ -44,7 +44,8 @@ class InternalEndpointSecurityTest {
             "GET, /internal/api/streamers/by-user/id/active",
             "GET, /internal/api/streamers/by-user/id/streaming-eligibility",
             "GET, /internal/api/users/id/category-preferences",
-            "GET, /internal/api/users/id/chat-profile"
+            "GET, /internal/api/users/id/chat-profile",
+            "POST, /internal/api/users/chat-profiles"
     })
     void internalCallsBypassAllTokenVerification(String method, String path) throws Exception {
         mvc.perform(request(HttpMethod.valueOf(method), path))
@@ -82,6 +83,9 @@ class InternalEndpointSecurityTest {
         String internal2() {
             return "internal";
         }
+
+        @RequestMapping(path = "/internal/api/users/chat-profiles", method = RequestMethod.POST)
+        String internalBatch() { return "internal"; }
 
         @RequestMapping(path = "/internal/api/users/id/chat-profile", method = RequestMethod.GET)
         String internal3() {

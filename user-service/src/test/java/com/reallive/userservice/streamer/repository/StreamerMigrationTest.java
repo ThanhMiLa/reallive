@@ -37,14 +37,14 @@ class StreamerMigrationTest {
     @Test
     void migratesFreshDatabaseAndGrantsChannelAndStreamPermissionsToStreamerRole() {
         Flyway flyway = migrations().load();
-        assertEquals(10, flyway.migrate().migrationsExecuted);
+        assertEquals(11, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
         assertEquals(0, count("user_roles", ""));
         assertEquals(1, count("permissions", "WHERE name = 'CHANNEL_VIEW_OWN'"));
         assertEquals(STREAM_PERMISSIONS, streamerPermissions());
-        assertEquals(6, count("role_permissions", ""));
+        assertEquals(9, count("role_permissions", ""));
         assertEquals(0, count("auth_state_sync_tasks", ""));
         assertEquals(0, count("streamers", ""));
         assertEquals(0, flyway.migrate().migrationsExecuted);
@@ -65,12 +65,12 @@ class StreamerMigrationTest {
         jdbc.update("INSERT INTO " + table("user_roles") + " (user_id, role_id) VALUES (?, ?)", userId, roleId);
 
         Flyway flyway = migrations().load();
-        assertEquals(7, flyway.migrate().migrationsExecuted);
+        assertEquals(8, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
         assertEquals(roleId, jdbc.queryForObject("SELECT id FROM " + table("roles") + " WHERE name = 'STREAMER'", UUID.class));
-        assertEquals(7, count("role_permissions", ""));
+        assertEquals(10, count("role_permissions", ""));
         assertEquals(1, count("role_permissions", "WHERE permission_id = '" + permissionId + "'"));
         assertEquals(1, count("role_permissions", "WHERE permission_id = (SELECT id FROM "
                 + table("permissions") + " WHERE name = 'CHANNEL_VIEW_OWN')"));
@@ -95,7 +95,7 @@ class StreamerMigrationTest {
                 profileId, userId);
 
         Flyway flyway = migrations().load();
-        assertEquals(6, flyway.migrate().migrationsExecuted);
+        assertEquals(7, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("users", ""));
@@ -141,7 +141,7 @@ class StreamerMigrationTest {
                         + " (user_id, revision, attempts, next_attempt_at) VALUES (?, 7, 4, ?), (?, 5, 3, ?)",
                 streamerWithPendingTask, nextRetry, viewer, nextRetry);
 
-        Flyway flyway = migrations().load();
+        Flyway flyway = migrations().target("10").load();
         assertEquals(1, flyway.migrate().migrationsExecuted);
         flyway.validate();
 

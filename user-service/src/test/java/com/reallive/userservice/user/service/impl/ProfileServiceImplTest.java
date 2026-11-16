@@ -30,6 +30,7 @@ import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -81,6 +82,18 @@ class ProfileServiceImplTest {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.clearSynchronization();
         }
+    }
+
+    @Test
+    void batchChatProfilesReturnOnlyAvailablePublicProfileFields() {
+        var requested = List.of(user.getId(), UUID.randomUUID());
+        when(profileRepository.findByUserIdIn(requested)).thenReturn(List.of(
+                ProfileEntity.builder().user(user).displayName("Viewer").avatarUrl("https://example.com/avatar.png").build()));
+        var result = profileService.getChatProfiles(requested);
+        assertEquals(1, result.size());
+        assertEquals(user.getId(), result.getFirst().userId());
+        assertEquals("Viewer", result.getFirst().displayName());
+        assertEquals("https://example.com/avatar.png", result.getFirst().avatarUrl());
     }
 
     @Test
