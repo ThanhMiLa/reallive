@@ -430,8 +430,8 @@ export function WatchStreamPage() {
           </section>
         </div>
 
-        {/* Right Side Chat UI Placeholder */}
-        <StreamChatPanel sessionId={sessionId} status={session?.status} streamerUserId={session?.ownerUserId} onAccessError={handleAccessError} />
+        {/* Right Side Chat UI */}
+        <StreamChatPanel sessionId={sessionId} channelId={session?.channelId} status={session?.status} streamerUserId={session?.ownerUserId} onAccessError={handleAccessError} />
       </div>
     </main>
   )

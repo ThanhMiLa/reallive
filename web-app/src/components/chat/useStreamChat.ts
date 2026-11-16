@@ -12,17 +12,35 @@ const API_ORIGIN = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
 export const chatKey = (userId: string, sessionId: string) => ['chat', userId, sessionId] as const
 const unavailable: ChatProblem = { code: 'CHAT_UNAVAILABLE', status: 503, message: 'Chat is temporarily unavailable.', retryable: true }
 
+export class ChatBannedError extends Error {
+  readonly code = 'CHAT_BANNED'
+
+  constructor(message = 'You are banned from sending messages in this channel.') {
+    super(message)
+    this.name = 'ChatBannedError'
+  }
+}
+
+export function isChatBannedError(error: unknown): error is ChatBannedError {
+  return error instanceof ChatBannedError || (typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'CHAT_BANNED')
+}
+
 export function useStreamChat(sessionId: string, active: boolean, onAccessError?: (error: unknown) => void) {
   const userId = useAuthStore(s => s.isAuthenticated ? s.user?.userId : undefined)
   const client = useQueryClient()
   const key = chatKey(userId ?? '', sessionId)
   const [joined, setJoined] = useState(false)
   const [canSend, setCanSend] = useState(false)
+  const [chatBanned, setChatBanned] = useState(false)
+  const [isCheckingAccess, setIsCheckingAccess] = useState(false)
+  const [accessCheckFeedback, setAccessCheckFeedback] = useState<string | null>(null)
   const [problem, setProblem] = useState<ChatProblem | null>(null)
   const [unread, setUnread] = useState(0)
   const [followLive, setFollowLive] = useState(true)
   const followRef = useRef(true)
   const socketRef = useRef<Socket | null>(null)
+  const checkingAccessRef = useRef(false)
+  const disposedRef = useRef(true)
   const accessErrorRef = useRef(onAccessError)
   useEffect(() => { accessErrorRef.current = onAccessError }, [onAccessError])
 
@@ -45,6 +63,7 @@ export function useStreamChat(sessionId: string, active: boolean, onAccessError?
   useEffect(() => {
     if (!active || !userId) return
     let disposed = false
+    disposedRef.current = false
     let retryTimer: ReturnType<typeof setTimeout> | undefined
     let refreshing = false
     let refreshAttempted = false
@@ -87,6 +106,10 @@ export function useStreamChat(sessionId: string, active: boolean, onAccessError?
         }
         refreshAttempted = false
         setJoined(true); setCanSend(ack.data.canSend); setProblem(null)
+        if (ack.data.canSend) {
+          setChatBanned(false)
+          setAccessCheckFeedback(null)
+        }
         client.setQueryData<ChatWindow>(queryKey, data => data?.pages.at(-1)?.newerCursor === ack.data.watermark ? data : markChatGap(data))
       })
     }
@@ -100,13 +123,21 @@ export function useStreamChat(sessionId: string, active: boolean, onAccessError?
     socket.on('chat:message', receive)
     socket.on('chat:closed', (error: ChatProblem) => {
       setJoined(false); setCanSend(false)
+      checkingAccessRef.current = false
+      setIsCheckingAccess(false)
       void client.cancelQueries({ queryKey })
       client.removeQueries({ queryKey })
       report(error)
       if (error.status === 401) { socket.disconnect(); void refresh() }
       else if (error.retryable) scheduleJoin()
     })
-    socket.on('disconnect', () => { if (!disposed) { setJoined(false); setCanSend(false) } })
+    socket.on('disconnect', () => {
+      if (!disposed) {
+        setJoined(false); setCanSend(false)
+        checkingAccessRef.current = false
+        setIsCheckingAccess(false)
+      }
+    })
     socket.on('connect_error', (error: Error & { data?: ChatProblem }) => {
       setJoined(false); report(error.data ?? unavailable)
       if (error.data?.status === 401) void refresh()
@@ -115,6 +146,8 @@ export function useStreamChat(sessionId: string, active: boolean, onAccessError?
     socket.connect()
     return () => {
       disposed = true
+      disposedRef.current = true
+      checkingAccessRef.current = false
       if (retryTimer) clearTimeout(retryTimer)
       socket.emit('chat:leave', { sessionId })
       socket.removeAllListeners(); socket.disconnect(); socketRef.current = null
@@ -129,11 +162,66 @@ export function useStreamChat(sessionId: string, active: boolean, onAccessError?
     socket.timeout(5000).emit('chat:send', { sessionId, clientMessageId, content },
       (error: Error | null, ack: ChatAck<ChatMessage> | undefined) => {
         if (error || !ack) { reject(new Error('Delivery is unconfirmed. Retry will reuse the same message ID.')); return }
-        if (!ack.ok) { reject(new Error(ack.error.message)); return }
+        if (!ack.ok) {
+          if (ack.error.code === 'CHAT_BANNED') {
+            setCanSend(false)
+            setChatBanned(true)
+            setAccessCheckFeedback(null)
+            reject(new ChatBannedError(ack.error.message))
+            return
+          }
+          reject(new Error(ack.error.message))
+          return
+        }
         client.setQueryData<ChatWindow>(chatKey(userId ?? '', sessionId), data => mergeChatMessage(data, ack.data, followRef.current))
         resolve(ack.data)
       })
   }), [joined, canSend, sessionId, userId, client])
+
+  const checkAccess = useCallback(() => {
+    if (checkingAccessRef.current || disposedRef.current) return
+    const socket = socketRef.current
+    if (!socket?.connected) {
+      setAccessCheckFeedback('Chat is currently disconnected. Please try again.')
+      return
+    }
+    checkingAccessRef.current = true
+    setIsCheckingAccess(true)
+    setAccessCheckFeedback(null)
+    socket.timeout(5000).emit('chat:join', { sessionId }, (error: Error | null, ack: ChatAck<ChatJoin> | undefined) => {
+      if (disposedRef.current) return
+      checkingAccessRef.current = false
+      setIsCheckingAccess(false)
+      if (error || !ack) {
+        setAccessCheckFeedback('Unable to check chat access. Please try again.')
+        return
+      }
+      if (!ack.ok) {
+        if ([401, 403].includes(ack.error.status)) {
+          setProblem(ack.error)
+          if (ack.error.status === 403) {
+            const failure = new AxiosError(ack.error.message, undefined, undefined, undefined, {
+              status: ack.error.status, statusText: ack.error.message, data: ack.error, headers: {}, config: { headers: {} } as never,
+            })
+            accessErrorRef.current?.(failure)
+          }
+        }
+        setAccessCheckFeedback(ack.error.message || 'Unable to check chat access. Please try again.')
+        return
+      }
+      setJoined(true)
+      setCanSend(ack.data.canSend)
+      setProblem(null)
+      const queryKey = chatKey(userId ?? '', sessionId)
+      client.setQueryData<ChatWindow>(queryKey, data => data?.pages.at(-1)?.newerCursor === ack.data.watermark ? data : markChatGap(data))
+      if (ack.data.canSend) {
+        setChatBanned(false)
+        setAccessCheckFeedback(null)
+      } else {
+        setAccessCheckFeedback('You still cannot send messages in this channel. If you were recently unbanned, wait a moment and check again.')
+      }
+    })
+  }, [client, sessionId, userId])
 
   const setFollowing = useCallback((value: boolean) => {
     if (followRef.current !== value) {
@@ -155,6 +243,6 @@ export function useStreamChat(sessionId: string, active: boolean, onAccessError?
     () => (joined ? (feed.data?.pages ?? []).flatMap(page => page.items) : []),
     [joined, feed.data?.pages],
   )
-  return { ...feed, messages, joined, canSend, problem, unread, followLive, setFollowing, latest, send,
+  return { ...feed, messages, joined, canSend, chatBanned, isCheckingAccess, accessCheckFeedback, checkAccess, problem, unread, followLive, setFollowing, latest, send,
     reconnect: () => { socketRef.current?.disconnect(); socketRef.current?.connect() } }
 }

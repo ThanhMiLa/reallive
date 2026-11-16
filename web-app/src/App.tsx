@@ -20,6 +20,7 @@ import { ProfilePage } from '@/pages/profile/ProfilePage'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { StreamUrlKeyPage } from '@/pages/dashboard/StreamUrlKeyPage'
 import { MyChannelPage } from '@/pages/dashboard/MyChannelPage'
+import { BannedUsersPage } from '@/pages/dashboard/BannedUsersPage'
 import { HomePage } from '@/pages/HomePage'
 import { BrowsePage } from '@/pages/browse/BrowsePage'
 import { CategoryDetailPage } from '@/pages/browse/CategoryDetailPage'
@@ -55,6 +56,7 @@ export function AppRoutes() {
         <Route path="/dashboard" element={<StreamerDashboardPage />} />
         <Route path="/dashboard/stream-key" element={<StreamUrlKeyPage />} />
         <Route path="/dashboard/channel" element={<MyChannelPage />} />
+        <Route path="/dashboard/chat-bans" element={<BannedUsersPage />} />
         <Route path="/dashboard/my-channel" element={<Navigate to="/dashboard/channel" replace />} />
         <Route path="/streamer/dashboard" element={<Navigate to="/dashboard" replace />} />
         <Route path="/streamer/stream-key" element={<Navigate to="/dashboard/stream-key" replace />} />

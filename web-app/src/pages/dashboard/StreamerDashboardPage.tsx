@@ -1,12 +1,13 @@
 import { lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { MessageSquare, MonitorPlay, Radio } from 'lucide-react'
+import { MessageSquare, MonitorPlay, Radio, ShieldBan } from 'lucide-react'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 import { StreamInfoPanel } from '@/components/stream/StreamInfoPanel'
 import { StreamAuthGate, StreamSetupFallback } from '@/components/stream/StreamPageStates'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
 import { useSessionElapsed, type SessionClock } from '@/components/stream/useSessionElapsed'
+import { useChatModerationContext } from '@/hooks/useChatModeration'
 import { useAuthStore } from '@/stores/auth.store'
 import { useStreamManager } from '@/hooks/useStreamManager'
 
@@ -40,6 +41,10 @@ function Dashboard({ userId }: { userId: string }) {
     refreshMetadata,
     saveSetup,
   } = useStreamManager(userId)
+
+  const channelId = session?.channelId ?? setup.data?.channelId
+  const moderationContextQuery = useChatModerationContext(userId, channelId)
+  const canViewBans = Boolean(channelId && moderationContextQuery.data?.canViewBans)
 
   if (setup.isPending || (setup.isError && !setup.data)) {
     return (
@@ -238,18 +243,30 @@ function Dashboard({ userId }: { userId: string }) {
                 <MessageSquare className="h-4 w-4 text-gray-400" />
                 <h2 className="font-outfit text-sm font-bold text-white">Stream Chat</h2>
               </div>
-              {session && (
-                <StreamViewerCount
-                  count={session.currentViewerCount}
-                  status={status}
-                  unavailable={metadata.isPending || metadata.isError}
-                />
-              )}
+              <div className="flex items-center gap-2">
+                {canViewBans && (
+                  <Link
+                    to="/dashboard/chat-bans"
+                    className="inline-flex items-center gap-1 rounded-md border border-[#2a2a35] bg-[#121216] px-2 py-1 text-[11px] font-medium text-gray-300 transition hover:bg-[#1a1a22] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+                  >
+                    <ShieldBan className="h-3 w-3 text-[#ff2b42]" />
+                    <span>Manage banned users</span>
+                  </Link>
+                )}
+                {session && (
+                  <StreamViewerCount
+                    count={session.currentViewerCount}
+                    status={status}
+                    unavailable={metadata.isPending || metadata.isError}
+                  />
+                )}
+              </div>
             </div>
             {id && activeSession ? (
               <StreamChatPanel
                 embedded
                 sessionId={id}
+                channelId={channelId}
                 status={status}
                 streamerUserId={session?.ownerUserId ?? userId}
               />

@@ -10,9 +10,11 @@ import type {
 } from '@/types/auth.types'
 
 function clearStreamCredentials() {
-  const filters = { queryKey: ['stream'] }
-  void queryClient.cancelQueries(filters)
-  queryClient.removeQueries(filters)
+  for (const queryKey of [['stream'], ['chat-moderation']] as const) {
+    const filters = { queryKey }
+    void queryClient.cancelQueries(filters)
+    queryClient.removeQueries(filters)
+  }
 }
 
 let authCheckPromise: Promise<void> | null = null

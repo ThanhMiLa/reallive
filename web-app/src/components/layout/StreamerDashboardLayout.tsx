@@ -1,6 +1,10 @@
 import { useState } from 'react'
-import { ChevronLeft, KeyRound, LayoutDashboard, Tv, UserRound } from 'lucide-react'
+import { ChevronLeft, KeyRound, LayoutDashboard, ShieldBan, Tv, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
+import {
+  useChatModerationContext,
+  useOwnChannelForModeration,
+} from '@/hooks/useChatModeration'
 import { useAuthStore } from '@/stores/auth.store'
 import realLiveLogo from '@/assets/RealLive-logo.svg'
 import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
@@ -13,6 +17,21 @@ const navigationItems = [
 
 export function StreamerDashboardLayout() {
   const { user, isAuthenticated } = useAuthStore()
+  const userId = isAuthenticated && user?.userId ? user.userId : ''
+  const ownChannelQuery = useOwnChannelForModeration(userId)
+  const moderationContextQuery = useChatModerationContext(
+    userId,
+    ownChannelQuery.data?.id,
+  )
+  const canViewBans = Boolean(
+    ownChannelQuery.data?.id && moderationContextQuery.data?.canViewBans,
+  )
+  const visibleNavigationItems = canViewBans
+    ? [
+        ...navigationItems,
+        { to: '/dashboard/chat-bans', label: 'Banned users', icon: ShieldBan },
+      ]
+    : navigationItems
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return localStorage.getItem('reallive_streamer_sidebar_collapsed') === 'true'
@@ -89,7 +108,7 @@ export function StreamerDashboardLayout() {
         </div>
 
         <nav aria-label="Streamer navigation" className="space-y-1.5 px-3 pb-4 md:flex-1">
-          {navigationItems.map(({ to, label, icon: Icon, end }) => (
+          {visibleNavigationItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}

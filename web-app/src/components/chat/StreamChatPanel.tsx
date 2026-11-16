@@ -1,7 +1,13 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { MessageSquare, RefreshCw, Send } from 'lucide-react'
-import { useStreamChat } from './useStreamChat'
+import { Loader2, MessageSquare, RefreshCw, Send, ShieldBan } from 'lucide-react'
+import {
+  ChatUserBanMenu,
+  type ChatModerationTarget,
+} from './ChatUserBanMenu'
+import { isChatBannedError, useStreamChat } from './useStreamChat'
+import { useChatModerationContext } from '@/hooks/useChatModeration'
 import { useAuthStore } from '@/stores/auth.store'
 
 function Avatar({ url, name }: { url: string | null; name: string }) {
@@ -11,21 +17,29 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
     : <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#25252d] text-xs text-gray-300">{name.charAt(0).toUpperCase()}</span>
 }
 
-export function StreamChatPanel({ sessionId, status, streamerUserId, onAccessError, embedded = false }: {
-  sessionId: string; status?: string; streamerUserId?: string; onAccessError?: (error: unknown) => void; embedded?: boolean
+export function StreamChatPanel({ sessionId, channelId, status, streamerUserId, onAccessError, embedded = false }: {
+  sessionId: string; channelId?: string; status?: string; streamerUserId?: string; onAccessError?: (error: unknown) => void; embedded?: boolean
 }) {
   const viewerId = useAuthStore(state => state.user?.userId ?? '')
   const active = status === 'LIVE' || status === 'RECONNECTING'
   // A keyed child discards transient compose/connection state on room or lifecycle changes.
-  return <ChatRoom key={`${viewerId}:${sessionId}:${active}`} sessionId={sessionId} viewerId={viewerId} streamerUserId={streamerUserId} status={status} active={active} onAccessError={onAccessError} embedded={embedded} />
+  return <ChatRoom key={`${viewerId}:${sessionId}:${active}`} sessionId={sessionId} channelId={channelId} viewerId={viewerId} streamerUserId={streamerUserId} status={status} active={active} onAccessError={onAccessError} embedded={embedded} />
 }
 
-function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAccessError, embedded }: {
-  sessionId: string; viewerId: string; streamerUserId?: string; status?: string; active: boolean; onAccessError?: (error: unknown) => void; embedded: boolean
+function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, active, onAccessError, embedded }: {
+  sessionId: string; channelId?: string; viewerId: string; streamerUserId?: string; status?: string; active: boolean; onAccessError?: (error: unknown) => void; embedded: boolean
 }) {
   const chat = useStreamChat(sessionId, active, onAccessError)
+  const moderationContextQuery = useChatModerationContext(viewerId, channelId)
+  const moderationContext = moderationContextQuery.data
+  const canBan = Boolean(channelId && moderationContext?.canBan)
+  const canViewBans = Boolean(channelId && moderationContext?.canViewBans)
+  const ownerId = moderationContext?.ownerUserId || streamerUserId || ''
+  const menuScope = `${viewerId}:${sessionId}:${channelId ?? ''}:${canBan}`
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const anchorElementRef = useRef<HTMLButtonElement | null>(null)
   const anchor = useRef<{ id: string; offset: number } | null>(null)
   const lastScrollTop = useRef(0)
   const prevTailId = useRef<string | null>(null)
@@ -34,13 +48,47 @@ function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAcces
   const [pending, setPending] = useState<{ id: string; content: string } | null>(null)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [selectedMenu, setSelectedMenu] = useState<{
+    scope: string
+    target: ChatModerationTarget
+    nonce: number
+  } | null>(null)
+
+  const activeMenu =
+    selectedMenu && selectedMenu.scope === menuScope ? selectedMenu : null
+
+  const getAnchorElement = useCallback(() => anchorElementRef.current, [])
+  const getScrollContainer = useCallback(() => scrollRef.current, [])
+  const handleCloseMenu = useCallback((restoreFocus = false) => {
+    const trigger = anchorElementRef.current
+    setSelectedMenu(null)
+    if (restoreFocus && trigger && trigger.isConnected) {
+      const container = scrollRef.current
+      const containerRect = container?.getBoundingClientRect()
+      const triggerRect = trigger.getBoundingClientRect()
+      const hasLayout =
+        Boolean(containerRect) &&
+        containerRect!.height > 0 &&
+        triggerRect.height > 0
+      const visible =
+        !hasLayout ||
+        (triggerRect.bottom > containerRect!.top &&
+          triggerRect.top < containerRect!.bottom)
+      if (visible) {
+        queueMicrotask(() => {
+          if (trigger.isConnected) trigger.focus()
+        })
+      }
+    }
+  }, [])
+
   // eslint-disable-next-line react-hooks/incompatible-library -- The virtualizer intentionally reads the live scroll viewport.
   const virtualizer = useVirtualizer({
     count: chat.messages.length, getScrollElement: () => scrollRef.current,
     estimateSize: index => {
       const msg = chat.messages[index]
       if (!msg) return 52
-      const bordered = (Boolean(streamerUserId) && msg.userId === streamerUserId) || (Boolean(viewerId) && msg.userId === viewerId)
+      const bordered = (Boolean(ownerId) && msg.userId === ownerId) || (Boolean(viewerId) && msg.userId === viewerId)
       return bordered ? 68 : 52
     },
     overscan: 12, getItemKey: index => chat.messages[index].id,
@@ -89,7 +137,15 @@ function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAcces
       setPending(null); setDraft('')
       inputRef.current?.focus()
     }
-    catch (error) { setSendError(error instanceof Error ? error.message : 'Unable to send message.') }
+    catch (error) {
+      if (isChatBannedError(error)) {
+        // Definitive rejection: preserve draft without auto-resending and unlock compose state for future access restoration.
+        setPending(null)
+        setSendError(null)
+      } else {
+        setSendError(error instanceof Error ? error.message : 'Unable to send message.')
+      }
+    }
     finally { setSending(false) }
   }
   const closed = chat.problem?.code === 'CHAT_CLOSED'
@@ -103,7 +159,18 @@ function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAcces
       {!embedded && (
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#1f1f26] px-4">
           <MessageSquare className="h-4 w-4 text-gray-400" /><h2 className="font-outfit text-sm font-bold text-gray-200">Chat</h2>
-          {connecting && <RefreshCw aria-label="Connecting chat" className="ml-auto h-3.5 w-3.5 animate-spin text-gray-500" />}
+          <div className="ml-auto flex items-center gap-2">
+            {canViewBans && (
+              <Link
+                to="/dashboard/chat-bans"
+                className="inline-flex items-center gap-1 rounded-md border border-[#2a2a35] bg-[#121216] px-2 py-1 text-[11px] font-medium text-gray-300 transition hover:bg-[#1a1a22] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+              >
+                <ShieldBan className="h-3 w-3 text-[#ff2b42]" />
+                <span>Manage banned users</span>
+              </Link>
+            )}
+            {connecting && <RefreshCw aria-label="Connecting chat" className="h-3.5 w-3.5 animate-spin text-gray-500" />}
+          </div>
         </div>
       )}
       {embedded && connecting && (
@@ -140,7 +207,10 @@ function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAcces
             {virtualizer.getVirtualItems().map(item => {
               const message = chat.messages[item.index]
               const isCurrentUser = Boolean(viewerId) && message.userId === viewerId
-              const isStreamer = Boolean(streamerUserId) && message.userId === streamerUserId
+              const isStreamer = Boolean(ownerId) && message.userId === ownerId
+              const canModerateSender = canBan && message.userId !== ownerId
+              const isMenuOpenForUser =
+                activeMenu?.target.userId === message.userId
               const wrapperClass = isStreamer
                 ? 'flex items-start gap-2 rounded-lg border border-[#ff2b42] px-2.5 py-2'
                 : isCurrentUser
@@ -148,7 +218,38 @@ function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAcces
                   : 'flex items-start gap-2'
               const nameColor = isStreamer ? 'text-green-400' : 'text-white'
               return <div key={message.id} data-index={item.index} ref={virtualizer.measureElement} className="absolute top-0 left-0 w-full px-3 py-2" style={{ transform: `translateY(${item.start}px)` }}>
-                <div className={wrapperClass}><Avatar url={message.sender.avatarUrl} name={message.sender.displayName} />
+                <div className={wrapperClass}>
+                  {canModerateSender ? (
+                    <button
+                      type="button"
+                      aria-label={`Moderation options for ${message.sender.displayName}`}
+                      aria-haspopup="menu"
+                      aria-expanded={isMenuOpenForUser}
+                      onClick={event => {
+                        const button = event.currentTarget
+                        if (isMenuOpenForUser && anchorElementRef.current === button) {
+                          anchorElementRef.current = null
+                          setSelectedMenu(null)
+                          return
+                        }
+                        anchorElementRef.current = button
+                        setSelectedMenu(prev => ({
+                          scope: menuScope,
+                          target: {
+                            userId: message.userId,
+                            displayName: message.sender.displayName,
+                            avatarUrl: message.sender.avatarUrl,
+                          },
+                          nonce: (prev?.nonce ?? 0) + 1,
+                        }))
+                      }}
+                      className="h-7 w-7 shrink-0 rounded-full border-0 bg-transparent p-0 cursor-pointer transition hover:ring-2 hover:ring-[#ff2b42]/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42]"
+                    >
+                      <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} />
+                    </button>
+                  ) : (
+                    <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} />
+                  )}
                   <div className="min-w-0 flex-1"><div className="flex items-baseline gap-2"><span className={`truncate text-xs font-semibold ${nameColor}`}>{message.sender.displayName}</span><time dateTime={message.createdAt} className="shrink-0 text-[10px] text-gray-500">{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
                     <p className="select-text text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-200">{message.content}</p></div>
                 </div>
@@ -160,12 +261,49 @@ function ChatRoom({ sessionId, viewerId, streamerUserId, status, active, onAcces
         {(!chat.followLive || chat.unread > 0) && <button type="button" onClick={() => void chat.latest()} className="cursor-pointer self-center py-1.5 text-[11px] font-medium text-green-300 transition-colors hover:text-green-200">{chat.unread ? `${chat.unread} new messages · ` : ''}Back to latest</button>}
       </>}
       <form className="shrink-0 border-t border-[#1f1f26] bg-[#050507] p-3" onSubmit={event => { event.preventDefault(); void submit() }}>
-        {active && chat.joined && !chat.canSend && <p className="mb-2 text-xs text-amber-300">You can read chat, but cannot send messages in this channel.</p>}
+        {active && chat.joined && !chat.canSend && (
+          <div className="mb-2 space-y-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 p-2.5 text-xs text-amber-200">
+            <p>
+              {chat.chatBanned
+                ? 'You are banned from sending messages in this channel.'
+                : 'You can read chat, but cannot send messages in this channel.'}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={chat.isCheckingAccess}
+                onClick={() => chat.checkAccess()}
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/35 bg-[#101014] px-2.5 py-1 text-[11px] font-semibold text-amber-100 transition hover:bg-[#18181f] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-[#ff2b42] cursor-pointer"
+              >
+                {chat.isCheckingAccess && (
+                  <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                )}
+                <span>{chat.isCheckingAccess ? 'Checking access…' : 'Check chat access'}</span>
+              </button>
+            </div>
+            {chat.accessCheckFeedback && (
+              <p role="status" className="text-[11px] text-amber-100/90">
+                {chat.accessCheckFeedback}
+              </p>
+            )}
+          </div>
+        )}
         {sendError && <div role="alert" className="mb-2 text-xs text-amber-300">{sendError}<div className="mt-1 flex gap-3"><button type="button" disabled={sending || !chat.canSend} onClick={() => void submit(true)} className="underline">Retry message</button><button type="button" onClick={() => { setPending(null); setSendError(null) }} className="underline">Dismiss</button></div></div>}
         <div className="flex items-center gap-2"><input ref={inputRef} aria-label="Send a message" placeholder="Send a message" value={draft} onChange={event => setDraft(event.target.value)} disabled={inputDisabled} readOnly={sendBusy} className="min-w-0 flex-1 rounded-lg border border-[#1f1f26] bg-[#101014] px-3 py-2.5 text-xs text-gray-200 placeholder-gray-500 disabled:opacity-50 read-only:opacity-50" />
           <button aria-label="Send chat message" type="submit" disabled={disabled || !characters || characters > 500} className="rounded-lg bg-[#ff2b42] p-2.5 text-white disabled:opacity-40"><Send className="h-4 w-4" /></button></div>
         <p className={`mt-1 text-right text-[10px] ${characters > 500 ? 'text-red-400' : 'text-gray-500'}`}>{characters}/500</p>
       </form>
+      {activeMenu && channelId && (
+        <ChatUserBanMenu
+          key={`${channelId}:${activeMenu.target.userId}:${activeMenu.nonce}`}
+          viewerId={viewerId}
+          channelId={channelId}
+          target={activeMenu.target}
+          getAnchorElement={getAnchorElement}
+          getScrollContainer={getScrollContainer}
+          onClose={handleCloseMenu}
+        />
+      )}
     </>
   )
   if (embedded) return <div className="flex min-h-0 flex-1 flex-col bg-[#08080a]">{content}</div>
