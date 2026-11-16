@@ -26,7 +26,7 @@ Covered: current account/JWT validation, refresh-token rejection, malformed toke
 
 Gateway tests proxy authenticated HTTP and actual WebSocket frames through a random Gateway port to a real local backend; unauthenticated upgrades and internal route exposure are rejected. This verifies transport routing independently of the Socket.IO application tests.
 
-Channel integration tests exercise latest BAN/UNBAN for every type, equal timestamps with event_order, concurrent active ban types, anonymous internal access, single-user request validation and inactive/deleted channels. Private User/Stream endpoints have anonymous-access/response tests. Playback tests cover denial before minting credentials. Avatar regression tests verify committed old images are retained and new uploads are cleaned on rollback.
+Channel integration tests exercise active ban types, anonymous internal access, single-user request validation and inactive/deleted channels. Private User/Stream endpoints have anonymous-access/response tests. Playback tests cover denial before minting credentials. Avatar regression tests verify committed old images are retained and new uploads are cleaned on rollback.
 
 Web tests cover additive history loading, bounded 20-page eviction with reverse retrieval, no unbounded realtime accumulation while reading old messages, literal text, Unicode validation, same-ID retry after unconfirmed delivery, read-only ban, closure/cleanup and gap recovery without duplicate rendering. Virtualizer layout is mocked in component tests; this is not a browser rendering or scroll-geometry measurement.
 

@@ -226,18 +226,17 @@ Composite Constraint:
 #### 2.1.8 channel_user_bans
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Ban event ID |
-| event_order | BIGINT | GENERATED ALWAYS AS IDENTITY, UNIQUE | UNIQUE | Tie breaker for events with equal timestamps |
+| id | UUID | PK, NOT NULL | Primary | Active ban ID |
 | channel_id | UUID | FK, NOT NULL | INDEX | Channel ID |
 | user_id | UUID | NOT NULL | INDEX | User ID from User Service |
-| action | VARCHAR(20) | NOT NULL | - | `BAN, UNBAN` |
 | ban_type | VARCHAR(30) | NOT NULL | - | `CHAT_BAN, LIVE_VIEW_BAN, FULL_BAN` |
 | performed_by | UUID | NOT NULL | - | User ID who performed the action |
-| reason | VARCHAR(500) | - | - | Action reason |
-| created_at | TIMESTAMP | NOT NULL | - | Event time |
+| reason | VARCHAR(500) | - | - | Ban reason |
+| created_at | TIMESTAMP | NOT NULL | - | Ban time |
 
 Composite Index:
-- `INDEX (channel_id, user_id, ban_type, created_at DESC, event_order DESC)`
+- `UNIQUE (channel_id, user_id)`
+- `INDEX (channel_id, created_at DESC, id DESC)`
 
 ### 2.2 Relationships
 

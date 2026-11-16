@@ -4,7 +4,7 @@
 
 A chat room belongs to one stream session. Only authenticated eligible accounts may read it; sending additionally requires channel chat permission. Read/send are allowed only for PUBLIC sessions in LIVE or RECONNECTING. READY and ENDED reject access. Closing the room removes the Web history view; persisted messages are not deleted by closing.
 
-Chat Service owns MongoDB messages and counters. Stream Service owns lifecycle, Channel Service owns bans, User Service owns auth state and profile snapshots. Ban/mute/delete management, VOD replay, retention cleanup and horizontal Chat scaling are deferred. Run exactly one Chat Service instance in this MVP.
+Chat Service owns MongoDB messages and counters. Stream Service owns lifecycle, Channel Service owns bans, User Service owns auth state and profile snapshots. Chat ban management is provided by Channel Service; mute/delete management, VOD replay, retention cleanup and horizontal Chat scaling are deferred. Run exactly one Chat Service instance in this MVP.
 
 ## Gateway and authentication
 
@@ -31,7 +31,25 @@ The three chat integrations use `permitAll()` on their private service endpoints
 
 Full URLs include existing context paths: `/stream/internal/...`, `/channel/internal/...`, `/user/internal/...`. Their exact GET/POST paths are permitted by each service's normal security configuration; other external APIs retain their authentication requirements. Chat Service itself has no inbound internal business API; `/internal/health/live` and `/internal/health/ready` are operational only.
 
-Latest BAN/UNBAN is evaluated independently for each ban type by `(created_at DESC, event_order DESC)`. CHAT_BAN allows viewing/reading but blocks sending. LIVE_VIEW_BAN blocks livestream and read/send chat, leaving profile/VOD unaffected. FULL_BAN includes those blocks and represents a future all-channel restriction for profile/VOD owners to enforce. Unbanning one type does not remove other active types. Inactive/deleted channels cannot be viewed/chatted. Stream playback-access checks canView before minting credentials; this does not change already-issued media-token revocation semantics.
+Each channel and user has at most one active ban, and unban deletes that ban. CHAT_BAN allows viewing/reading but blocks sending. LIVE_VIEW_BAN blocks livestream and read/send chat, leaving profile/VOD unaffected. FULL_BAN includes those blocks and represents a future all-channel restriction for profile/VOD owners to enforce. A chat unban cannot remove a live-view or full ban. Inactive/deleted channels cannot be viewed/chatted. Stream playback-access checks canView before minting credentials; this does not change already-issued media-token revocation semantics.
+
+## Channel chat moderation
+
+Authenticated channel owners with the corresponding permission manage chat bans via Channel Service. Paths below include the Gateway context path. Channels must be active; owner IDs must be known. The owner cannot be banned. Each channel/user pair has at most one active ban; removing a chat ban deletes its record. Historical ban events are not retained.
+
+| Method | Path | Permission | Result |
+|---|---|---|---|
+| POST | `/channel/api/channels/{channelId}/chat/users/{userId}/ban` | `CHANNEL_CHAT_BAN` | `{channelId,userId,banType:"CHAT_BAN"}` |
+| POST | `/channel/api/channels/{channelId}/chat/users/{userId}/unban` | `CHANNEL_CHAT_UNBAN` | `{channelId,userId,banType:null}` |
+| GET | `/channel/api/channels/{channelId}/chat/users/{userId}/ban` | any chat moderation permission | `{channelId,userId,banType}` |
+| GET | `/channel/api/channels/{channelId}/chat/bans?page=0&size=20` | `CHANNEL_CHAT_BAN_VIEW` | paginated active bans with user profile snapshots |
+| GET | `/channel/api/channels/{channelId}/chat/moderation-context` | authenticated | `{channelId,ownerUserId,canBan,canUnban,canViewBans}` |
+
+The list returns `{content,page,size,totalElements,totalPages}`. Each item contains `{userId,displayName,avatarUrl,banType,createdAt}`; unavailable profile fields are null. The size must be 1–50. Profile details use private User Service `POST /internal/api/users/chat-profiles`, accepting `{userIds}` with 1–50 UUIDs and returning available `{userId,displayName,avatarUrl}` entries. Missing profile data does not prevent unban.
+
+Conflict codes are 1023 (already chat-banned), 1024 (no chat ban), 1025 (channel owner), 1026 (higher ban blocks chat ban), and 1027 (higher ban cannot be removed through chat unban). Ban checks target profile existence; unban does not. Channel Service serializes mutations using the channel row lock. A higher ban is not removed by chat unban. Channel and authentication failures use existing error codes.
+
+Migration V6 retains only the highest currently active ban per channel/user and removes bans targeting known owners. Stop older Channel Service instances before migration because they require the removed action and event_order columns. V11 in User Service grants the three permissions to streamers and queues auth-state synchronization. Ownerless channels cannot use moderation until their owner mapping is backfilled.
 
 ## Message and ordering
 
