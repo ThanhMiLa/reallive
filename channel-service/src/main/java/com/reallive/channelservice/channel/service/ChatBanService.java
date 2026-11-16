@@ -14,7 +14,7 @@ public interface ChatBanService {
      * @return current ban state
      * @throws com.reallive.channelservice.common.exception.AppException when authorization or validation fails
      */
-    ChatBanResponse.State ban(UUID actorId, UUID channelId, UUID userId);
+    ChatBanResponse.State banUserFromChat(UUID actorId, UUID channelId, UUID userId);
 
     /**
      * Removes an active chat ban.
@@ -25,7 +25,7 @@ public interface ChatBanService {
      * @return current ban state
      * @throws com.reallive.channelservice.common.exception.AppException when the ban cannot be removed
      */
-    ChatBanResponse.State unban(UUID actorId, UUID channelId, UUID userId);
+    ChatBanResponse.State unbanUserFromChat(UUID actorId, UUID channelId, UUID userId);
 
     /**
      * Reads the current ban state.
@@ -36,7 +36,7 @@ public interface ChatBanService {
      * @return current ban state
      * @throws com.reallive.channelservice.common.exception.AppException when authorization fails
      */
-    ChatBanResponse.State state(UUID actorId, UUID channelId, UUID userId);
+    ChatBanResponse.State getUserChatBanStatus(UUID actorId, UUID channelId, UUID userId);
 
     /**
      * Lists active channel bans.
@@ -48,7 +48,8 @@ public interface ChatBanService {
      * @return paginated active bans
      * @throws com.reallive.channelservice.common.exception.AppException when authorization or pagination validation fails
      */
-    PageResponse<ChatBanResponse.Item> list(UUID actorId, UUID channelId, int page, int size);
+    PageResponse<ChatBanResponse.Item> getBannedUsers(UUID actorId, UUID channelId, int page, int size);
+
     /**
      * Resolves the caller's moderation capabilities for a channel.
      *
@@ -60,6 +61,6 @@ public interface ChatBanService {
      * @return capabilities scoped to the channel
      * @throws com.reallive.channelservice.common.exception.AppException when the channel or owner is unavailable
      */
-    ChatBanResponse.Context context(UUID actorId, UUID channelId, boolean canBan, boolean canUnban, boolean canViewBans);
+    ChatBanResponse.Context getChatModerationContext(UUID actorId, UUID channelId, boolean canBan, boolean canUnban, boolean canViewBans);
 
 }

@@ -32,7 +32,7 @@ class ChatBanServiceImplTest {
 
     @Test
     void ownerCannotBeBanned() {
-        var exception = assertThrows(AppException.class, () -> service.ban(owner, channelId, owner));
+        var exception = assertThrows(AppException.class, () -> service.banUserFromChat(owner, channelId, owner));
         assertEquals(ErrorCode.CANNOT_BAN_CHANNEL_OWNER, exception.getErrorCode());
         verifyNoInteractions(bans, profiles);
     }
@@ -42,9 +42,9 @@ class ChatBanServiceImplTest {
         when(bans.findByChannelIdAndUserId(channelId, user)).thenReturn(Optional.of(
                 ChannelUserBanEntity.builder().banType("FULL_BAN").build()));
         assertEquals(ErrorCode.CHANNEL_CHAT_BAN_BLOCKED_BY_HIGHER_BAN,
-                assertThrows(AppException.class, () -> service.ban(owner, channelId, user)).getErrorCode());
+                assertThrows(AppException.class, () -> service.banUserFromChat(owner, channelId, user)).getErrorCode());
         assertEquals(ErrorCode.CHANNEL_CHAT_UNBAN_BLOCKED_BY_HIGHER_BAN,
-                assertThrows(AppException.class, () -> service.unban(owner, channelId, user)).getErrorCode());
+                assertThrows(AppException.class, () -> service.unbanUserFromChat(owner, channelId, user)).getErrorCode());
         verify(bans, never()).delete(any());
     }
 
@@ -52,7 +52,7 @@ class ChatBanServiceImplTest {
     void unbanDeletesOnlyExistingChatBan() {
         var ban = ChannelUserBanEntity.builder().banType("CHAT_BAN").build();
         when(bans.findByChannelIdAndUserId(channelId, user)).thenReturn(Optional.of(ban));
-        assertNull(service.unban(owner, channelId, user).banType());
+        assertNull(service.unbanUserFromChat(owner, channelId, user).banType());
         verify(bans).delete(ban);
     }
 
@@ -61,15 +61,15 @@ class ChatBanServiceImplTest {
         when(bans.findByChannelIdAndUserId(channelId, user)).thenReturn(
                 Optional.of(ChannelUserBanEntity.builder().banType("CHAT_BAN").build()), Optional.empty());
         assertEquals(ErrorCode.CHANNEL_CHAT_ALREADY_BANNED,
-                assertThrows(AppException.class, () -> service.ban(owner, channelId, user)).getErrorCode());
+                assertThrows(AppException.class, () -> service.banUserFromChat(owner, channelId, user)).getErrorCode());
         assertEquals(ErrorCode.CHANNEL_CHAT_NOT_BANNED,
-                assertThrows(AppException.class, () -> service.unban(owner, channelId, user)).getErrorCode());
+                assertThrows(AppException.class, () -> service.unbanUserFromChat(owner, channelId, user)).getErrorCode());
     }
 
     @Test
     void createsBanWithAuthenticatedActorAndFixedReason() {
         when(bans.findByChannelIdAndUserId(channelId, user)).thenReturn(Optional.empty());
-        assertEquals("CHAT_BAN", service.ban(owner, channelId, user).banType());
+        assertEquals("CHAT_BAN", service.banUserFromChat(owner, channelId, user).banType());
         var captor = org.mockito.ArgumentCaptor.forClass(ChannelUserBanEntity.class);
         verify(bans).saveAndFlush(captor.capture());
         assertEquals(owner, captor.getValue().getPerformedBy());
@@ -81,7 +81,7 @@ class ChatBanServiceImplTest {
     @Test
     void nonOwnerCannotManageChannel() {
         assertEquals(ErrorCode.ACCESS_DENIED,
-                assertThrows(AppException.class, () -> service.ban(user, channelId, UUID.randomUUID())).getErrorCode());
+                assertThrows(AppException.class, () -> service.banUserFromChat(user, channelId, UUID.randomUUID())).getErrorCode());
         verifyNoInteractions(bans, profiles);
     }
 }

@@ -35,7 +35,7 @@ public class ChatBanServiceImpl implements ChatBanService {
 
     @Override
     @Transactional
-    public ChatBanResponse.State ban(UUID actorId, UUID channelId, UUID userId) {
+    public ChatBanResponse.State banUserFromChat(UUID actorId, UUID channelId, UUID userId) {
         ChannelEntity channel = channel(actorId, channelId, true);
         if (channel.getUserId().equals(userId)) throw new AppException(ErrorCode.CANNOT_BAN_CHANNEL_OWNER);
         var existing = bans.findByChannelIdAndUserId(channelId, userId);
@@ -50,7 +50,7 @@ public class ChatBanServiceImpl implements ChatBanService {
 
     @Override
     @Transactional
-    public ChatBanResponse.State unban(UUID actorId, UUID channelId, UUID userId) {
+    public ChatBanResponse.State unbanUserFromChat(UUID actorId, UUID channelId, UUID userId) {
         channel(actorId, channelId, true);
         var ban = bans.findByChannelIdAndUserId(channelId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_CHAT_NOT_BANNED));
@@ -61,7 +61,7 @@ public class ChatBanServiceImpl implements ChatBanService {
 
     @Override
     @Transactional(readOnly = true)
-    public ChatBanResponse.State state(UUID actorId, UUID channelId, UUID userId) {
+    public ChatBanResponse.State getUserChatBanStatus(UUID actorId, UUID channelId, UUID userId) {
         channel(actorId, channelId, false);
         return new ChatBanResponse.State(channelId, userId, bans.findByChannelIdAndUserId(channelId, userId)
                 .map(ChannelUserBanEntity::getBanType).orElse(null));
@@ -69,7 +69,7 @@ public class ChatBanServiceImpl implements ChatBanService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<ChatBanResponse.Item> list(UUID actorId, UUID channelId, int page, int size) {
+    public PageResponse<ChatBanResponse.Item> getBannedUsers(UUID actorId, UUID channelId, int page, int size) {
         channel(actorId, channelId, false);
         if (page < 0 || size < 1 || size > 50) throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         var result = bans.findByChannelId(channelId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
@@ -91,7 +91,7 @@ public class ChatBanServiceImpl implements ChatBanService {
 
     @Override
     @Transactional(readOnly = true)
-    public ChatBanResponse.Context context(UUID actorId, UUID channelId, boolean canBan, boolean canUnban, boolean canViewBans) {
+    public ChatBanResponse.Context getChatModerationContext(UUID actorId, UUID channelId, boolean canBan, boolean canUnban, boolean canViewBans) {
         var channel = channels.findById(channelId).orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
         if (channel.getUserId() == null) throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
         boolean eligible = channel.getUserId().equals(actorId) && channel.getStatus() == ChannelStatus.ACTIVE;

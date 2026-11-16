@@ -78,7 +78,7 @@ class ChannelChatBanIntegrationTest {
             java.util.concurrent.Callable<Integer> request = () -> {
                 ready.await();
                 try {
-                    banService.ban(owner, channel, user);
+                    banService.banUserFromChat(owner, channel, user);
                     return 0;
                 } catch (AppException exception) {
                     return exception.getErrorCode().getCode();
@@ -99,13 +99,13 @@ class ChannelChatBanIntegrationTest {
         UUID channel = channels.saveAndFlush(ChannelEntity.builder().streamerId(UUID.randomUUID()).userId(owner)
                 .name("Concurrent unban test").slug("ban-" + UUID.randomUUID()).status(ChannelStatus.ACTIVE).build()).getId();
         when(profiles.profile(any())).thenAnswer(invocation -> new ChatProfile(invocation.getArgument(0), "Viewer", null));
-        banService.ban(owner, channel, user);
+        banService.banUserFromChat(owner, channel, user);
         var ready = new java.util.concurrent.CountDownLatch(1);
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
             java.util.concurrent.Callable<Integer> request = () -> {
                 ready.await();
                 try {
-                    banService.unban(owner, channel, user);
+                    banService.unbanUserFromChat(owner, channel, user);
                     return 0;
                 } catch (AppException exception) {
                     return exception.getErrorCode().getCode();

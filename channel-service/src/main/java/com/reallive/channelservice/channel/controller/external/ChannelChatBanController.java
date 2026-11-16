@@ -26,42 +26,42 @@ public class ChannelChatBanController {
 
     @PostMapping("/users/{userId}/ban")
     @PreAuthorize("hasAuthority('CHANNEL_CHAT_BAN')")
-    public ResponseEntity<ApiResponse<ChatBanResponse.State>> ban(@PathVariable UUID channelId, @PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(response(bans.ban(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, userId)));
+    public ResponseEntity<ApiResponse<ChatBanResponse.State>> banUserFromChat(@PathVariable UUID channelId, @PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(buildResponse(bans.banUserFromChat(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, userId)));
     }
 
     @PostMapping("/users/{userId}/unban")
     @PreAuthorize("hasAuthority('CHANNEL_CHAT_UNBAN')")
-    public ResponseEntity<ApiResponse<ChatBanResponse.State>> unban(@PathVariable UUID channelId, @PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(response(bans.unban(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, userId)));
+    public ResponseEntity<ApiResponse<ChatBanResponse.State>> unbanUserFromChat(@PathVariable UUID channelId, @PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(buildResponse(bans.unbanUserFromChat(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, userId)));
     }
 
     @GetMapping("/users/{userId}/ban")
     @PreAuthorize("hasAnyAuthority('CHANNEL_CHAT_BAN', 'CHANNEL_CHAT_UNBAN', 'CHANNEL_CHAT_BAN_VIEW')")
-    public ResponseEntity<ApiResponse<ChatBanResponse.State>> state(@PathVariable UUID channelId, @PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(response(bans.state(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, userId)));
+    public ResponseEntity<ApiResponse<ChatBanResponse.State>> getUserChatBanStatus(@PathVariable UUID channelId, @PathVariable UUID userId, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(buildResponse(bans.getUserChatBanStatus(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, userId)));
     }
 
     @GetMapping("/bans")
     @PreAuthorize("hasAuthority('CHANNEL_CHAT_BAN_VIEW')")
-    public ResponseEntity<ApiResponse<PageResponse<ChatBanResponse.Item>>> list(@PathVariable UUID channelId,
+    public ResponseEntity<ApiResponse<PageResponse<ChatBanResponse.Item>>> getBannedUsers(@PathVariable UUID channelId,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, @AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(response(bans.list(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, page, size)));
+        return ResponseEntity.ok(buildResponse(bans.getBannedUsers(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, page, size)));
     }
 
     @GetMapping("/moderation-context")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<ChatBanResponse.Context>> context(@PathVariable UUID channelId, @AuthenticationPrincipal Jwt jwt, Authentication authentication) {
-        return ResponseEntity.ok(response(bans.context(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId,
-                has(authentication, "CHANNEL_CHAT_BAN"), has(authentication, "CHANNEL_CHAT_UNBAN"),
-                has(authentication, "CHANNEL_CHAT_BAN_VIEW"))));
+    public ResponseEntity<ApiResponse<ChatBanResponse.Context>> getChatModerationContext(@PathVariable UUID channelId, @AuthenticationPrincipal Jwt jwt, Authentication authentication) {
+        return ResponseEntity.ok(buildResponse(bans.getChatModerationContext(AuthenticationUserId.getAuthenticatedUserId(jwt), channelId,
+                hasPermission(authentication, "CHANNEL_CHAT_BAN"), hasPermission(authentication, "CHANNEL_CHAT_UNBAN"),
+                hasPermission(authentication, "CHANNEL_CHAT_BAN_VIEW"))));
     }
 
-    private boolean has(Authentication authentication, String permission) {
+    private boolean hasPermission(Authentication authentication, String permission) {
         return authentication.getAuthorities().stream().anyMatch(authority -> permission.equals(authority.getAuthority()));
     }
 
-    private <T> ApiResponse<T> response(T result) {
+    private <T> ApiResponse<T> buildResponse(T result) {
         return ApiResponse.<T>builder().status(200).code(1000).message("Success").result(result).timestamp(Instant.now().toString()).build();
     }
 }
