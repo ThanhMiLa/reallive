@@ -1,13 +1,11 @@
 import { lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { MessageSquare, MonitorPlay, Radio, ShieldBan } from 'lucide-react'
+import { MessageSquare, MonitorPlay, Radio } from 'lucide-react'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 import { StreamInfoPanel } from '@/components/stream/StreamInfoPanel'
 import { StreamAuthGate, StreamSetupFallback } from '@/components/stream/StreamPageStates'
-import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
 import { useSessionElapsed, type SessionClock } from '@/components/stream/useSessionElapsed'
-import { useChatModerationContext } from '@/hooks/useChatModeration'
 import { useAuthStore } from '@/stores/auth.store'
 import { useStreamManager } from '@/hooks/useStreamManager'
 
@@ -43,8 +41,6 @@ function Dashboard({ userId }: { userId: string }) {
   } = useStreamManager(userId)
 
   const channelId = session?.channelId ?? setup.data?.channelId
-  const moderationContextQuery = useChatModerationContext(userId, channelId)
-  const canViewBans = Boolean(channelId && moderationContextQuery.data?.canViewBans)
 
   if (setup.isPending || (setup.isError && !setup.data)) {
     return (
@@ -204,9 +200,12 @@ function Dashboard({ userId }: { userId: string }) {
                   </span>
                   <p className="mt-1.5 text-xs text-gray-400">Session</p>
                 </div>
-                <div className="px-4 py-3">
+                <div role="group" aria-label="Current viewers" className="px-4 py-3">
                   <p className="text-sm font-bold tabular-nums text-white">
-                    {activeSession && session?.currentViewerCount != null
+                    {activeSession &&
+                    !metadata.isPending &&
+                    !metadata.isError &&
+                    session?.currentViewerCount != null
                       ? session.currentViewerCount.toLocaleString()
                       : '—'}
                   </p>
@@ -238,29 +237,9 @@ function Dashboard({ userId }: { userId: string }) {
             aria-label="Stream chat"
             className="flex h-[520px] min-w-0 flex-col overflow-hidden transform-gpu rounded-xl border border-brand-border bg-brand-card xl:sticky xl:top-2.5 xl:h-[calc(100dvh-1.25rem)] xl:min-h-[540px]"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-border px-4 py-3">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-gray-400" />
-                <h2 className="font-outfit text-sm font-bold text-white">Stream Chat</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                {canViewBans && (
-                  <Link
-                    to="/dashboard/chat-bans"
-                    className="inline-flex items-center gap-1 rounded-md border border-[#2a2a35] bg-[#121216] px-2 py-1 text-[11px] font-medium text-gray-300 transition hover:bg-[#1a1a22] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
-                  >
-                    <ShieldBan className="h-3 w-3 text-[#ff2b42]" />
-                    <span>Manage banned users</span>
-                  </Link>
-                )}
-                {session && (
-                  <StreamViewerCount
-                    count={session.currentViewerCount}
-                    status={status}
-                    unavailable={metadata.isPending || metadata.isError}
-                  />
-                )}
-              </div>
+            <div className="flex items-center gap-2 border-b border-brand-border px-4 py-3">
+              <MessageSquare className="h-4 w-4 text-gray-400" />
+              <h2 className="font-outfit text-sm font-bold text-white">Stream Chat</h2>
             </div>
             {id && activeSession ? (
               <StreamChatPanel

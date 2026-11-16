@@ -941,7 +941,7 @@ describe('avatar ban menu in chat', () => {
     )
   })
 
-  it('shows Manage banned users link in Watch chat header and embedded Stream Manager chat header', async () => {
+  it('shows Manage banned users link in Watch chat header and omits it plus viewer count in embedded Stream Manager chat header', async () => {
     mountWithRouter(
       <Routes>
         <Route path="/dashboard" element={<StreamerDashboardPage />} />
@@ -950,10 +950,13 @@ describe('avatar ban menu in chat', () => {
     )
 
     const aside = await screen.findByLabelText('Stream chat')
-    const dashboardLink = await within(aside).findByRole('link', {
-      name: 'Manage banned users',
-    })
-    expect(dashboardLink.getAttribute('href')).toBe('/dashboard/chat-bans')
+    await within(aside).findByText('Stream Chat')
+    expect(
+      within(aside).queryByRole('link', { name: 'Manage banned users' }),
+    ).toBeNull()
+    expect(
+      within(aside).queryByRole('group', { name: 'Current viewers' }),
+    ).toBeNull()
     cleanup()
 
     mountWithRouter(
