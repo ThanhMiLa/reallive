@@ -6,6 +6,8 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
+import com.reallive.channelservice.channel.client.user.UserProfileClient;
+import com.reallive.channelservice.channel.client.user.UserProfileResponse;
 import com.reallive.channelservice.channel.entity.CategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryEntity;
 import com.reallive.channelservice.channel.entity.ChannelCategoryId;
@@ -87,6 +89,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockingDetails;
@@ -136,6 +139,46 @@ class ChannelUpdateIntegrationTest {
 
     @MockitoBean
     private R2StorageService storage;
+
+    @MockitoBean
+    private UserProfileClient profiles;
+
+    @Test
+    void channelNameEditCopiesCanonicalProfileNameAndPreservesAvatar() throws Exception {
+        when(profiles.update(eq(userId), eq("New name"), isNull()))
+                .thenReturn(new UserProfileResponse("New name", null));
+        mvc.perform(form(UpdateChannelRequest.builder().build()).param("displayName", "New name")
+                        .cookie(cookie("CHANNEL_UPDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.name").value("New name"));
+        ChannelEntity updated = channels.findById(channel.getId()).orElseThrow();
+        assertEquals("New name", updated.getName());
+        assertEquals(channel.getAvatarUrl(), updated.getAvatarUrl());
+    }
+
+    @Test
+    void channelAvatarEditCopiesUploadedProfileUrl() throws Exception {
+        when(profiles.update(eq(userId), isNull(), any()))
+                .thenReturn(new UserProfileResponse(null, "https://images.example.com/new.png"));
+        mvc.perform(form(UpdateChannelRequest.builder().build())
+                        .file(new MockMultipartFile("avatar", "avatar.png", "image/png", new byte[]{1}))
+                        .cookie(cookie("CHANNEL_UPDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.avatarUrl").value("https://images.example.com/new.png"));
+        assertEquals("https://images.example.com/new.png", channels.findById(channel.getId()).orElseThrow().getAvatarUrl());
+    }
+
+    @Test
+    void failedProfileEditLeavesChannelUnchanged() throws Exception {
+        when(profiles.update(eq(userId), anyString(), isNull()))
+                .thenThrow(new AppException(ErrorCode.USER_SERVICE_UNAVAILABLE));
+        mvc.perform(form(UpdateChannelRequest.builder().build()).param("displayName", "New name")
+                        .param("description", "Changed").cookie(cookie("CHANNEL_UPDATE")))
+                .andExpect(status().isServiceUnavailable());
+        ChannelEntity updated = channels.findById(channel.getId()).orElseThrow();
+        assertEquals(channel.getName(), updated.getName());
+        assertEquals(channel.getDescription(), updated.getDescription());
+    }
 
     @Value("${local.server.port}")
     private int port;

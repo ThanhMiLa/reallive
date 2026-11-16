@@ -16,6 +16,8 @@ import com.reallive.channelservice.channel.entity.ChannelEntity;
 import com.reallive.channelservice.channel.entity.enums.CategoryStatus;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.mapper.ChannelMapper;
+import com.reallive.channelservice.channel.client.user.UserProfileClient;
+import com.reallive.channelservice.channel.client.user.UserProfileResponse;
 import com.reallive.channelservice.channel.repository.CategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelCategoryRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
@@ -41,6 +43,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
@@ -64,6 +68,8 @@ public class ChannelServiceImpl implements ChannelService {
     ChannelMapper channelMapper;
     UserCategoryPreferenceResolver userCategoryPreferenceResolver;
     R2StorageService r2StorageService;
+    UserProfileClient userProfileClient;
+    PlatformTransactionManager transactionManager;
 
     @Override
     @Transactional(readOnly = true)
@@ -145,9 +151,30 @@ public class ChannelServiceImpl implements ChannelService {
     }
 
     @Override
-    @Transactional
     public ChannelResponse updateChannel(UUID userId, UpdateChannelRequest request) {
         UUID streamerId = activeStreamerResolver.getActiveStreamerIdByUserId(userId);
+        UserProfileResponse profile = null;
+        if (request.getDisplayName() != null || request.getAvatar() != null) {
+            ChannelEntity existing = channelRepository.findByStreamerId(streamerId)
+                    .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
+            if (existing.getStatus() != ChannelStatus.ACTIVE || existing.getDeletedAt() != null) {
+                throw new AppException(ErrorCode.CHANNEL_NOT_ACTIVE);
+            }
+            if (request.getCategoryIds() != null) {
+                findActiveCategories(new LinkedHashSet<>(request.getCategoryIds()));
+            }
+            if (request.getBannerUrl() != null) {
+                BannerValidator.validate(request.getBannerUrl());
+            }
+            // Do not hold a channel row lock while User Service locks the profile.
+            profile = userProfileClient.update(userId, request.getDisplayName(), request.getAvatar());
+        }
+        UserProfileResponse updatedProfile = profile;
+        return new TransactionTemplate(transactionManager).execute(
+                status -> updateChannelLocally(streamerId, request, updatedProfile));
+    }
+
+    private ChannelResponse updateChannelLocally(UUID streamerId, UpdateChannelRequest request, UserProfileResponse profile) {
         ChannelEntity channel = findEditableChannel(streamerId);
         Set<UUID> requestedCategoryIds = request.getCategoryIds() == null
                 ? null : new LinkedHashSet<>(request.getCategoryIds());
@@ -162,6 +189,14 @@ public class ChannelServiceImpl implements ChannelService {
         }
         if (requestedCategoryIds != null) {
             updateCategories(channel, categories, requestedCategoryIds);
+        }
+        if (profile != null) {
+            if (request.getDisplayName() != null) {
+                channel.setName(profile.displayName());
+            }
+            if (request.getAvatar() != null) {
+                channel.setAvatarUrl(profile.avatarUrl());
+            }
         }
         channelRepository.save(channel);
 

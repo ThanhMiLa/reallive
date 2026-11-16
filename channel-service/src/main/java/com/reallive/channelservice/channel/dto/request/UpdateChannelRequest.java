@@ -22,6 +22,13 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UpdateChannelRequest {
 
+    @Size(min = 1, max = 100)
+    @Pattern(regexp = "(?sU).*\\S.*")
+    String displayName;
+
+    @NotEmptyFile
+    MultipartFile avatar;
+
     @Size(min = 1, max = 1000)
     @Pattern(regexp = "(?sU).*\\S.*")
     String description;

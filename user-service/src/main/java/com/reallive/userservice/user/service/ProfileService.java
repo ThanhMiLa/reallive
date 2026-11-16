@@ -48,4 +48,16 @@ public interface ProfileService {
      * @throws IllegalStateException if the configured avatar URL exceeds the supported length
      */
     UserProfileResponse updateMyProfile(UUID userId, UpdateProfileRequest request);
+
+    /**
+     * Applies a channel-originated edit without calling Channel Service back.
+     * Avatar validation and upload follow the normal profile update rules.
+     * Channel Service persists the returned fields in a separate transaction.
+     *
+     * @param userId the owner resolved from the authenticated channel request
+     * @param request the profile changes; omitted fields remain unchanged
+     * @return the updated profile including the uploaded avatar URL
+     * @throws AppException if the profile is missing or the edit or upload fails
+     */
+    UserProfileResponse updateFromChannel(UUID userId, UpdateProfileRequest request);
 }

@@ -28,13 +28,6 @@ public class SecurityConfig {
 
     };
 
-    private static final String[] INTERNAL_ENDPOINTS_GET = {
-            "/internal/api/streamers/by-user/*/active",
-            "/internal/api/streamers/by-user/*/streaming-eligibility",
-            "/internal/api/users/*/category-preferences",
-            "/internal/api/users/*/chat-profile"
-    };
-
     private static final String[] PUBLIC_ENDPOINTS_POST = {
             "/api/auth/login",
             "/api/auth/register",
@@ -43,6 +36,17 @@ public class SecurityConfig {
             "/api/auth/forgot-password",
             "/api/auth/verify-reset-otp",
             "/api/auth/reset-password"
+    };
+
+    private static final String[] INTERNAL_ENDPOINTS_GET = {
+            "/internal/api/streamers/by-user/*/active",
+            "/internal/api/streamers/by-user/*/streaming-eligibility",
+            "/internal/api/users/*/category-preferences",
+            "/internal/api/users/*/chat-profile"
+    };
+
+    private static final String[] INTERNAL_ENDPOINTS_PATCH = {
+            "/internal/api/users/*/channel-profile"
     };
 
     private final CustomJwtDecoder customJwtDecoder;
@@ -55,7 +59,8 @@ public class SecurityConfig {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     SecurityFilterChain internalEndpointFilterChain(HttpSecurity http) throws Exception {
         http.securityMatchers(matchers -> matchers
-                        .requestMatchers(HttpMethod.GET, INTERNAL_ENDPOINTS_GET))
+                        .requestMatchers(HttpMethod.GET, INTERNAL_ENDPOINTS_GET)
+                        .requestMatchers(HttpMethod.PATCH, INTERNAL_ENDPOINTS_PATCH))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());

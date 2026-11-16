@@ -234,6 +234,16 @@ class ProfileServiceImplTest {
     }
 
     @Test
+    void channelOriginatedNameUpdateDoesNotCallChannelBack() {
+        ProfileEntity profile = profileForUpdate();
+        UserProfileResponse response = profileService.updateFromChannel(user.getId(),
+                UpdateProfileRequest.builder().displayName("  Channel name  ").build());
+        assertEquals("Channel name", response.getDisplayName());
+        verify(profileRepository).save(profile);
+        verifyNoInteractions(streamerRepository, channelClientResolver, storage);
+    }
+
+    @Test
     void updateStreamerNameSynchronizesTrimmedNameWithoutResendingAvatar() {
         ProfileEntity profile = profileForUpdate();
         profile.setAvatarUrl("");

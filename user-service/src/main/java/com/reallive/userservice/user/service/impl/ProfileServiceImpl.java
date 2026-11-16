@@ -47,6 +47,16 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     @Transactional
     public UserProfileResponse updateMyProfile(UUID userId, UpdateProfileRequest request) {
+        return updateProfile(userId, request, true);
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse updateFromChannel(UUID userId, UpdateProfileRequest request) {
+        return updateProfile(userId, request, false);
+    }
+
+    private UserProfileResponse updateProfile(UUID userId, UpdateProfileRequest request, boolean synchronizeChannel) {
         if (request.getDisplayName() == null && request.getDob() == null && request.getAvatar() == null) {
             throw new AppException(ErrorCode.PROFILE_UPDATE_EMPTY);
         }
@@ -64,7 +74,9 @@ public class ProfileServiceImpl implements ProfileService {
             replaceAvatar(profile, userId, avatar);
         }
 
-        synchronizeChannelProfile(userId, profile, request);
+        if (synchronizeChannel) {
+            synchronizeChannelProfile(userId, profile, request);
+        }
         profileRepository.save(profile);
         return profileMapper.toResponse(profile);
     }

@@ -109,8 +109,13 @@ public interface ChannelService {
      * by a row lock and profile/category changes commit atomically. Cleanup of the previous managed
      * banner after commit, or the new upload after rollback, is best effort.</p>
      *
+     * <p>Supplied display names and avatar files are first applied in User Service without a
+     * callback, then copied into the channel. User Service commits separately before the local
+     * channel transaction; a later channel failure can require reconciliation. No channel row
+     * lock is held during the profile call. Omitted profile fields remain unchanged.</p>
+     *
      * @param userId the user ID extracted from the authenticated principal
-     * @param request the validated optional description, banner file and category list
+     * @param request the validated optional display name, avatar, description, banner and categories
      * @return the updated channel profile and distinct assigned category IDs
      * @throws AppException if the streamer or channel is missing or inactive, User Service is
      *                      unavailable, a requested category is missing or inactive, or banner validation,

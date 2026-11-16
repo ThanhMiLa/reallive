@@ -94,6 +94,16 @@ class PaymentInternalRouteTest {
         assertEquals(0, CALLS.get());
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void internalProfileEditIsNeverRouted(boolean authenticated) throws Exception {
+        var request = client.patch().uri("/user/internal/api/users/" + UUID.randomUUID() + "/channel-profile");
+        if (authenticated) {
+            request.cookie("access_token", accessToken());
+        }
+        request.exchange().expectStatus().isNotFound();
+    }
+
     @Test
     void configuredPublicPaymentPrefixStillRoutesAuthenticatedRequests() throws Exception {
         client.post().uri("/payment/api/balance").cookie("access_token", accessToken())

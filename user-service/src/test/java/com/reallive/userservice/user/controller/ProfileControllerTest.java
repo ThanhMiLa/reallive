@@ -105,6 +105,51 @@ class ProfileControllerTest {
     @MockitoBean
     private RedisAuthoritiesReader authAuthoritiesReader;
 
+    @Test
+    void internalChannelEditNeedsNoCookieAndDoesNotCallChannelBack() throws Exception {
+        UserEntity user = userRepository.saveAndFlush(UserEntity.builder()
+                .username("channel_" + UUID.randomUUID()).email(UUID.randomUUID() + "@example.com")
+                .passwordHash("test").status(UserStatus.ACTIVE).build());
+        profileRepository.saveAndFlush(ProfileEntity.builder().user(user).displayName("Before").build());
+        mockMvc.perform(multipart(HttpMethod.PATCH,
+                        "/internal/api/users/" + user.getId() + "/channel-profile")
+                        .param("displayName", "  From channel  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.displayName").value("From channel"));
+        assertEquals("From channel", profileRepository.findByUserId(user.getId()).orElseThrow().getDisplayName());
+        verifyNoInteractions(channelClientResolver);
+    }
+
+    @Test
+    void internalChannelEditUploadsAvatarAndPreservesUnrelatedProfileFields() throws Exception {
+        UserEntity user = createUser("channel_avatar_" + UUID.randomUUID());
+        profileRepository.saveAndFlush(ProfileEntity.builder().user(user).displayName("Before")
+                .dob(LocalDate.of(2000, 1, 1)).build());
+        when(storage.getPublicUrl(anyString())).thenAnswer(call -> "https://images.example.com/" + call.getArgument(0));
+        mockMvc.perform(multipart(HttpMethod.PATCH,
+                        "/internal/api/users/" + user.getId() + "/channel-profile")
+                        .file(avatar()).param("displayName", "After").param("dob", "2001-01-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.displayName").value("After"))
+                .andExpect(jsonPath("$.result.avatarUrl").value(startsWith("https://images.example.com/avatars/")));
+        ProfileEntity updated = profileRepository.findByUserId(user.getId()).orElseThrow();
+        assertEquals(LocalDate.of(2000, 1, 1), updated.getDob());
+        verifyNoInteractions(channelClientResolver);
+    }
+
+    @Test
+    void internalChannelEditRejectsInvalidAvatarWithoutSavingName() throws Exception {
+        UserEntity user = createUser("channel_invalid_" + UUID.randomUUID());
+        profileRepository.saveAndFlush(ProfileEntity.builder().user(user).displayName("Before").build());
+        mockMvc.perform(multipart(HttpMethod.PATCH,
+                        "/internal/api/users/" + user.getId() + "/channel-profile")
+                        .file(new MockMultipartFile("avatar", "bad.png", "image/png", new byte[]{1}))
+                        .param("displayName", "After"))
+                .andExpect(status().isBadRequest());
+        assertEquals("Before", profileRepository.findByUserId(user.getId()).orElseThrow().getDisplayName());
+        verifyNoInteractions(storage, channelClientResolver);
+    }
+
     @BeforeEach
     void setUpAuthAuthorities() {
         Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
