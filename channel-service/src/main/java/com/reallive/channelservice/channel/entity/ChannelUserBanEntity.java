@@ -1,6 +1,7 @@
 package com.reallive.channelservice.channel.entity;
 
 import jakarta.persistence.*;
+import com.reallive.channelservice.channel.entity.enums.ChannelBanType;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import java.time.LocalDateTime;
@@ -22,7 +23,8 @@ public class ChannelUserBanEntity {
     UUID userId;
 
     @Column(name = "ban_type", nullable = false)
-    String banType;
+    @Enumerated(EnumType.STRING)
+    ChannelBanType banType;
 
     @Column(name = "performed_by", nullable = false)
     UUID performedBy;

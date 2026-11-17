@@ -1,31 +1,34 @@
 package com.reallive.channelservice.channel.service;
 
-import com.reallive.channelservice.channel.dto.response.ChatBanResponse;
+import com.reallive.channelservice.channel.dto.response.ChannelBanResponse;
+import com.reallive.channelservice.channel.entity.enums.ChannelBanType;
 import com.reallive.channelservice.common.dto.PageResponse;
+
 import java.util.UUID;
 
-public interface ChatBanService {
+public interface ChannelBanService {
     /**
-     * Bans a user from channel chat after checking ownership and the existing ban.
+     * Creates or changes an active channel ban after checking the caller and required permissions.
      *
      * @param actorId authenticated caller
      * @param channelId channel to manage
      * @param userId target user
-     * @return current ban state
+     * @param banType requested ban level
+     * @return current ban state and permitted actions
      * @throws com.reallive.channelservice.common.exception.AppException when authorization or validation fails
      */
-    ChatBanResponse.State banUserFromChat(UUID actorId, UUID channelId, UUID userId);
+    ChannelBanResponse.State banUserFromChannel(UUID actorId, UUID channelId, UUID userId, ChannelBanType banType);
 
     /**
-     * Removes an active chat ban.
+     * Removes an active channel ban after checking its required unban permission.
      *
      * @param actorId authenticated caller
      * @param channelId channel to manage
      * @param userId target user
-     * @return current ban state
+     * @return current ban state and permitted actions
      * @throws com.reallive.channelservice.common.exception.AppException when the ban cannot be removed
      */
-    ChatBanResponse.State unbanUserFromChat(UUID actorId, UUID channelId, UUID userId);
+    ChannelBanResponse.State unbanUserFromChannel(UUID actorId, UUID channelId, UUID userId);
 
     /**
      * Reads the current ban state.
@@ -33,10 +36,10 @@ public interface ChatBanService {
      * @param actorId authenticated caller
      * @param channelId channel to manage
      * @param userId target user
-     * @return current ban state
+     * @return current ban state and permitted actions
      * @throws com.reallive.channelservice.common.exception.AppException when authorization fails
      */
-    ChatBanResponse.State getUserChatBanStatus(UUID actorId, UUID channelId, UUID userId);
+    ChannelBanResponse.State getUserBanStatus(UUID actorId, UUID channelId, UUID userId);
 
     /**
      * Lists active channel bans.
@@ -48,19 +51,16 @@ public interface ChatBanService {
      * @return paginated active bans
      * @throws com.reallive.channelservice.common.exception.AppException when authorization or pagination validation fails
      */
-    PageResponse<ChatBanResponse.Item> getBannedUsers(UUID actorId, UUID channelId, int page, int size);
+    PageResponse<ChannelBanResponse.Item> getBannedUsers(UUID actorId, UUID channelId, int page, int size);
 
     /**
      * Resolves the caller's moderation capabilities for a channel.
      *
      * @param actorId authenticated caller
      * @param channelId channel to inspect
-     * @param canBan whether the caller has the ban permission
-     * @param canUnban whether the caller has the unban permission
-     * @param canViewBans whether the caller has the list permission
      * @return capabilities scoped to the channel
      * @throws com.reallive.channelservice.common.exception.AppException when the channel or owner is unavailable
      */
-    ChatBanResponse.Context getChatModerationContext(UUID actorId, UUID channelId, boolean canBan, boolean canUnban, boolean canViewBans);
+    ChannelBanResponse.Context getChannelModerationContext(UUID actorId, UUID channelId);
 
 }

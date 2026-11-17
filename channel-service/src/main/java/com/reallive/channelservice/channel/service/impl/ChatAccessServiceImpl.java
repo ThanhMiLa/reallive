@@ -28,7 +28,7 @@ public class ChatAccessServiceImpl implements ChatAccessService {
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
         boolean active = channel.getStatus() == ChannelStatus.ACTIVE && channel.getDeletedAt() == null;
         String type = userId.equals(channel.getUserId()) ? "" : bans.findByChannelIdAndUserId(channelId, userId)
-                .map(ban -> ban.getBanType()).orElse("");
+                .map(ban -> ban.getBanType().name()).orElse("");
         boolean canView = active && !type.equals("FULL_BAN") && !type.equals("LIVE_VIEW_BAN");
         return new ChatAccessResponse(channelId, userId, canView, canView,
                 canView && !type.equals("CHAT_BAN"));

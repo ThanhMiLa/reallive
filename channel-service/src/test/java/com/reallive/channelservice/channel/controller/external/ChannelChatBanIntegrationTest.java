@@ -13,6 +13,8 @@ import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -69,6 +71,28 @@ class ChannelChatBanIntegrationTest {
         mvc.perform(post(path + "/unban").with(jwt().jwt(token -> token.subject(owner.toString())).authorities(permissions))).andExpect(status().isOk());
         mvc.perform(post(path + "/unban").with(jwt().jwt(token -> token.subject(owner.toString())).authorities(permissions))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1024));
     }
+    @ParameterizedTest
+    @CsvSource({
+            "CHAT_BAN, CHANNEL_CHAT_BAN, CHANNEL_LIVE_VIEW_BAN",
+            "LIVE_VIEW_BAN, CHANNEL_LIVE_VIEW_BAN, CHANNEL_FULL_BAN",
+            "FULL_BAN, CHANNEL_FULL_BAN, CHANNEL_CHAT_BAN"
+    })
+    void banRequiresPermissionForRequestedLevel(String banType, String requiredPermission, String otherPermission) throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID user = UUID.randomUUID();
+        UUID channel = channels.saveAndFlush(ChannelEntity.builder().streamerId(UUID.randomUUID()).userId(owner)
+                .name("Permission test").slug("permission-" + UUID.randomUUID()).status(ChannelStatus.ACTIVE).build()).getId();
+        when(profiles.profile(any())).thenAnswer(invocation -> new ChatProfile(invocation.getArgument(0), "Viewer", null));
+        String path = "/api/channels/" + channel + "/users/" + user + "/ban";
+        String body = "{\"banType\":\"" + banType + "\"}";
+        mvc.perform(post(path).contentType("application/json").content(body)
+                .with(jwt().jwt(token -> token.subject(owner.toString())).authorities(new SimpleGrantedAuthority(otherPermission))))
+                .andExpect(status().isForbidden());
+        mvc.perform(post(path).contentType("application/json").content(body)
+                .with(jwt().jwt(token -> token.subject(owner.toString())).authorities(new SimpleGrantedAuthority(requiredPermission))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.banType").value(banType));
+    }
+
     @Test
     void moderationContextIsScopedToOwnerAndActualPermissions() throws Exception {
         UUID owner = UUID.randomUUID();
