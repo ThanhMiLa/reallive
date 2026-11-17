@@ -125,6 +125,7 @@ class MediaMtxAuthenticationIT {
                                                 "stream.media.test-image",
                                                 "reallive-media-server:1.21.2")))
                         .withCopyToContainer(Transferable.of(config), "/mediamtx.yml")
+                        .withEnv("STREAM_MEDIA_STARTUP_CALLBACK_URL", "")
                         .withExtraHost("host.docker.internal", "host-gateway")
                         .withEnv(
                                 "MTX_AUTHJWTJWKS",

@@ -100,8 +100,11 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
                                     command.withEntrypoint(
                                             "/bin/sh",
                                             "-c",
-                                            "while true; do /mediamtx /mediamtx.yml; done"))
+                                            "while true; do python3 /hooks/media_entrypoint.py /mediamtx /mediamtx.yml; done"))
                     .withCopyToContainer(Transferable.of(mediaConfiguration()), "/mediamtx.yml")
+                    .withCopyToContainer(
+                            Transferable.of(hookScript("media_entrypoint.py"), 0755),
+                            "/hooks/media_entrypoint.py")
                     .withCopyToContainer(
                             Transferable.of(hookScript("media_hook.py"), 0755),
                             "/hooks/media_hook.py")
@@ -112,6 +115,11 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
                     .withEnv(
                             "MTX_AUTHJWTJWKS",
                             "http://host.docker.internal:" + STREAM_PORT + "/stream/internal/api/media/jwks")
+                    .withEnv(
+                            "STREAM_MEDIA_STARTUP_CALLBACK_URL",
+                            "http://host.docker.internal:"
+                                    + STREAM_PORT
+                                    + "/stream/internal/api/media/restore-ingest-paths")
                     .withEnv(
                             "STREAM_MEDIA_CALLBACK_URL",
                             "http://host.docker.internal:"
@@ -178,6 +186,42 @@ class StreamProvisioningMediaIT extends PostgresIntegrationTestSupport {
     @AfterAll
     static void cleanup() throws SQLException {
         dropSchema(SCHEMA);
+    }
+
+    @Test
+    void mediaRestartCallsBackendAndAcceptsTheSameObsKey() throws Exception {
+        String cookie = accountCookie(owner);
+        request("PUT", "/api/streams/me/setup", cookie, null,
+                Map.of("title", "Restart recovery", "categoryId", category), 200);
+        JsonNode issued = awaitSetupReady(cookie);
+        String streamKey = issued.path("streamKey").asString();
+        UUID ingestKeyId = UUID.fromString(streamKey.split("\\?token=")[0]);
+        String started = media.getServerInfo().started();
+
+        assertEquals(0, MEDIA.execInContainer("sh", "-c", "kill -INT $(pidof mediamtx)").getExitCode());
+        await(() -> {
+            try {
+                return !started.equals(media.getServerInfo().started())
+                        && media.getIngestPath(ingestKeyId).isPresent();
+            } catch (RuntimeException exception) {
+                return false;
+            }
+        }, Duration.ofSeconds(25), "Startup callback did not restore the existing ingest key");
+
+        assertEquals(ingestKeyId, configs.findById(channel).orElseThrow().getCurrentIngestKeyId());
+        assertEquals(0, sessions.count());
+        Process publisher = publish(issued.path("serverUrl").asString() + "/" + streamKey);
+        try {
+            await(() -> publisher.isAlive() && sessions.findSlotOccupyingByChannelId(channel).isPresent(),
+                    Duration.ofSeconds(25), "The original OBS key did not publish after media restart");
+            assertEquals(StreamSessionStatus.LIVE,
+                    sessions.findSlotOccupyingByChannelId(channel).orElseThrow().getStatus());
+        } finally {
+            publisher.destroy();
+            if (!publisher.waitFor(3, TimeUnit.SECONDS)) {
+                publisher.destroyForcibly();
+            }
+        }
     }
 
     @Test

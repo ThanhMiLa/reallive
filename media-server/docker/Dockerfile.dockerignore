@@ -3,3 +3,4 @@
 !media-server/hooks/
 !media-server/hooks/media_hook.py
 !media-server/hooks/viewer_hook.py
+!media-server/hooks/media_entrypoint.py

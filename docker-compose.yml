@@ -16,6 +16,7 @@ services:
       MTX_AUTHJWTJWKS: ${STREAM_MEDIA_JWKS_URL:?Set STREAM_MEDIA_JWKS_URL in .env}
       MTX_HLSALLOWORIGINS: ${STREAM_MEDIA_ALLOWED_ORIGINS:?Set STREAM_MEDIA_ALLOWED_ORIGINS in .env}
       STREAM_MEDIA_CALLBACK_URL: ${STREAM_MEDIA_CALLBACK_URL:?Set STREAM_MEDIA_CALLBACK_URL in .env}
+      STREAM_MEDIA_STARTUP_CALLBACK_URL: ${STREAM_MEDIA_STARTUP_CALLBACK_URL:-http://host.docker.internal:8082/stream/internal/api/media/restore-ingest-paths}
       STREAM_CCU_ENABLED: ${STREAM_CCU_ENABLED:-false}
       MEDIA_CONTROL_BASE_URL: http://127.0.0.1:9997
       STREAM_VIEWER_CALLBACK_URL: ${STREAM_VIEWER_CALLBACK_URL:-http://host.docker.internal:8082/stream/internal/api/viewer-events}
@@ -32,7 +33,7 @@ services:
         - CMD
         - python3
         - -c
-        - 'import socket; [socket.create_connection(("127.0.0.1", port), timeout=2).close() for port in (1935, 8888, 9997)]'
+        - 'import pathlib, socket; assert pathlib.Path("/tmp/media-startup-ready").is_file(); [socket.create_connection(("127.0.0.1", port), timeout=2).close() for port in (1935, 8888, 9997)]'
       interval: 5s
       timeout: 3s
       retries: 10
