@@ -73,7 +73,6 @@ class GatewayAuthenticationTest {
     private ReactiveStringRedisTemplate redisTemplate;
 
     private final Set<String> revoked = ConcurrentHashMap.newKeySet();
-    private volatile boolean redisUnavailable;
     private String accountStatus;
     private CsrfCredentials csrf;
 
@@ -95,14 +94,12 @@ class GatewayAuthenticationTest {
         BACKEND_CALLS.set(0);
         LAST_REQUEST.set(null);
         revoked.clear();
-        redisUnavailable = false;
         accountStatus = "ACTIVE";
         ReactiveValueOperations<String, String> statusValues = Mockito.mock(ReactiveValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(statusValues);
         when(statusValues.get(anyString())).thenAnswer(invocation -> accountStatus == null ? Mono.empty() : Mono.just(accountStatus));
-        when(redisTemplate.hasKey(anyString())).thenAnswer(invocation -> redisUnavailable
-                ? Mono.error(new IOException("Redis offline"))
-                : Mono.just(revoked.contains(invocation.getArgument(0))));
+        when(redisTemplate.hasKey(anyString())).thenAnswer(invocation ->
+                Mono.just(revoked.contains(invocation.getArgument(0))));
         var response = client.get().uri("/api/auth/csrf").exchange()
                 .expectStatus().isOk().expectHeader().valueEquals(HttpHeaders.CACHE_CONTROL, "no-store")
                 .expectBody().returnResult();
@@ -386,15 +383,15 @@ class GatewayAuthenticationTest {
         assertEquals(0, BACKEND_CALLS.get());
     }
 
-    @Test
-    void redisFailureAndTimeoutDoNotForwardOrClearCookies() throws Exception {
-        redisUnavailable = true;
+    @ParameterizedTest
+    @ValueSource(strings = {"timeout", "connection"})
+    void redisFailureAndTimeoutDoNotForwardOrClearCookies(String failure) throws Exception {
+        when(redisTemplate.hasKey(anyString())).thenReturn(failure.equals("timeout")
+                ? Mono.never() : Mono.error(new IOException("Redis offline")));
         request(HttpMethod.GET, "/channel/api/private").cookie("access_token", token("ACCESS").value())
                 .exchange().expectStatus().isEqualTo(503).expectCookie().doesNotExist("access_token")
                 .expectBody().jsonPath("$.code").isEqualTo(1013);
-        when(redisTemplate.hasKey(anyString())).thenReturn(Mono.never());
-        request(HttpMethod.GET, "/channel/api/private").cookie("access_token", token("ACCESS").value())
-                .exchange().expectStatus().isEqualTo(503).expectCookie().doesNotExist("access_token");
+        Mockito.verify(redisTemplate.opsForValue(), Mockito.never()).get(anyString());
         assertEquals(0, BACKEND_CALLS.get());
     }
 
