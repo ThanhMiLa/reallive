@@ -120,10 +120,19 @@ class WalletControllerTest {
     }
 
     @Test
-    void internalEndpointRejectsInvalidUserCookies() throws Exception {
-        mvc.perform(endpoint(UUID.randomUUID()).cookie(new Cookie("access_token", "invalid")))
-                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value(1001));
-        verifyNoInteractions(service, authAuthoritiesReader);
+    void internalEndpointIgnoresInvalidUserCookies() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID walletId = UUID.randomUUID();
+        when(service.createWallet(userId)).thenReturn(WalletCreationResponse.builder()
+                .id(walletId).userId(userId).balance(0L).build());
+
+        mvc.perform(endpoint(userId).cookie(new Cookie("access_token", "invalid")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.id").value(walletId.toString()))
+                .andExpect(jsonPath("$.result.userId").value(userId.toString()));
+        verify(service).createWallet(userId);
+        verifyNoMoreInteractions(service);
+        verifyNoInteractions(authAuthoritiesReader);
     }
 
     private MockHttpServletRequestBuilder endpoint(UUID userId) {
