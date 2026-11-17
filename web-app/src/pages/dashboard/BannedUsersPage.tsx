@@ -51,16 +51,16 @@ function banTypeBadge(banType: BanType): {
     case 'CHAT_BAN':
       return {
         label: 'Chat ban',
-        className: 'border-amber-500/35 bg-amber-500/10 text-amber-200',
+        className: 'border-red-500/35 bg-red-500/10 text-red-200',
       }
     case 'LIVE_VIEW_BAN':
       return {
-        label: 'Livestream ban',
+        label: 'Live ban',
         className: 'border-red-500/35 bg-red-500/10 text-red-200',
       }
     case 'FULL_BAN':
       return {
-        label: 'Full ban',
+        label: 'Channel ban',
         className: 'border-rose-500/45 bg-rose-500/15 text-rose-200',
       }
   }
@@ -304,18 +304,18 @@ function RowActionMenu({
               onClick={() => onSelectBanType(option.value)}
               className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
                 isCurrent
-                  ? 'cursor-not-allowed bg-amber-500/10 text-amber-200'
+                  ? 'cursor-not-allowed bg-red-500/15 text-red-200'
                   : isAllowed
-                    ? 'cursor-pointer font-medium text-gray-200 hover:bg-[#1a1a22] hover:text-white'
+                    ? 'cursor-pointer font-medium text-red-300 hover:bg-red-500/15 hover:text-red-200'
                     : 'cursor-not-allowed text-gray-500'
               }`}
             >
               {isCurrent ? (
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-300" />
               ) : (
                 <Ban
                   className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
-                    isAllowed ? 'text-gray-400' : 'text-gray-600'
+                    isAllowed ? 'text-red-400' : 'text-gray-600'
                   }`}
                 />
               )}
@@ -323,7 +323,7 @@ function RowActionMenu({
                 <span className="flex items-center justify-between gap-2">
                   <span>{option.label}</span>
                   {isCurrent && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-red-300">
                       Current
                     </span>
                   )}
@@ -349,13 +349,13 @@ function RowActionMenu({
         onClick={onSelectUnban}
         className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition focus-visible:outline-2 focus-visible:outline-[#ff2b42] ${
           item.canUnban
-            ? 'cursor-pointer font-semibold text-rose-300 hover:bg-rose-500/15 hover:text-rose-200'
+            ? 'cursor-pointer font-semibold text-emerald-300 hover:bg-emerald-500/15 hover:text-emerald-200'
             : 'cursor-not-allowed text-gray-500'
         }`}
       >
         <ShieldBan
           className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
-            item.canUnban ? 'text-rose-400' : 'text-gray-600'
+            item.canUnban ? 'text-emerald-400' : 'text-gray-600'
           }`}
         />
         <span className="min-w-0 flex-1">

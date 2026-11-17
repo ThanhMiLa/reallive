@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { parseChannelModerationError } from '@/api/channel-moderation.api'
 import {
   useChannelBanMutation,
+  useChannelUnbanMutation,
   useTargetBanState,
 } from '@/hooks/useChannelModeration'
 import {
@@ -111,12 +112,15 @@ export function ChannelUserBanMenu({
 
   const targetBanQuery = useTargetBanState(viewerId, channelId, target.userId)
   const banMutation = useChannelBanMutation(viewerId, channelId)
+  const unbanMutation = useChannelUnbanMutation(viewerId, channelId)
+  const actionInFlight = useRef(false)
 
   const isChecking = targetBanQuery.isPending || targetBanQuery.isFetching
   const targetState = targetBanQuery.data
   const currentBanType = targetState?.banType ?? null
   const allowedBanTypes = targetState?.allowedBanTypes ?? []
-  const isMutating = banMutation.isUserPending(target.userId)
+  const unbanPending = unbanMutation.isUserPending(target.userId)
+  const isMutating = banMutation.isUserPending(target.userId) || unbanPending
 
   // Position menu relative to anchor and clamp within viewport
   useLayoutEffect(() => {
@@ -294,11 +298,13 @@ export function ChannelUserBanMenu({
     if (
       isChecking ||
       isMutating ||
+      actionInFlight.current ||
       currentBanType === banType ||
       !allowedBanTypes.includes(banType)
     ) {
       return
     }
+    actionInFlight.current = true
     setMutationError(null)
     setPendingBanType(banType)
     try {
@@ -317,7 +323,26 @@ export function ChannelUserBanMenu({
       toast.error(parsed.message)
       setMutationError(parsed.message)
     } finally {
+      actionInFlight.current = false
       setPendingBanType(null)
+    }
+  }
+
+  async function handleUnban() {
+    if (isChecking || isMutating || actionInFlight.current || !currentBanType || !targetState?.canUnban) return
+    actionInFlight.current = true
+    setMutationError(null)
+    try {
+      const result = await unbanMutation.unbanUser(target.userId)
+      if (!result) return
+      toast.success('User unbanned')
+      onClose(true)
+    } catch (error) {
+      const parsed = parseChannelModerationError(error, 'Unable to unban user.')
+      toast.error(parsed.message)
+      setMutationError(parsed.message)
+    } finally {
+      actionInFlight.current = false
     }
   }
 
@@ -348,9 +373,6 @@ export function ChannelUserBanMenu({
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-semibold text-white">
             {target.displayName}
-          </p>
-          <p className="truncate text-[10px] text-gray-400">
-            Channel moderation
           </p>
         </div>
       </div>
@@ -440,6 +462,19 @@ export function ChannelUserBanMenu({
                 </button>
               )
             })}
+            {currentBanType && (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={isMutating || !targetState?.canUnban}
+                aria-disabled={isMutating || !targetState?.canUnban}
+                onClick={() => void handleUnban()}
+                className="flex w-full items-center gap-2 rounded-lg border border-[#262632] bg-[#16181c] px-3 py-2 text-left text-xs font-semibold text-gray-100 transition hover:border-emerald-500/60 hover:bg-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#ff2b42] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {unbanPending ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Check className="h-3.5 w-3.5 text-emerald-400" />}
+                Unban
+              </button>
+            )}
           </div>
         )}
 

@@ -543,10 +543,61 @@ describe('channel moderation API contract', () => {
 })
 
 describe('avatar ban menu in chat', () => {
+  it('lets an unban-only manager remove the current ban from the avatar menu', async () => {
+    mocks.getModerationContext.mockResolvedValue({
+      channelId: CHANNEL_ID, ownerUserId: OWNER_ID, allowedBanTypes: [],
+      allowedUnbanTypes: ['LIVE_VIEW_BAN'], canViewBans: false,
+    } satisfies ChannelModerationContext)
+    mocks.getTargetBanState.mockResolvedValue({
+      channelId: CHANNEL_ID, userId: TARGET_ID, banType: 'LIVE_VIEW_BAN',
+      allowedBanTypes: [], canUnban: true,
+    } satisfies TargetChannelBanState)
+    mocks.history.mockResolvedValue(chatPage([chatMessage(1, TARGET_ID, 'TargetViewer', 'Hello')]))
+    mountWithRouter(<StreamChatPanel sessionId={SESSION_ID} channelId={CHANNEL_ID} status="LIVE" streamerUserId={OWNER_ID} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Moderation options for TargetViewer' }))
+    const menu = await screen.findByRole('menu', { name: 'Moderation options for TargetViewer' })
+    const unban = await within(menu).findByRole('menuitem', { name: 'Unban' })
+    fireEvent.click(unban)
+    fireEvent.click(unban)
+    await waitFor(() => expect(mocks.unbanUser).toHaveBeenCalledTimes(1))
+    expect(mocks.unbanUser).toHaveBeenCalledWith(CHANNEL_ID, TARGET_ID)
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Moderation options for TargetViewer' })).toBeNull())
+  })
+
+  it('keeps the ban menu open and shows an error when unban fails', async () => {
+    mocks.getTargetBanState.mockResolvedValue({
+      channelId: CHANNEL_ID, userId: TARGET_ID, banType: 'CHAT_BAN',
+      allowedBanTypes: ['LIVE_VIEW_BAN', 'FULL_BAN'], canUnban: true,
+    } satisfies TargetChannelBanState)
+    mocks.unbanUser.mockRejectedValueOnce(new Error('Unban failed'))
+    mocks.history.mockResolvedValue(chatPage([chatMessage(1, TARGET_ID, 'TargetViewer', 'Hello')]))
+    mountWithRouter(<StreamChatPanel sessionId={SESSION_ID} channelId={CHANNEL_ID} status="LIVE" streamerUserId={OWNER_ID} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Moderation options for TargetViewer' }))
+    const menu = await screen.findByRole('menu', { name: 'Moderation options for TargetViewer' })
+    fireEvent.click(await within(menu).findByRole('menuitem', { name: 'Unban' }))
+    expect((await within(menu).findByRole('alert')).textContent).toContain('Unban failed')
+    expect(screen.getByRole('menu', { name: 'Moderation options for TargetViewer' })).toBeTruthy()
+  })
+
+  it('disables unban when the target cannot be unbanned', async () => {
+    mocks.getTargetBanState.mockResolvedValue({
+      channelId: CHANNEL_ID, userId: TARGET_ID, banType: 'FULL_BAN',
+      allowedBanTypes: [], canUnban: false,
+    } satisfies TargetChannelBanState)
+    mocks.history.mockResolvedValue(chatPage([chatMessage(1, TARGET_ID, 'TargetViewer', 'Hello')]))
+    mountWithRouter(<StreamChatPanel sessionId={SESSION_ID} channelId={CHANNEL_ID} status="LIVE" streamerUserId={OWNER_ID} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Moderation options for TargetViewer' }))
+    const menu = await screen.findByRole('menu', { name: 'Moderation options for TargetViewer' })
+    const unban = await within(menu).findByRole('menuitem', { name: 'Unban' }) as HTMLButtonElement
+    expect(unban.disabled).toBe(true)
+    fireEvent.click(unban)
+    expect(mocks.unbanUser).not.toHaveBeenCalled()
+  })
+
   it.each([
-    ['CHAT_BAN', 'Ban chat', 'User banned from chat'],
-    ['LIVE_VIEW_BAN', 'Ban livestream', 'User banned from livestream'],
-    ['FULL_BAN', 'Full ban', 'User given a full channel ban'],
+    ['CHAT_BAN', 'Chat ban', 'User banned from chat'],
+    ['LIVE_VIEW_BAN', 'Live ban', 'User banned from livestream'],
+    ['FULL_BAN', 'Channel ban', 'User given a full channel ban'],
   ] as const)(
     'creates %s via avatar menu without confirmation and updates cache from server result',
     async (banType, buttonLabel, expectedToast) => {
@@ -640,13 +691,13 @@ describe('avatar ban menu in chat', () => {
       name: 'Moderation options for TargetViewer',
     })
     const banChatBtn = (await within(menu).findByRole('menuitem', {
-      name: /Ban chat/i,
+      name: /Chat ban/i,
     })) as HTMLButtonElement
     const banLiveBtn = within(menu).getByRole('menuitem', {
-      name: /Ban livestream/i,
+      name: /Live ban/i,
     }) as HTMLButtonElement
     const fullBanBtn = within(menu).getByRole('menuitem', {
-      name: /Full ban/i,
+      name: /Channel ban/i,
     }) as HTMLButtonElement
 
     // Current FULL_BAN is disabled and marked, and downgrading to CHAT_BAN is blocked by target.allowedBanTypes = []
@@ -737,7 +788,7 @@ describe('avatar ban menu in chat', () => {
     })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Retry' }))
     const banLiveBtn = await screen.findByRole('menuitem', {
-      name: 'Ban livestream',
+      name: 'Live ban',
     })
     fireEvent.click(banLiveBtn)
     fireEvent.click(banLiveBtn)
@@ -777,7 +828,7 @@ describe('avatar ban menu in chat', () => {
     const menu = await screen.findByRole('menu', {
       name: 'Moderation options for SelectedUser',
     })
-    await within(menu).findByRole('menuitem', { name: 'Ban chat' })
+    await within(menu).findByRole('menuitem', { name: 'Chat ban' })
 
     await act(async () => {
       mocks.sockets[0].trigger(
@@ -786,7 +837,7 @@ describe('avatar ban menu in chat', () => {
       )
     })
 
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Full ban' }))
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Channel ban' }))
     await waitFor(() =>
       expect(mocks.banUser).toHaveBeenCalledWith(
         CHANNEL_ID,
@@ -897,7 +948,7 @@ describe('avatar ban menu in chat', () => {
     })
     fireEvent.click(trigger)
     fireEvent.click(
-      await screen.findByRole('menuitem', { name: 'Ban livestream' }),
+      await screen.findByRole('menuitem', { name: 'Live ban' }),
     )
 
     await waitFor(() =>
@@ -1049,21 +1100,21 @@ describe('BannedUsersPage dropdown actions and moderator channel support', () =>
     expect(
       (
         within(menu2).getByRole('menuitem', {
-          name: /Full ban/i,
+          name: /Channel ban/i,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true)
     expect(
       (
         within(menu2).getByRole('menuitem', {
-          name: /Ban livestream/i,
+          name: /Live ban/i,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true)
     expect(
       (
         within(menu2).getByRole('menuitem', {
-          name: /Ban chat/i,
+          name: /Chat ban/i,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false)
@@ -1086,7 +1137,7 @@ describe('BannedUsersPage dropdown actions and moderator channel support', () =>
       name: 'Moderation actions for <b>BadActor</b>',
     })
     fireEvent.click(
-      within(menu1).getByRole('menuitem', { name: 'Ban livestream' }),
+      within(menu1).getByRole('menuitem', { name: 'Live ban' }),
     )
 
     await waitFor(() =>
@@ -1097,10 +1148,10 @@ describe('BannedUsersPage dropdown actions and moderator channel support', () =>
       ),
     )
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      'Updated ban to Livestream ban',
+      'Updated ban to Live ban',
     )
     expect(
-      await within(actorRow).findByText('Livestream ban'),
+      await within(actorRow).findByText('Live ban'),
     ).toBeTruthy()
   })
 
@@ -1380,16 +1431,16 @@ describe('BannedUsersPage dropdown actions and moderator channel support', () =>
 
     await screen.findByText('ConflictTarget')
     fireEvent.click(screen.getByRole('button', { name: /Actions/i }))
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Full ban' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Channel ban' }))
 
     await waitFor(() =>
       expect(mocks.toastError).toHaveBeenCalledWith(
         'Moderation service is temporarily unavailable. Please try again.',
       ),
     )
-    // Badge must NOT falsely switch to Full ban on 503
+    // Badge must NOT falsely switch to Channel ban on 503
     expect(screen.getByText('Chat ban')).toBeTruthy()
-    expect(screen.queryByText('Full ban')).toBeNull()
+    expect(screen.queryByText('Channel ban')).toBeNull()
 
     // Now unban hits 409 -> refreshes list without faking success
     fireEvent.click(screen.getByRole('button', { name: /Actions/i }))

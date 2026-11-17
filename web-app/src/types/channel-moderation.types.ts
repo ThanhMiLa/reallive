@@ -48,13 +48,13 @@ export const BAN_TYPE_OPTIONS: ReadonlyArray<{
   label: string
   badgeLabel: string
 }> = [
-  { value: 'CHAT_BAN', label: 'Ban chat', badgeLabel: 'Chat ban' },
+  { value: 'CHAT_BAN', label: 'Chat ban', badgeLabel: 'Chat ban' },
   {
     value: 'LIVE_VIEW_BAN',
-    label: 'Ban livestream',
-    badgeLabel: 'Livestream ban',
+    label: 'Live ban',
+    badgeLabel: 'Live ban',
   },
-  { value: 'FULL_BAN', label: 'Full ban', badgeLabel: 'Full ban' },
+  { value: 'FULL_BAN', label: 'Channel ban', badgeLabel: 'Channel ban' },
 ]
 
 export function getBanTypeLabel(banType: BanType): string {

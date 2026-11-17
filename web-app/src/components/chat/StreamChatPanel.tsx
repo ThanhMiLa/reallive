@@ -33,7 +33,8 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
   const moderationContextQuery = useChannelModerationContext(viewerId, channelId)
   const moderationContext = moderationContextQuery.data
   const canOpenBanMenu = Boolean(
-    channelId && moderationContext && moderationContext.allowedBanTypes.length > 0,
+    channelId && moderationContext &&
+    (moderationContext.allowedBanTypes.length > 0 || moderationContext.allowedUnbanTypes.length > 0),
   )
   const canViewBans = Boolean(channelId && moderationContext?.canViewBans)
   const ownerId = moderationContext?.ownerUserId || streamerUserId || ''
