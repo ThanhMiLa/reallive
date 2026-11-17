@@ -26,6 +26,7 @@ import com.reallive.streamservice.stream.dto.MediaIngestEventCommand;
 import com.reallive.streamservice.stream.dto.StreamPublishContext;
 import com.reallive.streamservice.stream.dto.request.SaveStreamSetupRequest;
 import com.reallive.streamservice.stream.entity.enums.MediaSourceType;
+import com.reallive.streamservice.stream.entity.enums.ChannelStreamConfigStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.ChannelStreamConfigRepository;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
@@ -60,6 +61,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -73,6 +75,7 @@ class StreamProvisioningPostgresTest extends PostgresIntegrationTestSupport {
 
     @Autowired private StreamSetupService setupService;
     @Autowired private StreamSessionService sessionService;
+    @Autowired private StreamIngestRecoveryService recoveryService;
     @Autowired private StreamMediaLifecycleService lifecycleService;
     @Autowired private ChannelStreamConfigRepository configs;
     @Autowired private StreamSessionRepository sessions;
@@ -186,6 +189,90 @@ class StreamProvisioningPostgresTest extends PostgresIntegrationTestSupport {
                                                     MediaSourceType.RTMP_SOURCE))
                                     : Optional.empty();
                         });
+    }
+
+    @Test
+    void startupRecoveryKeepsCurrentKeyAndCanBeRepeatedWithoutCreatingSessions() {
+        Owner owner = configuredOwner();
+        setupService.issueStreamKey(owner.user());
+        UUID key = ingest(owner);
+        configuredIngests.clear();
+
+        assertEquals(1, recoveryService.restoreIngestPaths());
+        assertEquals(1, recoveryService.restoreIngestPaths());
+        assertEquals(Set.of(key), configuredIngests);
+        assertEquals(key, ingest(owner));
+        assertEquals(0, sessions.count());
+        assertEquals(0, history.count());
+        verify(media, never()).ensurePlaybackPath(any(), any(), any());
+    }
+
+    @Test
+    void startupRecoverySkipsDraftAndBlockedChannels() {
+        setupService.getOrCreateSetup(owner().user());
+        Owner blocked = configuredOwner();
+        setupService.issueStreamKey(blocked.user());
+        var config = configs.findById(blocked.channel()).orElseThrow();
+        config.setStatus(ChannelStreamConfigStatus.BLOCKED);
+        config.setBlockedReason("Streaming blocked");
+        configs.saveAndFlush(config);
+        configuredIngests.clear();
+
+        assertEquals(0, recoveryService.restoreIngestPaths());
+        assertTrue(configuredIngests.isEmpty());
+        assertEquals(ChannelStreamConfigStatus.BLOCKED,
+                configs.findById(blocked.channel()).orElseThrow().getStatus());
+    }
+
+    @Test
+    void failedStartupRecoveryCanRetryWithoutReplacingKey() {
+        Owner owner = configuredOwner();
+        setupService.issueStreamKey(owner.user());
+        UUID key = ingest(owner);
+        configuredIngests.clear();
+        doThrow(new AppException(ErrorCode.MEDIA_SERVER_UNAVAILABLE))
+                .when(media).ensureIngestPath(key);
+
+        error(ErrorCode.MEDIA_SERVER_UNAVAILABLE, recoveryService::restoreIngestPaths);
+        assertEquals(key, ingest(owner));
+        doAnswer(call -> {
+            configuredIngests.add(call.getArgument(0));
+            return null;
+        }).when(media).ensureIngestPath(key);
+
+        assertEquals(1, recoveryService.restoreIngestPaths());
+        assertEquals(Set.of(key), configuredIngests);
+    }
+
+    @Test
+    void startupRecoveryCannotReopenAKeyBeingReplacedConcurrently() throws Exception {
+        Owner owner = configuredOwner();
+        setupService.issueStreamKey(owner.user());
+        UUID oldKey = ingest(owner);
+        configuredIngests.clear();
+        CountDownLatch recovering = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(call -> {
+            recovering.countDown();
+            assertTrue(release.await(5, TimeUnit.SECONDS));
+            configuredIngests.add(call.getArgument(0));
+            return null;
+        }).when(media).ensureIngestPath(oldKey);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var recovery = executor.submit(recoveryService::restoreIngestPaths);
+            try {
+                assertTrue(recovering.await(5, TimeUnit.SECONDS));
+                var replacement = executor.submit(() -> setupService.issueStreamKey(owner.user()));
+                release.countDown();
+                assertEquals(1, recovery.get(5, TimeUnit.SECONDS));
+                replacement.get(5, TimeUnit.SECONDS);
+            } finally {
+                release.countDown();
+            }
+        }
+        assertNotEquals(oldKey, ingest(owner));
+        assertEquals(Set.of(ingest(owner)), configuredIngests);
     }
 
     @Test

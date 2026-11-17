@@ -1,6 +1,7 @@
 package com.reallive.streamservice.stream.repository;
 
 import com.reallive.streamservice.stream.entity.ChannelStreamConfigEntity;
+import com.reallive.streamservice.stream.entity.enums.ChannelStreamConfigStatus;
 
 import jakarta.persistence.LockModeType;
 
@@ -10,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,4 +51,14 @@ public interface ChannelStreamConfigRepository
             @Param("ingestKeyId") UUID ingestKeyId);
 
     Optional<ChannelStreamConfigEntity> findByCurrentIngestKeyId(UUID ingestKeyId);
+
+    @Query("""
+            SELECT c.channelId
+            FROM ChannelStreamConfigEntity c
+            WHERE c.status = :status
+              AND c.currentIngestKeyId IS NOT NULL
+            ORDER BY c.channelId
+            """)
+    List<UUID> findChannelIdsWithIngestKeyByStatus(
+            @Param("status") ChannelStreamConfigStatus status);
 }

@@ -92,6 +92,7 @@ class StreamInternalRouteTest {
             "POST, /v3/config/paths/add/ingest/test",
             "GET, /stream/internal/api/media/jwks",
             "POST, /stream/internal/api/media-events",
+            "POST, /stream/internal/api/media/restore-ingest-paths",
             "POST, /stream/internal/api/viewer-events",
             "POST, /stream/internal/api/thumbnail-results",
             "GET, /stream/internal/api/streams/id/chat-context",

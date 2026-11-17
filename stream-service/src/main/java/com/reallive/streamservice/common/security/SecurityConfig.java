@@ -38,6 +38,7 @@ public class SecurityConfig {
 
     private static final String[] INTERNAL_ENDPOINTS_POST = {
             "/internal/api/media-events",
+            "/internal/api/media/restore-ingest-paths",
             "/internal/api/viewer-events",
             "/internal/api/thumbnail-results"
     };
