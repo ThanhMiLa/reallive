@@ -54,7 +54,15 @@ See [architecture and workflow](../docs/architecture/Streaming%20Architecture%20
 - Media callbacks POST `/stream/internal/api/media-events` process ONLINE/OFFLINE synchronously and return `200` APPLIED/IGNORED. OBS Start creates LIVE only after playback is ready; Stop starts a 60s grace. The reconnect scheduler expires sessions directly.
 - Three business tables: channel_stream_configs, stream_sessions, stream_status_history. No credential/token persistence, operation queue, media recovery worker, runtime-state table, advisory lock or lease. Config row locks precede session locks and remain held through bounded Control API calls.
 - RSA keys must remain stable. Configure `STREAM_MEDIA_PRIVATE_KEY_BASE64`, `STREAM_MEDIA_PUBLIC_KEY_BASE64`, RTMP/HLS/Control URLs. AES credential encryption is no longer required.
-- Media errors return immediately; there is no automatic retry/recovery after crash or MediaMTX restart. DB rollback cannot undo media changes. An interrupted operation may require a fresh key request or manual path cleanup.
+- Media errors return immediately; DB rollback cannot undo media changes. Interrupted key replacement may require a fresh key request or manual path cleanup. MediaMTX startup restores existing active ingest paths through the callback below; it does not recover other interrupted lifecycle operations.
+
+### MediaMTX startup recovery
+
+MediaMTX calls `POST /stream/internal/api/media/restore-ingest-paths` directly after its Control API becomes available. Stream Service recreates missing `ingest/{currentIngestKeyId}` paths for `ACTIVE` channel configurations, preserving the stream key already configured in OBS. Each channel is rechecked under its config row lock, serializing recovery with key replacement/blocking. `DRAFT`/`BLOCKED` configurations are skipped; no playback path or session is created by recovery.
+
+The endpoint accepts no body or account/service credentials and is not routed through Gateway. A successful response is `200`, with `result.restoredChannels` counting paths ensured, including paths already present. Calls are idempotent. On failure, previously ensured paths remain configured and the startup caller can retry the request. See the [startup callback contract](../docs/contracts/streaming/README.md).
+
+The media container entrypoint retries while Stream Service is unavailable, then stops calling after recovery succeeds. There is no recovery scheduler in Stream Service. Container health remains pending/unhealthy until recovery succeeds. When starting the local stack, start Stream Service before waiting for media health, or use `docker compose up -d media-server`, start Stream Service, then wait for media readiness. RSA signing keys must remain stable for the original OBS token to remain valid.
 
 ### Migration and verification
 

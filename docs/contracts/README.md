@@ -9,6 +9,10 @@ This directory contains versioned example payloads for events exchanged between 
 
 The email verification example contains synthetic test values. Both services' `EmailVerificationRequestedMessageTest` classes read the same file to verify their Kafka message format. Run those tests from each service directory with `./mvnw -Dtest=EmailVerificationRequestedMessageTest test`; the repository's `docs/contracts` directory must be present.
 
+## MediaMTX startup
+
+The [MediaMTX startup callback](streaming/README.md) defines restoration of existing ingest paths after Media Server startup, preserving OBS stream keys.
+
 ## Authentication state
 
 The [Auth State contract](Auth%20State.md) defines Redis authorities/status, JWT claims, error handling, committed synchronization and rollout/backfill.

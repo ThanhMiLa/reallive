@@ -3,6 +3,8 @@
 > [!NOTE]
 > Các sơ đồ **Mermaid** trong tài liệu này là nguồn chuẩn theo thiết kế **Stream Key cố định + tự động bắt đầu/kết thúc từ OBS** (`V5`). Các ảnh `.png` tham chiếu giữ nguyên cấu trúc thư mục hiện có; phần Mermaid bên dưới phản ánh đầy đủ kiến trúc hai đường dẫn (`ingest/{ingestKeyId}` và `live/{sessionId}`), callback nội bộ có xác thực và worker phục hồi PostgreSQL.
 
+> **Luồng hiện tại V6:** xem [Stream Service README](../../stream-service/README.md) và mục 6 bên dưới cho startup recovery. Các chi tiết worker/operation, credential mã hóa và callback token trong sơ đồ V5 là thiết kế lịch sử, không được triển khai trong V6. Phục hồi ingest hiện do Media Server gọi endpoint khi khởi động, không có scheduler phục hồi media trong Stream Service.
+
 ## 1. Giới thiệu và Hướng dẫn sử dụng
 
 Hệ thống cho phép streamer phát trực tiếp từ **OBS** tới **MediaMTX** qua RTMP/RTMPS bằng một **Stream Key cố định theo kênh** và người xem xem trực tiếp trên **React + hls.js** qua HLS. **Stream Service** quản lý cấu hình kênh (`channel_stream_configs`), vòng đời credential (`channel_stream_credentials`), hàng đợi điều phối media (`stream_media_operations`), vòng đời phiên phát (`stream_sessions`), kiểm tra quyền nghiệp vụ và cấp/ký JWT bằng khóa RSA; **MediaMTX 1.21.2** tự xác thực JWT qua JWKS và chuyển tiếp media nội bộ từ path ingest sang path playback bằng RTMP pull (không transcoding).
@@ -236,10 +238,7 @@ sequenceDiagram
 
 </details>
 
-- **Phục hồi tự động (`StreamMediaReconciler`, chạy lúc khởi động và mỗi 5 giây)**:
-  - Hoàn tất các `stream_media_operations` còn tồn/hết lease sau crash hoặc lỗi mạng tạm thời (`backoff 1, 2, 5, 10, tối đa 30s`).
-  - Khi phát hiện MediaMTX restart (qua `server_started_at` trong `stream_media_runtime_state`), không đoán nguồn cũ còn trong grace period: đóng sạch path/session cũ nếu không xác định được khoảng ngắt an toàn, dọn ingest đã `REVOKED` và playback `ENDED`/mồ côi trước khi khôi phục các ingest path `ACTIVE`.
-  - Đối chiếu nguồn thực tế trên MediaMTX để bù `ONLINE`/`OFFLINE` bị lỡ (đi qua cùng lifecycle handler và fencing `credential_generation` / `media_revision`).
+- **Phục hồi ingest hiện tại (V6)**: entrypoint của Media Server gọi endpoint nội bộ sau khi MediaMTX Control API sẵn sàng, như mục 6. Không chạy `StreamMediaReconciler`, hàng đợi operation hoặc scheduler phục hồi media trong Stream Service.
 
 ---
 
@@ -266,3 +265,38 @@ sequenceDiagram
    - `POST /stream/internal/api/media-events` chỉ nhận qua nội bộ với header `X-Internal-Token` (`STREAM_MEDIA_CALLBACK_INTERNAL_TOKEN`, so sánh constant-time SHA-256) và **không expose qua API Gateway**.
    - Các API `/me/setup`, `/me/stream-key/reset`, `/me/operations/{operationId}`, `/me/current` và `/playback-access` đều trả header `Cache-Control: no-store`.
    - Frontend chỉ giữ credential trong bộ nhớ phiên làm việc (không lưu `localStorage`/`sessionStorage`), và log/DTO `toString()`/bảng `stream_media_operations.payload` tuyệt đối không chứa JWT thô hoặc query `token=...`.
+
+## 6. Khôi phục ingest sau MediaMTX restart (V6)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Boot as Media container entrypoint
+    participant MTX as MediaMTX Control API
+    participant SS as Stream Service
+    participant DB as PostgreSQL
+
+    Boot->>MTX: Khởi động MediaMTX, chờ GET /v3/info
+    loop Chỉ trong startup, cho tới khi thành công hoặc shutdown
+        Boot->>SS: POST /stream/internal/api/media/restore-ingest-paths (không body/credential)
+        SS->>DB: Đọc channel IDs ACTIVE có current_ingest_key_id
+        loop Mỗi channel, transaction riêng
+            SS->>DB: Khóa config row, đọc lại status và key hiện tại
+            alt Config vẫn ACTIVE và có key
+                SS->>MTX: ensureIngestPath(ingest/{currentIngestKeyId})
+                MTX-->>SS: Path hiện có hoặc tạo mới, xác nhận cấu hình
+            else Config đã BLOCKED, bị xóa hoặc chưa có key
+                SS->>SS: Bỏ qua
+            end
+        end
+        alt Đã ensure toàn bộ path cần phục hồi
+            SS-->>Boot: 200, result.restoredChannels
+            Boot->>Boot: Đánh dấu ready, dừng gọi callback
+        else Backend chưa lên hoặc MediaMTX/DB có lỗi
+            SS-->>Boot: Lỗi, không ACK thành công
+            Boot->>Boot: Chờ 2 giây rồi thử lại, chưa ready
+        end
+    end
+```
+
+Stream key và khóa ký RSA được giữ nguyên. Callback gọi lặp an toàn, dùng cùng khóa config với thao tác cấp/thay key để không mở lại ingest key đã bị thay thế. `DRAFT`/`BLOCKED` không được phục hồi; callback không tạo session, không mở playback path và không phục hồi phiên đã kết thúc. Đây là bước khởi động Media Server, không phải schedule job ở backend. Xem [contract](../contracts/streaming/README.md).

@@ -15,6 +15,7 @@ media-server/
 │   └── Dockerfile.dockerignore  # Quy tắc lọc build context cho image
 ├── hooks/
 │   ├── media_hook.py            # Webhook script xử lý sự kiện online/offline
+│   ├── media_entrypoint.py      # Khởi động MediaMTX và gọi phục hồi ingest một lần
 │   └── viewer_hook.py           # Hook HLS reader, tra user và callback CCU
 └── README.md                    # Tài liệu hướng dẫn module
 ```
@@ -23,7 +24,7 @@ Tên module/service là `media-server`; phần mềm bên trong vẫn là MediaM
 
 Backend thật (JWKS/callback gọi trực tiếp Stream Service):
 
-Chuẩn bị key RSA, DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media container trước khi lưu cấu hình kênh / phát OBS. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. MediaMTX tải JWKS khi có yêu cầu xác thực; listener healthy không chứng minh backend đã sẵn sàng.
+Chuẩn bị key RSA, DB/Redis và chạy Stream Service theo [README](../stream-service/README.md), sau đó chạy media container trước khi lưu cấu hình kênh / phát OBS. User/Channel/Gateway cũng phải chạy để dùng luồng account thật. Backend chạy trên host nên không có `depends_on` trong Compose cho các tiến trình này. Container chỉ healthy sau khi callback phục hồi ingest thành công và các listener đã mở; điều này không chứng minh toàn bộ luồng publish/playback hoặc các service khác đã sẵn sàng.
 
 ```sh
 docker compose up -d --build --wait media-server
@@ -45,13 +46,21 @@ Chỉ chạy một trong hai cấu hình, vì cùng dùng port ingest 1935, HLS 
 - Tách hai đường dẫn: OBS publish vào `ingest/{ingestKeyId}` (tắt `runOnRead`/`runOnUnread`), và Stream Service cấu hình `live/{sessionId}` kéo RTMP nội bộ từ `rtmp://127.0.0.1:1935/ingest/{ingestKeyId}?token={RelayReadJWT}` với `sourceOnDemand: false` và tắt `runOnOnline`/`runOnOffline` để tránh vòng lặp hook.
 - `overridePublisher: false`; publish/read vẫn dùng JWT; riêng action `api` được bỏ qua xác thực qua `authJWTExclude`. Control API chỉ dành cho localhost/mạng nội bộ.
 - Root mặc định trỏ JWKS và internal media callback trực tiếp tới Stream Service tại `host.docker.internal:8082` (`/stream/internal/api/media/jwks` và `/stream/internal/api/media-events`), không qua Gateway; fixture override sang port 18082. Linux có extra_hosts host-gateway; phải kiểm tra reachability tới host trên môi trường chạy thực tế.
-- Khai báo `STREAM_MEDIA_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` ở root theo `.env.example`.
+- Khai báo `STREAM_MEDIA_JWKS_URL`, `STREAM_MEDIA_CALLBACK_URL`, `STREAM_MEDIA_ALLOWED_ORIGINS` trong `.env` ở root theo `.env.example`. `STREAM_MEDIA_STARTUP_CALLBACK_URL` mặc định gọi trực tiếp `http://host.docker.internal:8082/stream/internal/api/media/restore-ingest-paths`.
 - `media_hook.py` gửi callback nội bộ không kèm token về `/stream/internal/api/media-events`, dùng timeout request 2s, timeout tổng 10s và tối đa 3 lần thử cho lỗi tạm thời (`409`, `429`, `5xx`, lỗi mạng) với cùng `eventId`. Không in `docker compose config` đầy đủ vì có thể làm lộ token/env của service khác; dùng `config --quiet`.
-- Healthcheck kiểm tra listener RTMP/HLS/Control API. Backend thật dùng integration test với `MediaMTX 1.21.2`; `media.py probe` dùng fixture riêng. Không suy ra auth pass chỉ từ container healthy.
+- Healthcheck kiểm tra dấu hiệu phục hồi startup thành công và listener RTMP/HLS/Control API. Backend thật dùng integration test với `MediaMTX 1.21.2`; `media.py probe` dùng fixture riêng. Không suy ra auth pass chỉ từ container healthy.
 - Stream Service gọi Control API qua `STREAM_MEDIA_CONTROL_API_URL=http://localhost:9997` khi chạy trên host. Timeout connect/request mặc định 2s/5s. Khi chạy backend trong Docker, đổi URL theo network/service name tương ứng.
 - Production cần HTTPS/RTMPS và network/secret riêng; cấu hình local này chưa là bằng chứng production pass.
 
-Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Sau MediaMTX restart không tự khôi phục path; streamer cần yêu cầu key mới khi media server đã hoạt động lại.
+Dừng riêng fixture bằng `docker compose --project-directory . -f scripts/testing/streaming/compose.fixture.yml down` (không dùng `-v`, không tác động DB khác). Chạy các lệnh trên từ root; `--project-directory .` giúp kế thừa service và nạp `.env` của root đúng vị trí. Fixture chủ động tắt callback startup bằng URL rỗng vì tự quản lý path thử nghiệm, không có database cấu hình kênh.
+
+## Phục hồi ingest khi khởi động
+
+Mỗi lần container khởi động, `media_entrypoint.py` chạy MediaMTX, chờ `GET /v3/info` nội bộ thành công rồi gọi `POST /stream/internal/api/media/restore-ingest-paths` trực tiếp tới Stream Service, không kèm credential. Backend phục hồi đúng ingest key hiện hành của các kênh `ACTIVE`; OBS giữ nguyên Server URL và Stream Key. Path playback và session được xử lý bởi luồng ONLINE/OFFLINE hiện có.
+
+Nếu backend chưa chạy hoặc phục hồi lỗi, entrypoint chờ 2 giây giữa các lần thử; mỗi HTTP request có timeout 5 giây. Chỉ sau response `200` đúng contract mới tạo `/tmp/media-startup-ready` để healthcheck thành công. Khi đã phục hồi, không gọi lại định kỳ. SIGTERM/SIGINT được chuyển tới MediaMTX và dừng retry; dấu hiệu sẵn sàng được xóa mỗi lần khởi động/kết thúc. Không dùng `runOnInit` vì hook đó chạy theo từng path trong khi cấu hình khởi động là `paths: {}`.
+
+Khi Stream Service chưa lên, dùng `docker compose up -d media-server` trước, khởi động backend rồi mới chờ health; `--wait` sẽ timeout nếu backend vẫn chưa sẵn sàng. Startup callback chỉ phục hồi ingest; không sửa lỗi key replacement dang dở hoặc khôi phục playback của phiên đã kết thúc. Xem [contract](../docs/contracts/streaming/README.md).
 
 Vòng đời persistent stream key hiện xử lý đồng bộ qua `POST /stream/internal/api/media-events`, service đồng bộ; các endpoint cũ `/api/streams`, `/publish-credentials`, `/end` và `/api/media/events` đã được gỡ bỏ theo [Persistent Key Refactor Plan](../docs/implement-plan/Streaming%20Persistent%20Key%20Refactor%20Plan.md).
 
