@@ -121,8 +121,7 @@ test('rejects wrong metadata and missing configuration', async () => {
   } finally {
     await storage.onApplicationShutdown();
   }
-  const unconfigured = new R2ThumbnailStorage(
-  );
+  const unconfigured = new R2ThumbnailStorage(loadWorkerConfig({}));
   try {
     await expect(unconfigured.upload(data)).rejects.toThrow(
       'R2_NOT_CONFIGURED',
