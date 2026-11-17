@@ -88,7 +88,7 @@ class ChannelPersistenceTest {
     @Test
     void migrationCreatesAllTablesAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("6", flyway.info().current().getVersion().toString());
+        assertEquals("7", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         for (String name : List.of("channels", "categories", "channel_categories", "channel_followers", "channel_user_bans")) {
             assertNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM " + table(name), Integer.class));
@@ -122,7 +122,7 @@ class ChannelPersistenceTest {
                         UUID.randomUUID(), channelId, unbanned, action, owner);
             }
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource()).schemas(schema).defaultSchema(schema).load();
-            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            assertEquals(2, upgraded.migrate().migrationsExecuted);
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM " + banTable, Integer.class));
             assertEquals("FULL_BAN", jdbc.queryForObject("SELECT ban_type FROM " + banTable + " WHERE user_id = ?", String.class, target));
         } finally {
@@ -145,7 +145,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(5, upgraded.migrate().migrationsExecuted);
+            assertEquals(6, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             assertEquals(0L, jdbc.queryForObject("SELECT follower_count FROM " + channelsTable
                     + " WHERE id = ?", Long.class, channelId));
@@ -216,7 +216,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(3, upgraded.migrate().migrationsExecuted);
+            assertEquals(4, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             expectedRows.forEach((channelId, expected) -> assertEquals(expected,
                     jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId)));
