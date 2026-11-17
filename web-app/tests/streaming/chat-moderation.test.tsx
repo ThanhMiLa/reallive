@@ -9,9 +9,13 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
+import {
+  AxiosError,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { apiClient } from '@/api/client'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 import { StreamerDashboardLayout } from '@/components/layout/StreamerDashboardLayout'
@@ -21,10 +25,11 @@ import { queryClient as appQueryClient } from '@/lib/query-client'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ChatAck, ChatJoin, ChatMessage, ChatPage } from '@/types/chat.types'
 import type {
+  BanType,
   BannedUsersPage as BannedUsersPageData,
-  ChatModerationContext,
-  TargetChatBanStatus,
-} from '@/types/chat-moderation.types'
+  ChannelModerationContext,
+  TargetChannelBanState,
+} from '@/types/channel-moderation.types'
 import type { StreamSession, StreamSetup } from '@/types/stream.types'
 
 const SESSION_ID = '462c912c-ee66-4477-9852-bed13d377297'
@@ -33,6 +38,7 @@ const CHANNEL_ID = '20000000-0000-4000-8000-000000000010'
 const CHANNEL_ID_2 = '20000000-0000-4000-8000-000000000020'
 const OWNER_ID = '10000000-0000-4000-8000-000000000001'
 const VIEWER_ID = '10000000-0000-4000-8000-000000000002'
+const MODERATOR_ID = '10000000-0000-4000-8000-000000000009'
 const TARGET_ID = '10000000-0000-4000-8000-000000000003'
 const TARGET_ID_2 = '10000000-0000-4000-8000-000000000004'
 const CATEGORY_ID = '00000000-0000-4000-8000-000000000001'
@@ -113,9 +119,9 @@ const mocks = vi.hoisted(() => ({
   metadata: vi.fn(),
   access: vi.fn(),
   getModerationContext: vi.fn(),
-  getTargetBanStatus: vi.fn(),
-  banChatUser: vi.fn(),
-  unbanChatUser: vi.fn(),
+  getTargetBanState: vi.fn(),
+  banUser: vi.fn(),
+  unbanUser: vi.fn(),
   getBannedUsers: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -144,9 +150,6 @@ const mocks = vi.hoisted(() => ({
       })
     },
   ),
-  virtualItemsOverride: null as
-    | ((count: number) => Array<{ index: number; start: number; end: number; size: number }>)
-    | null,
 }))
 
 vi.mock('socket.io-client', () => ({
@@ -171,16 +174,16 @@ vi.mock('@/api/stream.api', () => ({
     access: mocks.access,
   },
 }))
-vi.mock('@/api/chat-moderation.api', async (importOriginal) => {
+vi.mock('@/api/channel-moderation.api', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@/api/chat-moderation.api')>()
+    await importOriginal<typeof import('@/api/channel-moderation.api')>()
   return {
     ...actual,
-    chatModerationApi: {
+    channelModerationApi: {
       getModerationContext: mocks.getModerationContext,
-      getTargetBanStatus: mocks.getTargetBanStatus,
-      banChatUser: mocks.banChatUser,
-      unbanChatUser: mocks.unbanChatUser,
+      getTargetBanState: mocks.getTargetBanState,
+      banUser: mocks.banUser,
+      unbanUser: mocks.unbanUser,
       getBannedUsers: mocks.getBannedUsers,
     },
   }
@@ -205,14 +208,12 @@ vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: (options: { count: number }) => ({
     getTotalSize: () => options.count * 64,
     getVirtualItems: () =>
-      mocks.virtualItemsOverride
-        ? mocks.virtualItemsOverride(options.count)
-        : Array.from({ length: options.count }, (_, index) => ({
-            index,
-            start: index * 64,
-            end: (index + 1) * 64,
-            size: 64,
-          })),
+      Array.from({ length: options.count }, (_, index) => ({
+        index,
+        start: index * 64,
+        end: (index + 1) * 64,
+        size: 64,
+      })),
     measureElement: () => undefined,
     scrollToIndex: () => undefined,
     getOffsetForIndex: (index: number) => [index * 64, 'start'],
@@ -292,7 +293,7 @@ function setAuthUser(userId: string, roles: string[] = ['USER']) {
     isAuthModalOpen: false,
     user: {
       userId,
-      displayName: userId === OWNER_ID ? 'ChannelOwner' : 'ViewerUser',
+      displayName: userId === OWNER_ID ? 'ChannelOwner' : 'ModeratorOrViewer',
       email: `${userId}@example.com`,
       emailVerified: true,
       roles,
@@ -301,6 +302,8 @@ function setAuthUser(userId: string, roles: string[] = ['USER']) {
     },
   })
 }
+
+const ALL_BAN_TYPES: BanType[] = ['CHAT_BAN', 'LIVE_VIEW_BAN', 'FULL_BAN']
 
 let client: QueryClient
 
@@ -331,14 +334,13 @@ beforeEach(() => {
   mocks.metadata.mockReset()
   mocks.access.mockReset()
   mocks.getModerationContext.mockReset()
-  mocks.getTargetBanStatus.mockReset()
-  mocks.banChatUser.mockReset()
-  mocks.unbanChatUser.mockReset()
+  mocks.getTargetBanState.mockReset()
+  mocks.banUser.mockReset()
+  mocks.unbanUser.mockReset()
   mocks.getBannedUsers.mockReset()
   mocks.onJoin.mockReset()
   mocks.onSend.mockReset()
   mocks.sockets.length = 0
-  mocks.virtualItemsOverride = null
   setAuthUser(OWNER_ID, ['USER', 'STREAMER'])
 
   mocks.onJoin.mockImplementation((_attempt, cb) => {
@@ -423,25 +425,35 @@ beforeEach(() => {
   mocks.getModerationContext.mockResolvedValue({
     channelId: CHANNEL_ID,
     ownerUserId: OWNER_ID,
-    canBan: true,
-    canUnban: true,
+    allowedBanTypes: ALL_BAN_TYPES,
+    allowedUnbanTypes: ALL_BAN_TYPES,
     canViewBans: true,
-  } satisfies ChatModerationContext)
-  mocks.getTargetBanStatus.mockResolvedValue({
+  } satisfies ChannelModerationContext)
+  mocks.getTargetBanState.mockResolvedValue({
     channelId: CHANNEL_ID,
     userId: TARGET_ID,
     banType: null,
-  } satisfies TargetChatBanStatus)
-  mocks.banChatUser.mockResolvedValue({
-    channelId: CHANNEL_ID,
-    userId: TARGET_ID,
-    banType: 'CHAT_BAN',
-  })
-  mocks.unbanChatUser.mockResolvedValue({
-    channelId: CHANNEL_ID,
-    userId: TARGET_ID,
-    banType: null,
-  })
+    allowedBanTypes: ALL_BAN_TYPES,
+    canUnban: false,
+  } satisfies TargetChannelBanState)
+  mocks.banUser.mockImplementation(
+    async (channelId: string, userId: string, banType: BanType) => ({
+      channelId,
+      userId,
+      banType,
+      allowedBanTypes: ALL_BAN_TYPES.filter((type) => type !== banType),
+      canUnban: true,
+    }),
+  )
+  mocks.unbanUser.mockImplementation(
+    async (channelId: string, userId: string) => ({
+      channelId,
+      userId,
+      banType: null,
+      allowedBanTypes: ALL_BAN_TYPES,
+      canUnban: false,
+    }),
+  )
   mocks.getBannedUsers.mockResolvedValue({
     content: [],
     page: 0,
@@ -457,11 +469,11 @@ afterEach(() => {
   appQueryClient.clear()
 })
 
-describe('chat moderation API contract', () => {
-  it('calls exact backend endpoints, methods, params, and omits POST bodies', async () => {
+describe('channel moderation API contract', () => {
+  it('calls new channel-scoped routes, sends { banType } for ban, omits body for unban, and enforces pagination bounds', async () => {
     const actualMod = await vi.importActual<
-      typeof import('@/api/chat-moderation.api')
-    >('@/api/chat-moderation.api')
+      typeof import('@/api/channel-moderation.api')
+    >('@/api/channel-moderation.api')
     const originalAdapter = apiClient.defaults.adapter
     const requests: InternalAxiosRequestConfig[] = []
     apiClient.defaults.adapter = async (config): Promise<AxiosResponse> => {
@@ -476,35 +488,38 @@ describe('chat moderation API contract', () => {
     }
 
     try {
-      await actualMod.chatModerationApi.getModerationContext(CHANNEL_ID)
-      await actualMod.chatModerationApi.getTargetBanStatus(CHANNEL_ID, TARGET_ID)
-      await actualMod.chatModerationApi.banChatUser(CHANNEL_ID, TARGET_ID)
-      await actualMod.chatModerationApi.unbanChatUser(CHANNEL_ID, TARGET_ID)
-      await actualMod.chatModerationApi.getBannedUsers(CHANNEL_ID, {
+      await actualMod.channelModerationApi.getModerationContext(CHANNEL_ID)
+      await actualMod.channelModerationApi.getTargetBanState(
+        CHANNEL_ID,
+        TARGET_ID,
+      )
+      await actualMod.channelModerationApi.banUser(
+        CHANNEL_ID,
+        TARGET_ID,
+        'LIVE_VIEW_BAN',
+      )
+      await actualMod.channelModerationApi.unbanUser(CHANNEL_ID, TARGET_ID)
+      await actualMod.channelModerationApi.getBannedUsers(CHANNEL_ID, {
         page: 1,
-        size: 20,
+        size: 100,
       })
 
       expect(requests.map((r) => [r.method, r.url])).toEqual([
-        ['get', `/channel/api/channels/${CHANNEL_ID}/chat/moderation-context`],
-        [
-          'get',
-          `/channel/api/channels/${CHANNEL_ID}/chat/users/${TARGET_ID}/ban`,
-        ],
+        ['get', `/channel/api/channels/${CHANNEL_ID}/moderation-context`],
+        ['get', `/channel/api/channels/${CHANNEL_ID}/users/${TARGET_ID}/ban`],
+        ['post', `/channel/api/channels/${CHANNEL_ID}/users/${TARGET_ID}/ban`],
         [
           'post',
-          `/channel/api/channels/${CHANNEL_ID}/chat/users/${TARGET_ID}/ban`,
+          `/channel/api/channels/${CHANNEL_ID}/users/${TARGET_ID}/unban`,
         ],
-        [
-          'post',
-          `/channel/api/channels/${CHANNEL_ID}/chat/users/${TARGET_ID}/unban`,
-        ],
-        ['get', `/channel/api/channels/${CHANNEL_ID}/chat/bans`],
+        ['get', `/channel/api/channels/${CHANNEL_ID}/bans`],
       ])
       expect(requests.every((r) => r.withCredentials)).toBe(true)
-      expect(requests[2].data).toBeUndefined()
+      expect(JSON.parse(requests[2].data)).toEqual({
+        banType: 'LIVE_VIEW_BAN',
+      })
       expect(requests[3].data).toBeUndefined()
-      expect(requests[4].params).toEqual({ page: 1, size: 20 })
+      expect(requests[4].params).toEqual({ page: 1, size: 50 })
     } finally {
       apiClient.defaults.adapter = originalAdapter
     }
@@ -523,17 +538,88 @@ describe('chat moderation API contract', () => {
     )
     await screen.findByText('Hello')
     expect(mocks.getModerationContext).not.toHaveBeenCalled()
-    expect(mocks.getTargetBanStatus).not.toHaveBeenCalled()
+    expect(mocks.getTargetBanState).not.toHaveBeenCalled()
   })
 })
 
 describe('avatar ban menu in chat', () => {
-  it('lets authorized owner open avatar menu, checks status on open only, and bans user immediately', async () => {
-    const targetMsg = chatMessage(1, TARGET_ID, 'TargetViewer', 'Spam msg', {
-      avatarUrl: 'https://cdn.example.com/target.jpg',
+  it.each([
+    ['CHAT_BAN', 'Ban chat', 'User banned from chat'],
+    ['LIVE_VIEW_BAN', 'Ban livestream', 'User banned from livestream'],
+    ['FULL_BAN', 'Full ban', 'User given a full channel ban'],
+  ] as const)(
+    'creates %s via avatar menu without confirmation and updates cache from server result',
+    async (banType, buttonLabel, expectedToast) => {
+      const targetMsg = chatMessage(1, TARGET_ID, 'TargetViewer', 'Spam msg', {
+        avatarUrl: 'https://cdn.example.com/target.jpg',
+      })
+      const ownerMsg = chatMessage(2, OWNER_ID, 'ChannelOwner', 'Welcome!')
+      mocks.history.mockResolvedValue(chatPage([targetMsg, ownerMsg]))
+
+      mountWithRouter(
+        <StreamChatPanel
+          sessionId={SESSION_ID}
+          channelId={CHANNEL_ID}
+          status="LIVE"
+          streamerUserId={OWNER_ID}
+        />,
+      )
+
+      await screen.findByText('Spam msg')
+      expect(mocks.getTargetBanState).not.toHaveBeenCalled()
+      expect(
+        screen.queryByRole('button', {
+          name: /Moderation options for ChannelOwner/i,
+        }),
+      ).toBeNull()
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Moderation options for TargetViewer',
+        }),
+      )
+
+      const menu = await screen.findByRole('menu', {
+        name: 'Moderation options for TargetViewer',
+      })
+      expect(within(menu).queryByRole('menuitem', { name: /Unban/i })).toBeNull()
+
+      const optionButton = await within(menu).findByRole('menuitem', {
+        name: buttonLabel,
+      })
+      fireEvent.click(optionButton)
+
+      await waitFor(() =>
+        expect(mocks.banUser).toHaveBeenCalledWith(
+          CHANNEL_ID,
+          TARGET_ID,
+          banType,
+        ),
+      )
+      await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(expectedToast)
+    },
+  )
+
+  it('uses backend capabilities rather than role names so moderator without STREAMER role can ban', async () => {
+    setAuthUser(MODERATOR_ID, ['USER'])
+    mocks.getModerationContext.mockResolvedValue({
+      channelId: CHANNEL_ID,
+      ownerUserId: OWNER_ID,
+      allowedBanTypes: ['CHAT_BAN'],
+      allowedUnbanTypes: [],
+      canViewBans: false,
     })
-    const ownerMsg = chatMessage(2, OWNER_ID, 'ChannelOwner', 'Welcome!')
-    mocks.history.mockResolvedValue(chatPage([targetMsg, ownerMsg]))
+    mocks.getTargetBanState.mockResolvedValue({
+      channelId: CHANNEL_ID,
+      userId: TARGET_ID,
+      banType: 'FULL_BAN',
+      allowedBanTypes: [],
+      canUnban: false,
+    })
+    mocks.history.mockResolvedValue(
+      chatPage([chatMessage(1, TARGET_ID, 'TargetViewer', 'Msg')]),
+    )
 
     mountWithRouter(
       <StreamChatPanel
@@ -544,58 +630,42 @@ describe('avatar ban menu in chat', () => {
       />,
     )
 
-    await screen.findByText('Spam msg')
-    // No per-message status API calls during list render
-    expect(mocks.getTargetBanStatus).not.toHaveBeenCalled()
-
-    // Owner avatar is not interactive
-    expect(
-      screen.queryByRole('button', { name: /Moderation options for ChannelOwner/i }),
-    ).toBeNull()
-
-    // Click target avatar button
-    const trigger = screen.getByRole('button', {
+    await screen.findByText('Msg')
+    const trigger = await screen.findByRole('button', {
       name: 'Moderation options for TargetViewer',
     })
     fireEvent.click(trigger)
 
-    expect(mocks.getTargetBanStatus).toHaveBeenCalledTimes(1)
-    expect(mocks.getTargetBanStatus).toHaveBeenCalledWith(
-      CHANNEL_ID,
-      TARGET_ID,
-      expect.any(AbortSignal),
-    )
-
     const menu = await screen.findByRole('menu', {
       name: 'Moderation options for TargetViewer',
     })
-    const banButton = await within(menu).findByRole('menuitem', {
-      name: 'Ban from chat',
-    })
-    expect(within(menu).queryByRole('menuitem', { name: /Unban/i })).toBeNull()
+    const banChatBtn = (await within(menu).findByRole('menuitem', {
+      name: /Ban chat/i,
+    })) as HTMLButtonElement
+    const banLiveBtn = within(menu).getByRole('menuitem', {
+      name: /Ban livestream/i,
+    }) as HTMLButtonElement
+    const fullBanBtn = within(menu).getByRole('menuitem', {
+      name: /Full ban/i,
+    }) as HTMLButtonElement
 
-    fireEvent.click(banButton)
-
-    await waitFor(() =>
-      expect(mocks.banChatUser).toHaveBeenCalledWith(CHANNEL_ID, TARGET_ID),
-    )
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('menu', {
-          name: 'Moderation options for TargetViewer',
-        }),
-      ).toBeNull(),
-    )
-    expect(mocks.toastSuccess).toHaveBeenCalledWith('User banned from chat')
+    // Current FULL_BAN is disabled and marked, and downgrading to CHAT_BAN is blocked by target.allowedBanTypes = []
+    expect(fullBanBtn.disabled).toBe(true)
+    expect(within(fullBanBtn).getByText('Current')).toBeTruthy()
+    expect(banChatBtn.disabled).toBe(true)
+    expect(banLiveBtn.disabled).toBe(true)
+    expect(
+      within(menu).getAllByText(/do not have permission to switch/i),
+    ).toHaveLength(2)
   })
 
-  it('keeps avatar non-interactive for regular users or when canBan is false even if user has STREAMER role', async () => {
+  it('keeps avatar non-interactive when context.allowedBanTypes is empty even if user has STREAMER role', async () => {
     setAuthUser(OWNER_ID, ['USER', 'STREAMER'])
     mocks.getModerationContext.mockResolvedValue({
       channelId: CHANNEL_ID,
       ownerUserId: OWNER_ID,
-      canBan: false,
-      canUnban: false,
+      allowedBanTypes: [],
+      allowedUnbanTypes: [],
       canViewBans: false,
     })
     mocks.history.mockResolvedValue(
@@ -621,10 +691,14 @@ describe('avatar ban menu in chat', () => {
     ).toBeNull()
   })
 
-  it('supports fallback avatar interaction when avatarUrl is null or fails to load', async () => {
+  it('supports fallback avatar, loading Checking..., error + Retry, and prevents double-click duplicate ban mutations', async () => {
+    const pendingStatus = deferred<TargetChannelBanState>()
+    const pendingBan = deferred<TargetChannelBanState>()
+    mocks.getTargetBanState.mockReturnValueOnce(pendingStatus.promise)
+    mocks.banUser.mockReturnValueOnce(pendingBan.promise)
     mocks.history.mockResolvedValue(
       chatPage([
-        chatMessage(1, TARGET_ID, 'FallbackUser', 'No avatar', {
+        chatMessage(1, TARGET_ID, 'FallbackUser', 'Hello', {
           avatarUrl: 'https://cdn.example.com/broken.jpg',
         }),
       ]),
@@ -639,135 +713,49 @@ describe('avatar ban menu in chat', () => {
       />,
     )
 
-    await screen.findByText('No avatar')
+    await screen.findByText('Hello')
     const trigger = screen.getByRole('button', {
       name: 'Moderation options for FallbackUser',
     })
-    const img = trigger.querySelector('img')!
-    fireEvent.error(img)
+    fireEvent.error(trigger.querySelector('img')!)
     expect(within(trigger).getByText('F')).toBeTruthy()
 
     fireEvent.click(trigger)
-    expect(
-      await screen.findByRole('menu', {
-        name: 'Moderation options for FallbackUser',
-      }),
-    ).toBeTruthy()
-  })
-
-  it('handles loading, status fetch error + retry, already CHAT_BAN, and LIVE_VIEW_BAN / FULL_BAN', async () => {
-    const pendingStatus = deferred<TargetChatBanStatus>()
-    mocks.getTargetBanStatus.mockReturnValueOnce(pendingStatus.promise)
-    mocks.history.mockResolvedValue(
-      chatPage([
-        chatMessage(1, TARGET_ID, 'UserA', 'Msg A'),
-        chatMessage(2, TARGET_ID_2, 'UserB', 'Msg B'),
-      ]),
-    )
-
-    mountWithRouter(
-      <StreamChatPanel
-        sessionId={SESSION_ID}
-        channelId={CHANNEL_ID}
-        status="LIVE"
-        streamerUserId={OWNER_ID}
-      />,
-    )
-
-    await screen.findByText('Msg A')
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for UserA' }),
-    )
     expect(await screen.findByText('Checking…')).toBeTruthy()
 
     await act(async () => {
       pendingStatus.reject(makeAxiosError(503, undefined, 'Unavailable'))
     })
     expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(screen.getByText(/temporarily unavailable/i)).toBeTruthy()
 
-    mocks.getTargetBanStatus.mockResolvedValueOnce({
+    mocks.getTargetBanState.mockResolvedValueOnce({
       channelId: CHANNEL_ID,
       userId: TARGET_ID,
-      banType: 'CHAT_BAN',
+      banType: null,
+      allowedBanTypes: ALL_BAN_TYPES,
+      canUnban: false,
     })
     fireEvent.click(screen.getByRole('menuitem', { name: 'Retry' }))
-    const alreadyBanned = await screen.findByRole('menuitem', {
-      name: 'Already banned from chat',
+    const banLiveBtn = await screen.findByRole('menuitem', {
+      name: 'Ban livestream',
     })
-    expect(alreadyBanned.hasAttribute('disabled')).toBe(true)
-
-    // Higher-level ban (LIVE_VIEW_BAN)
-    mocks.getTargetBanStatus.mockResolvedValueOnce({
-      channelId: CHANNEL_ID,
-      userId: TARGET_ID_2,
-      banType: 'LIVE_VIEW_BAN',
-    })
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for UserB' }),
-    )
-    expect(await screen.findByText('Livestream ban')).toBeTruthy()
-    expect(
-      screen.getByText(/cannot be managed with chat ban/i),
-    ).toBeTruthy()
-    expect(
-      screen.queryByRole('menuitem', { name: 'Ban from chat' }),
-    ).toBeNull()
-
-    // FULL_BAN
-    mocks.getTargetBanStatus.mockResolvedValueOnce({
-      channelId: CHANNEL_ID,
-      userId: TARGET_ID_2,
-      banType: 'FULL_BAN',
-    })
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for UserB' }),
-    )
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for UserB' }),
-    )
-    expect(await screen.findByText('Full ban')).toBeTruthy()
-  })
-
-  it('prevents double-click duplicate ban mutations', async () => {
-    const pendingBan = deferred<{ channelId: string; userId: string; banType: 'CHAT_BAN' }>()
-    mocks.banChatUser.mockReturnValueOnce(pendingBan.promise)
-    mocks.history.mockResolvedValue(
-      chatPage([chatMessage(1, TARGET_ID, 'FastClicker', 'Hello')]),
-    )
-
-    mountWithRouter(
-      <StreamChatPanel
-        sessionId={SESSION_ID}
-        channelId={CHANNEL_ID}
-        status="LIVE"
-        streamerUserId={OWNER_ID}
-      />,
-    )
-
-    await screen.findByText('Hello')
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for FastClicker' }),
-    )
-    const banBtn = await screen.findByRole('menuitem', { name: 'Ban from chat' })
-
-    fireEvent.click(banBtn)
-    fireEvent.click(banBtn)
-    await waitFor(() => expect(mocks.banChatUser).toHaveBeenCalledTimes(1))
+    fireEvent.click(banLiveBtn)
+    fireEvent.click(banLiveBtn)
+    await waitFor(() => expect(mocks.banUser).toHaveBeenCalledTimes(1))
 
     await act(async () => {
       pendingBan.resolve({
         channelId: CHANNEL_ID,
         userId: TARGET_ID,
-        banType: 'CHAT_BAN',
+        banType: 'LIVE_VIEW_BAN',
+        allowedBanTypes: ['CHAT_BAN', 'FULL_BAN'],
+        canUnban: true,
       })
     })
-    await waitFor(() =>
-      expect(screen.queryByRole('menu')).toBeNull(),
-    )
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
   })
 
-  it('keeps selected target userId safe when virtualized rows change and closes menu on Escape or anchor scroll loss', async () => {
+  it('keeps selected targetUserId safe across virtualized updates and closes menu on Escape or anchor scroll loss', async () => {
     const firstMsg = chatMessage(1, TARGET_ID, 'SelectedUser', 'First')
     const secondMsg = chatMessage(2, TARGET_ID_2, 'OtherUser', 'Second')
     mocks.history.mockResolvedValue(chatPage([firstMsg, secondMsg]))
@@ -789,9 +777,8 @@ describe('avatar ban menu in chat', () => {
     const menu = await screen.findByRole('menu', {
       name: 'Moderation options for SelectedUser',
     })
-    await within(menu).findByRole('menuitem', { name: 'Ban from chat' })
+    await within(menu).findByRole('menuitem', { name: 'Ban chat' })
 
-    // Simulate a new message arriving from another user at top/bottom shifting row order
     await act(async () => {
       mocks.sockets[0].trigger(
         'chat:message',
@@ -799,18 +786,16 @@ describe('avatar ban menu in chat', () => {
       )
     })
 
-    // Clicking Ban still bans TARGET_ID (not TARGET_ID_2)
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Ban from chat' }))
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Full ban' }))
     await waitFor(() =>
-      expect(mocks.banChatUser).toHaveBeenCalledWith(CHANNEL_ID, TARGET_ID),
+      expect(mocks.banUser).toHaveBeenCalledWith(
+        CHANNEL_ID,
+        TARGET_ID,
+        'FULL_BAN',
+      ),
     )
 
-    // Reopen and test Escape + focus return
-    mocks.getTargetBanStatus.mockResolvedValue({
-      channelId: CHANNEL_ID,
-      userId: TARGET_ID,
-      banType: null,
-    })
+    // Escape closes and returns focus
     fireEvent.click(trigger)
     await screen.findByRole('menu', {
       name: 'Moderation options for SelectedUser',
@@ -819,7 +804,7 @@ describe('avatar ban menu in chat', () => {
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
     await waitFor(() => expect(document.activeElement).toBe(trigger))
 
-    // Reopen and test closing when scrolling loses anchor
+    // Scroll loses anchor -> closes menu
     fireEvent.click(trigger)
     await screen.findByRole('menu', {
       name: 'Moderation options for SelectedUser',
@@ -851,24 +836,51 @@ describe('avatar ban menu in chat', () => {
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
   })
 
-  it('handles HTTP 409 on ban without faking success and refreshes target ban state', async () => {
+  it('reloads context and target state on 403 without permanently wiping remaining capabilities, and refreshes on 409', async () => {
     mocks.history.mockResolvedValue(
-      chatPage([chatMessage(1, TARGET_ID, 'ConflictUser', 'Hi')]),
+      chatPage([chatMessage(1, TARGET_ID, 'TargetUser', 'Hi')]),
     )
-    mocks.getTargetBanStatus
+    mocks.getModerationContext
+      .mockResolvedValueOnce({
+        channelId: CHANNEL_ID,
+        ownerUserId: OWNER_ID,
+        allowedBanTypes: ['CHAT_BAN', 'LIVE_VIEW_BAN'],
+        allowedUnbanTypes: ['CHAT_BAN'],
+        canViewBans: true,
+      })
+      .mockResolvedValue({
+        channelId: CHANNEL_ID,
+        ownerUserId: OWNER_ID,
+        allowedBanTypes: ['LIVE_VIEW_BAN'],
+        allowedUnbanTypes: [],
+        canViewBans: true,
+      })
+    mocks.getTargetBanState
       .mockResolvedValueOnce({
         channelId: CHANNEL_ID,
         userId: TARGET_ID,
-        banType: null,
+        banType: 'CHAT_BAN',
+        allowedBanTypes: ['LIVE_VIEW_BAN'],
+        canUnban: true,
       })
       .mockResolvedValueOnce({
         channelId: CHANNEL_ID,
         userId: TARGET_ID,
         banType: 'CHAT_BAN',
+        allowedBanTypes: [],
+        canUnban: false,
       })
-    mocks.banChatUser.mockRejectedValueOnce(
-      makeAxiosError(409, 1023, 'Already chat banned'),
-    )
+      .mockResolvedValueOnce({
+        channelId: CHANNEL_ID,
+        userId: TARGET_ID,
+        banType: 'LIVE_VIEW_BAN',
+        allowedBanTypes: ['FULL_BAN'],
+        canUnban: true,
+      })
+
+    mocks.banUser
+      .mockRejectedValueOnce(makeAxiosError(403, undefined, 'Missing permission'))
+      .mockRejectedValueOnce(makeAxiosError(409, 1023, 'Already banned at level'))
 
     mountWithRouter(
       <StreamChatPanel
@@ -880,68 +892,30 @@ describe('avatar ban menu in chat', () => {
     )
 
     await screen.findByText('Hi')
+    const trigger = screen.getByRole('button', {
+      name: 'Moderation options for TargetUser',
+    })
+    fireEvent.click(trigger)
     fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for ConflictUser' }),
+      await screen.findByRole('menuitem', { name: 'Ban livestream' }),
     )
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Ban from chat' }))
 
     await waitFor(() =>
-      expect(mocks.toastError).toHaveBeenCalledWith(
-        'This user is already banned from chat.',
-      ),
+      expect(mocks.toastError).toHaveBeenCalledWith('Missing permission'),
     )
-    expect(mocks.toastSuccess).not.toHaveBeenCalled()
+    // Context & target were reloaded, and avatar menu trigger remains available for remaining capabilities
+    await waitFor(() =>
+      expect(mocks.getModerationContext).toHaveBeenCalledTimes(2),
+    )
+    await waitFor(() =>
+      expect(mocks.getTargetBanState).toHaveBeenCalledTimes(2),
+    )
     expect(
-      await screen.findByRole('menuitem', { name: 'Already banned from chat' }),
+      screen.getByRole('button', { name: 'Moderation options for TargetUser' }),
     ).toBeTruthy()
-    expect(mocks.getTargetBanStatus).toHaveBeenCalledTimes(2)
   })
 
-  it('revokes canBan and closes menu when backend returns 403', async () => {
-    mocks.history.mockResolvedValue(
-      chatPage([chatMessage(1, TARGET_ID, 'UserX', 'Test')]),
-    )
-    mocks.getModerationContext
-      .mockResolvedValueOnce({
-        channelId: CHANNEL_ID,
-        ownerUserId: OWNER_ID,
-        canBan: true,
-        canUnban: true,
-        canViewBans: true,
-      })
-      .mockResolvedValue({
-        channelId: CHANNEL_ID,
-        ownerUserId: OWNER_ID,
-        canBan: false,
-        canUnban: false,
-        canViewBans: false,
-      })
-    mocks.banChatUser.mockRejectedValueOnce(makeAxiosError(403, undefined, 'Forbidden'))
-
-    mountWithRouter(
-      <StreamChatPanel
-        sessionId={SESSION_ID}
-        channelId={CHANNEL_ID}
-        status="LIVE"
-        streamerUserId={OWNER_ID}
-      />,
-    )
-
-    await screen.findByText('Test')
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Moderation options for UserX' }),
-    )
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Ban from chat' }))
-
-    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('button', { name: 'Moderation options for UserX' }),
-      ).toBeNull(),
-    )
-  })
-
-  it('shows Manage banned users link in Watch chat header and omits it plus viewer count in embedded Stream Manager chat header', async () => {
+  it('includes channelId query param on Manage banned users in Watch chat and omits it from embedded Stream Manager chat', async () => {
     mountWithRouter(
       <Routes>
         <Route path="/dashboard" element={<StreamerDashboardPage />} />
@@ -970,12 +944,14 @@ describe('avatar ban menu in chat', () => {
     const watchLink = await screen.findByRole('link', {
       name: 'Manage banned users',
     })
-    expect(watchLink.getAttribute('href')).toBe('/dashboard/chat-bans')
+    expect(watchLink.getAttribute('href')).toBe(
+      `/dashboard/chat-bans?channelId=${CHANNEL_ID}`,
+    )
   })
 })
 
-describe('BannedUsersPage and dashboard navigation', () => {
-  it('shows Banned users nav item only when canViewBans is true and renders paginated list with profile fallback', async () => {
+describe('BannedUsersPage dropdown actions and moderator channel support', () => {
+  it('renders unified card, hides userId/channel badge, supports level upgrades/downgrades, and respects row capabilities', async () => {
     mocks.getBannedUsers
       .mockResolvedValueOnce({
         content: [
@@ -985,34 +961,49 @@ describe('BannedUsersPage and dashboard navigation', () => {
             avatarUrl: null,
             banType: 'CHAT_BAN',
             createdAt: '2026-11-16T08:30:00Z',
+            allowedBanTypes: ['LIVE_VIEW_BAN', 'FULL_BAN'],
+            canUnban: true,
           },
           {
             userId: TARGET_ID_2,
             displayName: null,
             avatarUrl: null,
-            banType: 'LIVE_VIEW_BAN',
+            banType: 'FULL_BAN',
             createdAt: '2026-11-16T07:30:00Z',
+            allowedBanTypes: ['CHAT_BAN'],
+            canUnban: false,
           },
         ],
         page: 0,
         size: 20,
-        totalElements: 21,
-        totalPages: 2,
+        totalElements: 2,
+        totalPages: 1,
       })
       .mockResolvedValueOnce({
         content: [
           {
-            userId: '10000000-0000-4000-8000-000000000005',
-            displayName: 'FullBannedUser',
+            userId: TARGET_ID,
+            displayName: '<b>BadActor</b>',
+            avatarUrl: null,
+            banType: 'LIVE_VIEW_BAN',
+            createdAt: '2026-11-16T08:30:00Z',
+            allowedBanTypes: ['CHAT_BAN', 'FULL_BAN'],
+            canUnban: true,
+          },
+          {
+            userId: TARGET_ID_2,
+            displayName: null,
             avatarUrl: null,
             banType: 'FULL_BAN',
-            createdAt: '2026-11-16T06:30:00Z',
+            createdAt: '2026-11-16T07:30:00Z',
+            allowedBanTypes: ['CHAT_BAN'],
+            canUnban: false,
           },
         ],
-        page: 1,
+        page: 0,
         size: 20,
-        totalElements: 21,
-        totalPages: 2,
+        totalElements: 2,
+        totalPages: 1,
       })
 
     mountWithRouter(
@@ -1031,38 +1022,223 @@ describe('BannedUsersPage and dashboard navigation', () => {
       await within(nav).findByRole('link', { name: 'Banned users' }),
     ).toBeTruthy()
 
-    expect(await screen.findByText('Owner Channel')).toBeTruthy()
-    // Literal text rendering (no HTML element injected)
-    expect(screen.getByText('<b>BadActor</b>')).toBeTruthy()
+    expect(await screen.findByText('<b>BadActor</b>')).toBeTruthy()
     expect(document.querySelector('b')).toBeNull()
-    // Missing profile fallback
+    expect(screen.queryByText('Owner Channel')).toBeNull()
     expect(screen.getByText('Unavailable user')).toBeTruthy()
-    expect(screen.getByText(TARGET_ID_2)).toBeTruthy()
-    // Badges and action restrictions
-    expect(screen.getByText('Chat ban')).toBeTruthy()
-    expect(screen.getByText('Livestream ban')).toBeTruthy()
-    expect(screen.getByText('Cannot unban here')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Unban' })).toHaveLength(1)
+    expect(screen.queryByText(TARGET_ID)).toBeNull()
+    expect(screen.queryByText(TARGET_ID_2)).toBeNull()
+    expect(screen.queryByText('Cannot unban here')).toBeNull()
 
-    // Go to page 2
+    const list = screen.getByRole('list', { name: 'Banned users list' })
+    const pagination = screen.getByRole('navigation', {
+      name: 'Banned users pagination',
+    })
+    expect(list.parentElement).toBe(pagination.parentElement)
+
+    // Open dropdown for Unavailable user (FULL_BAN, allowedBanTypes: ['CHAT_BAN'], canUnban: false)
+    const unavailableRow = screen.getByRole('listitem', {
+      name: 'Banned user Unavailable user',
+    })
+    fireEvent.click(
+      within(unavailableRow).getByRole('button', { name: /Actions/i }),
+    )
+    const menu2 = await screen.findByRole('menu', {
+      name: 'Moderation actions for Unavailable user',
+    })
+    expect(
+      (
+        within(menu2).getByRole('menuitem', {
+          name: /Full ban/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+    expect(
+      (
+        within(menu2).getByRole('menuitem', {
+          name: /Ban livestream/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+    expect(
+      (
+        within(menu2).getByRole('menuitem', {
+          name: /Ban chat/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false)
+    expect(
+      (
+        within(menu2).getByRole('menuitem', {
+          name: /Unban/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+
+    // Switch BadActor from CHAT_BAN -> LIVE_VIEW_BAN
+    const actorRow = screen.getByRole('listitem', {
+      name: 'Banned user <b>BadActor</b>',
+    })
+    fireEvent.click(
+      within(actorRow).getByRole('button', { name: /Actions/i }),
+    )
+    const menu1 = await screen.findByRole('menu', {
+      name: 'Moderation actions for <b>BadActor</b>',
+    })
+    fireEvent.click(
+      within(menu1).getByRole('menuitem', { name: 'Ban livestream' }),
+    )
+
+    await waitFor(() =>
+      expect(mocks.banUser).toHaveBeenCalledWith(
+        CHANNEL_ID,
+        TARGET_ID,
+        'LIVE_VIEW_BAN',
+      ),
+    )
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      'Updated ban to Livestream ban',
+    )
+    expect(
+      await within(actorRow).findByText('Livestream ban'),
+    ).toBeTruthy()
+  })
+
+  it('allows moderator without own channel to manage bans via ?channelId and preserves channelId on pagination and switch', async () => {
+    setAuthUser(MODERATOR_ID, ['USER'])
+    mocks.getOwnChannel.mockRejectedValue(
+      makeAxiosError(404, undefined, 'No own channel'),
+    )
+    mocks.getModerationContext
+      .mockResolvedValueOnce({
+        channelId: CHANNEL_ID,
+        ownerUserId: OWNER_ID,
+        allowedBanTypes: ['CHAT_BAN', 'LIVE_VIEW_BAN'],
+        allowedUnbanTypes: ['CHAT_BAN', 'LIVE_VIEW_BAN', 'FULL_BAN'],
+        canViewBans: true,
+      })
+      .mockResolvedValueOnce({
+        channelId: CHANNEL_ID_2,
+        ownerUserId: OWNER_ID,
+        allowedBanTypes: ['CHAT_BAN'],
+        allowedUnbanTypes: [],
+        canViewBans: true,
+      })
+    mocks.getBannedUsers
+      .mockResolvedValueOnce({
+        content: [
+          {
+            userId: TARGET_ID,
+            displayName: 'ChannelOneBanned',
+            avatarUrl: null,
+            banType: 'FULL_BAN',
+            createdAt: '2026-11-16T08:30:00Z',
+            allowedBanTypes: ['CHAT_BAN'],
+            canUnban: true,
+          },
+        ],
+        page: 0,
+        size: 20,
+        totalElements: 21,
+        totalPages: 2,
+      })
+      .mockResolvedValueOnce({
+        content: [
+          {
+            userId: TARGET_ID_2,
+            displayName: 'ChannelOnePageTwo',
+            avatarUrl: null,
+            banType: 'LIVE_VIEW_BAN',
+            createdAt: '2026-11-16T07:30:00Z',
+            allowedBanTypes: ['CHAT_BAN'],
+            canUnban: true,
+          },
+        ],
+        page: 1,
+        size: 20,
+        totalElements: 21,
+        totalPages: 2,
+      })
+      .mockResolvedValueOnce({
+        content: [
+          {
+            userId: TARGET_ID,
+            displayName: 'ChannelTwoBanned',
+            avatarUrl: null,
+            banType: 'CHAT_BAN',
+            createdAt: '2026-11-16T06:30:00Z',
+            allowedBanTypes: [],
+            canUnban: false,
+          },
+        ],
+        page: 0,
+        size: 20,
+        totalElements: 1,
+        totalPages: 1,
+      })
+
+    function ChannelSwitcher() {
+      const navigate = useNavigate()
+      return (
+        <button
+          type="button"
+          onClick={() => navigate(`/dashboard/chat-bans?channelId=${CHANNEL_ID_2}`)}
+        >
+          Switch channel
+        </button>
+      )
+    }
+
+    mountWithRouter(
+      <Routes>
+        <Route element={<StreamerDashboardLayout />}>
+          <Route
+            path="/dashboard/chat-bans"
+            element={
+              <>
+                <ChannelSwitcher />
+                <BannedUsersPage />
+              </>
+            }
+          />
+        </Route>
+      </Routes>,
+      [`/dashboard/chat-bans?channelId=${CHANNEL_ID}`],
+    )
+
+    expect(await screen.findByText('ChannelOneBanned')).toBeTruthy()
+    expect(mocks.getOwnChannel).not.toHaveBeenCalled()
+    expect(mocks.getModerationContext).toHaveBeenCalledWith(
+      CHANNEL_ID,
+      expect.any(AbortSignal),
+    )
+
+    const nav = screen.getByRole('navigation', { name: 'Streamer navigation' })
+    expect(
+      within(nav).getByRole('link', { name: 'Banned users' }).getAttribute('href'),
+    ).toBe(`/dashboard/chat-bans?channelId=${CHANNEL_ID}`)
+
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    expect(await screen.findByText('FullBannedUser')).toBeTruthy()
-    expect(screen.getByText('Full ban')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Unban' })).toBeNull()
+    expect(await screen.findByText('ChannelOnePageTwo')).toBeTruthy()
     expect(mocks.getBannedUsers).toHaveBeenLastCalledWith(
       CHANNEL_ID,
       { page: 1, size: 20 },
       expect.any(AbortSignal),
     )
+
+    // Switch channelId in-place -> resets page back to 0
+    fireEvent.click(screen.getByRole('button', { name: 'Switch channel' }))
+    expect(await screen.findByText('ChannelTwoBanned')).toBeTruthy()
+    expect(mocks.getBannedUsers).toHaveBeenLastCalledWith(
+      CHANNEL_ID_2,
+      { page: 0, size: 20 },
+      expect.any(AbortSignal),
+    )
   })
 
-  it('unbans CHAT_BAN, prevents double click, and steps back when removing the last item of a page', async () => {
-    const pendingUnban = deferred<{
-      channelId: string
-      userId: string
-      banType: null
-    }>()
-    mocks.unbanChatUser.mockReturnValueOnce(pendingUnban.promise)
+  it('unbans FULL_BAN when canUnban=true, prevents double click, and steps back when removing last item of page', async () => {
+    const pendingUnban = deferred<TargetChannelBanState>()
+    mocks.unbanUser.mockReturnValueOnce(pendingUnban.promise)
 
     mocks.getBannedUsers
       .mockResolvedValueOnce({
@@ -1073,6 +1249,8 @@ describe('BannedUsersPage and dashboard navigation', () => {
             avatarUrl: null,
             banType: 'CHAT_BAN',
             createdAt: '2026-11-16T08:30:00Z',
+            allowedBanTypes: ['LIVE_VIEW_BAN', 'FULL_BAN'],
+            canUnban: true,
           },
         ],
         page: 0,
@@ -1086,8 +1264,10 @@ describe('BannedUsersPage and dashboard navigation', () => {
             userId: TARGET_ID_2,
             displayName: 'LastOnPageTwo',
             avatarUrl: null,
-            banType: 'CHAT_BAN',
+            banType: 'FULL_BAN',
             createdAt: '2026-11-16T07:30:00Z',
+            allowedBanTypes: ['CHAT_BAN'],
+            canUnban: true,
           },
         ],
         page: 1,
@@ -1110,6 +1290,8 @@ describe('BannedUsersPage and dashboard navigation', () => {
             avatarUrl: null,
             banType: 'CHAT_BAN',
             createdAt: '2026-11-16T08:30:00Z',
+            allowedBanTypes: ['LIVE_VIEW_BAN', 'FULL_BAN'],
+            canUnban: true,
           },
         ],
         page: 0,
@@ -1129,36 +1311,42 @@ describe('BannedUsersPage and dashboard navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     await screen.findByText('LastOnPageTwo')
 
-    const unbanButton = screen.getByRole('button', { name: 'Unban' })
-    fireEvent.click(unbanButton)
-    fireEvent.click(unbanButton)
-    await waitFor(() => expect(mocks.unbanChatUser).toHaveBeenCalledTimes(1))
-    expect(mocks.unbanChatUser).toHaveBeenCalledWith(CHANNEL_ID, TARGET_ID_2)
+    fireEvent.click(screen.getByRole('button', { name: /Actions/i }))
+    const unbanItem = await screen.findByRole('menuitem', { name: 'Unban' })
+    fireEvent.click(unbanItem)
+    fireEvent.click(unbanItem)
+
+    await waitFor(() => expect(mocks.unbanUser).toHaveBeenCalledTimes(1))
+    expect(mocks.unbanUser).toHaveBeenCalledWith(CHANNEL_ID, TARGET_ID_2)
 
     await act(async () => {
       pendingUnban.resolve({
         channelId: CHANNEL_ID,
         userId: TARGET_ID_2,
         banType: null,
+        allowedBanTypes: ALL_BAN_TYPES,
+        canUnban: false,
       })
     })
 
-    expect(mocks.toastSuccess).toHaveBeenCalledWith('User unbanned from chat')
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('User unbanned')
     expect(await screen.findByText('PageZeroUser')).toBeTruthy()
     expect(screen.getByText('Page 1 of 1')).toBeTruthy()
   })
 
-  it('handles 409 on unban without faking success and refreshes list, and supports empty/error states', async () => {
+  it('does not falsely mutate row on 409/503 errors, refreshes on 409, and handles error + empty states', async () => {
     mocks.getBannedUsers
       .mockRejectedValueOnce(makeAxiosError(503, undefined, 'Service down'))
       .mockResolvedValueOnce({
         content: [
           {
             userId: TARGET_ID,
-            displayName: 'AlreadyUnbanned',
+            displayName: 'ConflictTarget',
             avatarUrl: null,
             banType: 'CHAT_BAN',
             createdAt: '2026-11-16T08:30:00Z',
+            allowedBanTypes: ['LIVE_VIEW_BAN', 'FULL_BAN'],
+            canUnban: true,
           },
         ],
         page: 0,
@@ -1173,8 +1361,11 @@ describe('BannedUsersPage and dashboard navigation', () => {
         totalElements: 0,
         totalPages: 0,
       })
-    mocks.unbanChatUser.mockRejectedValueOnce(
-      makeAxiosError(409, 1024, 'No active chat ban'),
+    mocks.banUser.mockRejectedValueOnce(
+      makeAxiosError(503, undefined, 'Network timeout'),
+    )
+    mocks.unbanUser.mockRejectedValueOnce(
+      makeAxiosError(409, 1024, 'No active ban'),
     )
 
     mountWithRouter(
@@ -1187,12 +1378,26 @@ describe('BannedUsersPage and dashboard navigation', () => {
     expect(await screen.findByText('Unable to load banned users')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-    await screen.findByText('AlreadyUnbanned')
-    fireEvent.click(screen.getByRole('button', { name: 'Unban' }))
+    await screen.findByText('ConflictTarget')
+    fireEvent.click(screen.getByRole('button', { name: /Actions/i }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Full ban' }))
 
     await waitFor(() =>
       expect(mocks.toastError).toHaveBeenCalledWith(
-        'This user does not have an active chat ban.',
+        'Moderation service is temporarily unavailable. Please try again.',
+      ),
+    )
+    // Badge must NOT falsely switch to Full ban on 503
+    expect(screen.getByText('Chat ban')).toBeTruthy()
+    expect(screen.queryByText('Full ban')).toBeNull()
+
+    // Now unban hits 409 -> refreshes list without faking success
+    fireEvent.click(screen.getByRole('button', { name: /Actions/i }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Unban' }))
+
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        'This user does not have an active ban.',
       ),
     )
     expect(mocks.toastSuccess).not.toHaveBeenCalled()
@@ -1203,8 +1408,8 @@ describe('BannedUsersPage and dashboard navigation', () => {
     mocks.getModerationContext.mockResolvedValue({
       channelId: CHANNEL_ID,
       ownerUserId: OWNER_ID,
-      canBan: false,
-      canUnban: false,
+      allowedBanTypes: [],
+      allowedUnbanTypes: [],
       canViewBans: false,
     })
 
@@ -1231,8 +1436,8 @@ describe('CHAT_BANNED socket handling and Check chat access', () => {
     mocks.getModerationContext.mockResolvedValue({
       channelId: CHANNEL_ID,
       ownerUserId: OWNER_ID,
-      canBan: false,
-      canUnban: false,
+      allowedBanTypes: [],
+      allowedUnbanTypes: [],
       canViewBans: false,
     })
     mocks.history.mockResolvedValue(
@@ -1275,16 +1480,13 @@ describe('CHAT_BANNED socket handling and Check chat access', () => {
     expect(input.value).toBe('My unsent draft')
     expect(screen.getByText('Existing message')).toBeTruthy()
 
-    // Check chat access while still banned
     const pendingJoin = deferred<ChatAck<ChatJoin>>()
     mocks.onJoin.mockImplementationOnce((_attempt, cb) => {
       void pendingJoin.promise.then((ack) => cb(null, ack))
     })
 
-    const checkBtn = screen.getByRole('button', { name: 'Check chat access' })
-    fireEvent.click(checkBtn)
+    fireEvent.click(screen.getByRole('button', { name: 'Check chat access' }))
     fireEvent.click(screen.getByRole('button', { name: 'Checking access…' }))
-    // Only 1 additional join (initial join = 1, plus this single click = 2)
     expect(mocks.sockets[0].joinCalls).toBe(2)
 
     await act(async () => {
@@ -1303,17 +1505,6 @@ describe('CHAT_BANNED socket handling and Check chat access', () => {
     ).toBeTruthy()
     expect(input.disabled).toBe(true)
 
-    // Network/timeout on check keeps chat readable and allows retry
-    mocks.onJoin.mockImplementationOnce((_attempt, cb) => {
-      cb(new Error('timeout'))
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Check chat access' }))
-    expect(
-      await screen.findByText('Unable to check chat access. Please try again.'),
-    ).toBeTruthy()
-    expect(screen.getByText('Existing message')).toBeTruthy()
-
-    // Now unbanned -> Check chat access restores sending without auto-sending draft
     mocks.onJoin.mockImplementationOnce((_attempt, cb) => {
       cb(null, {
         ok: true,
@@ -1327,18 +1518,13 @@ describe('CHAT_BANNED socket handling and Check chat access', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Check chat access' }))
     await waitFor(() => expect(input.disabled).toBe(false))
-    expect(
-      screen.queryByText(
-        'You are banned from sending messages in this channel.',
-      ),
-    ).toBeNull()
     expect(input.value).toBe('My unsent draft')
     expect(mocks.sockets[0].sent).toHaveLength(1)
   })
 })
 
 describe('session, channel, and account isolation', () => {
-  it('clears moderation cache on logout/user switch and closes open menu when switching sessions or channels', async () => {
+  it('clears channel-moderation cache on logout/user switch and closes open menu when switching sessions or channels', async () => {
     mocks.history.mockResolvedValue(
       chatPage([chatMessage(1, TARGET_ID, 'ViewerOne', 'Msg 1')]),
     )
@@ -1360,7 +1546,6 @@ describe('session, channel, and account isolation', () => {
       name: 'Moderation options for ViewerOne',
     })
 
-    // Switch sessionId -> closes menu and scopes new context
     rerender(
       <QueryClientProvider client={client}>
         <MemoryRouter>
@@ -1382,14 +1567,13 @@ describe('session, channel, and account isolation', () => {
       ),
     )
 
-    // Auth store logout/switch clears chat-moderation cache in appQueryClient
     appQueryClient.setQueryData(
-      ['chat-moderation', 'context', OWNER_ID, CHANNEL_ID],
+      ['channel-moderation', 'context', OWNER_ID, CHANNEL_ID],
       {
         channelId: CHANNEL_ID,
         ownerUserId: OWNER_ID,
-        canBan: true,
-        canUnban: true,
+        allowedBanTypes: ALL_BAN_TYPES,
+        allowedUnbanTypes: ALL_BAN_TYPES,
         canViewBans: true,
       },
     )
@@ -1401,7 +1585,7 @@ describe('session, channel, and account isolation', () => {
     })
     expect(
       appQueryClient.getQueryData([
-        'chat-moderation',
+        'channel-moderation',
         'context',
         OWNER_ID,
         CHANNEL_ID,

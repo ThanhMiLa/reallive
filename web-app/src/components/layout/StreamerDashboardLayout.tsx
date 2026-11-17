@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { ChevronLeft, KeyRound, LayoutDashboard, ShieldBan, Tv, UserRound } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom'
 import {
-  useChatModerationContext,
+  useChannelModerationContext,
   useOwnChannelForModeration,
-} from '@/hooks/useChatModeration'
+} from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
 import realLiveLogo from '@/assets/RealLive-logo.svg'
 import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
@@ -17,19 +17,25 @@ const navigationItems = [
 
 export function StreamerDashboardLayout() {
   const { user, isAuthenticated } = useAuthStore()
+  const [searchParams] = useSearchParams()
+  const queryChannelId = searchParams.get('channelId')?.trim() || ''
   const userId = isAuthenticated && user?.userId ? user.userId : ''
-  const ownChannelQuery = useOwnChannelForModeration(userId)
-  const moderationContextQuery = useChatModerationContext(
+  const ownChannelQuery = useOwnChannelForModeration(userId, !queryChannelId)
+  const moderationChannelId = queryChannelId || ownChannelQuery.data?.id || ''
+  const moderationContextQuery = useChannelModerationContext(
     userId,
-    ownChannelQuery.data?.id,
+    moderationChannelId,
   )
   const canViewBans = Boolean(
-    ownChannelQuery.data?.id && moderationContextQuery.data?.canViewBans,
+    moderationChannelId && moderationContextQuery.data?.canViewBans,
   )
+  const bannedUsersTo = queryChannelId
+    ? `/dashboard/chat-bans?channelId=${encodeURIComponent(queryChannelId)}`
+    : '/dashboard/chat-bans'
   const visibleNavigationItems = canViewBans
     ? [
         ...navigationItems,
-        { to: '/dashboard/chat-bans', label: 'Banned users', icon: ShieldBan },
+        { to: bannedUsersTo, label: 'Banned users', icon: ShieldBan },
       ]
     : navigationItems
   const [isCollapsed, setIsCollapsed] = useState(() => {

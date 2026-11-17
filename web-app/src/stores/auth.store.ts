@@ -10,7 +10,7 @@ import type {
 } from '@/types/auth.types'
 
 function clearStreamCredentials() {
-  for (const queryKey of [['stream'], ['chat-moderation']] as const) {
+  for (const queryKey of [['stream'], ['channel-moderation']] as const) {
     const filters = { queryKey }
     void queryClient.cancelQueries(filters)
     queryClient.removeQueries(filters)

@@ -1,13 +1,13 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2, MessageSquare, RefreshCw, Send, ShieldBan } from 'lucide-react'
 import {
-  ChatUserBanMenu,
-  type ChatModerationTarget,
-} from './ChatUserBanMenu'
+  ChannelUserBanMenu,
+  type ChannelModerationTarget,
+} from './ChannelUserBanMenu'
 import { isChatBannedError, useStreamChat } from './useStreamChat'
-import { useChatModerationContext } from '@/hooks/useChatModeration'
+import { useChannelModerationContext } from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
 
 function Avatar({ url, name }: { url: string | null; name: string }) {
@@ -30,12 +30,14 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
   sessionId: string; channelId?: string; viewerId: string; streamerUserId?: string; status?: string; active: boolean; onAccessError?: (error: unknown) => void; embedded: boolean
 }) {
   const chat = useStreamChat(sessionId, active, onAccessError)
-  const moderationContextQuery = useChatModerationContext(viewerId, channelId)
+  const moderationContextQuery = useChannelModerationContext(viewerId, channelId)
   const moderationContext = moderationContextQuery.data
-  const canBan = Boolean(channelId && moderationContext?.canBan)
+  const canOpenBanMenu = Boolean(
+    channelId && moderationContext && moderationContext.allowedBanTypes.length > 0,
+  )
   const canViewBans = Boolean(channelId && moderationContext?.canViewBans)
   const ownerId = moderationContext?.ownerUserId || streamerUserId || ''
-  const menuScope = `${viewerId}:${sessionId}:${channelId ?? ''}:${canBan}`
+  const menuScope = `${viewerId}:${sessionId}:${channelId ?? ''}:${canOpenBanMenu}`
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -50,12 +52,20 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
   const [sendError, setSendError] = useState<string | null>(null)
   const [selectedMenu, setSelectedMenu] = useState<{
     scope: string
-    target: ChatModerationTarget
+    target: ChannelModerationTarget
     nonce: number
   } | null>(null)
 
   const activeMenu =
     selectedMenu && selectedMenu.scope === menuScope ? selectedMenu : null
+
+  useEffect(() => {
+    if (activeMenu && anchorElementRef.current && !anchorElementRef.current.isConnected) {
+      queueMicrotask(() => {
+        setSelectedMenu(null)
+      })
+    }
+  }, [activeMenu, chat.messages])
 
   const getAnchorElement = useCallback(() => anchorElementRef.current, [])
   const getScrollContainer = useCallback(() => scrollRef.current, [])
@@ -160,9 +170,9 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#1f1f26] px-4">
           <MessageSquare className="h-4 w-4 text-gray-400" /><h2 className="font-outfit text-sm font-bold text-gray-200">Chat</h2>
           <div className="ml-auto flex items-center gap-2">
-            {canViewBans && (
+            {canViewBans && channelId && (
               <Link
-                to="/dashboard/chat-bans"
+                to={`/dashboard/chat-bans?channelId=${encodeURIComponent(channelId)}`}
                 className="inline-flex items-center gap-1 rounded-md border border-[#2a2a35] bg-[#121216] px-2 py-1 text-[11px] font-medium text-gray-300 transition hover:bg-[#1a1a22] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
               >
                 <ShieldBan className="h-3 w-3 text-[#ff2b42]" />
@@ -208,7 +218,7 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
               const message = chat.messages[item.index]
               const isCurrentUser = Boolean(viewerId) && message.userId === viewerId
               const isStreamer = Boolean(ownerId) && message.userId === ownerId
-              const canModerateSender = canBan && message.userId !== ownerId
+              const canModerateSender = canOpenBanMenu && message.userId !== ownerId
               const isMenuOpenForUser =
                 activeMenu?.target.userId === message.userId
               const wrapperClass = isStreamer
@@ -294,7 +304,7 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
         <p className={`mt-1 text-right text-[10px] ${characters > 500 ? 'text-red-400' : 'text-gray-500'}`}>{characters}/500</p>
       </form>
       {activeMenu && channelId && (
-        <ChatUserBanMenu
+        <ChannelUserBanMenu
           key={`${channelId}:${activeMenu.target.userId}:${activeMenu.nonce}`}
           viewerId={viewerId}
           channelId={channelId}

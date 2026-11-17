@@ -2,24 +2,24 @@ import { isAxiosError } from 'axios'
 import apiClient from './client'
 import type { ApiResponse } from '@/types/auth.types'
 import type {
-  BanChatUserResponse,
+  BanType,
   BannedUsersPage,
   BannedUsersParams,
-  ChatModerationContext,
-  TargetChatBanStatus,
-  UnbanChatUserResponse,
-} from '@/types/chat-moderation.types'
+  ChannelModerationContext,
+  SetChannelBanRequest,
+  TargetChannelBanState,
+} from '@/types/channel-moderation.types'
 
 const channelBase = (channelId: string) =>
-  `/channel/api/channels/${encodeURIComponent(channelId)}/chat`
+  `/channel/api/channels/${encodeURIComponent(channelId)}`
 
-export class ChatModerationApiError extends Error {
+export class ChannelModerationApiError extends Error {
   status?: number
   code?: number
 
   constructor(message: string, status?: number, code?: number) {
     super(message)
-    this.name = 'ChatModerationApiError'
+    this.name = 'ChannelModerationApiError'
     this.status = status
     this.code = code
   }
@@ -31,7 +31,7 @@ function unwrapEnvelope<T>(payload: ApiResponse<T>): T {
     typeof payload.code === 'number' &&
     payload.code !== 1000
   ) {
-    throw new ChatModerationApiError(
+    throw new ChannelModerationApiError(
       payload.message || 'Moderation request failed.',
       payload.status,
       payload.code,
@@ -50,18 +50,16 @@ export interface ParsedModerationError {
 }
 
 const CONFLICT_MESSAGES: Record<number, string> = {
-  1023: 'This user is already banned from chat.',
-  1024: 'This user does not have an active chat ban.',
+  1023: 'This user already has the selected ban level.',
+  1024: 'This user does not have an active ban.',
   1025: 'The channel owner cannot be banned.',
-  1026: 'This user has a livestream or full ban and cannot be chat banned.',
-  1027: 'Livestream or full bans cannot be removed with chat unban.',
 }
 
-export function parseChatModerationError(
+export function parseChannelModerationError(
   error: unknown,
   fallback = 'Unable to complete this moderation request.',
 ): ParsedModerationError {
-  if (error instanceof ChatModerationApiError) {
+  if (error instanceof ChannelModerationApiError) {
     const status = error.status ?? null
     const code = error.code ?? null
     const conflictMessage = code !== null ? CONFLICT_MESSAGES[code] : undefined
@@ -86,6 +84,17 @@ export function parseChatModerationError(
       error.response.data.message.trim().length > 0
         ? error.response.data.message.trim()
         : null
+
+    if (status === 400) {
+      return {
+        status,
+        code,
+        message: serverMessage || 'Invalid moderation request.',
+        isConflict: false,
+        isForbidden: false,
+        isUnauthorized: false,
+      }
+    }
 
     if (status === 401) {
       return {
@@ -178,46 +187,48 @@ export function parseChatModerationError(
   }
 }
 
-export const chatModerationApi = {
+export const channelModerationApi = {
   getModerationContext: async (
     channelId: string,
     signal?: AbortSignal,
-  ): Promise<ChatModerationContext> => {
-    const response = await apiClient.get<ApiResponse<ChatModerationContext>>(
+  ): Promise<ChannelModerationContext> => {
+    const response = await apiClient.get<ApiResponse<ChannelModerationContext>>(
       `${channelBase(channelId)}/moderation-context`,
       { signal },
     )
     return unwrapEnvelope(response.data)
   },
 
-  getTargetBanStatus: async (
+  getTargetBanState: async (
     channelId: string,
     userId: string,
     signal?: AbortSignal,
-  ): Promise<TargetChatBanStatus> => {
-    const response = await apiClient.get<ApiResponse<TargetChatBanStatus>>(
+  ): Promise<TargetChannelBanState> => {
+    const response = await apiClient.get<ApiResponse<TargetChannelBanState>>(
       `${channelBase(channelId)}/users/${encodeURIComponent(userId)}/ban`,
       { signal },
     )
     return unwrapEnvelope(response.data)
   },
 
-  banChatUser: async (
+  banUser: async (
     channelId: string,
     userId: string,
-  ): Promise<BanChatUserResponse> => {
-    const response = await apiClient.post<ApiResponse<BanChatUserResponse>>(
+    banType: BanType,
+  ): Promise<TargetChannelBanState> => {
+    const body: SetChannelBanRequest = { banType }
+    const response = await apiClient.post<ApiResponse<TargetChannelBanState>>(
       `${channelBase(channelId)}/users/${encodeURIComponent(userId)}/ban`,
-      undefined,
+      body,
     )
     return unwrapEnvelope(response.data)
   },
 
-  unbanChatUser: async (
+  unbanUser: async (
     channelId: string,
     userId: string,
-  ): Promise<UnbanChatUserResponse> => {
-    const response = await apiClient.post<ApiResponse<UnbanChatUserResponse>>(
+  ): Promise<TargetChannelBanState> => {
+    const response = await apiClient.post<ApiResponse<TargetChannelBanState>>(
       `${channelBase(channelId)}/users/${encodeURIComponent(userId)}/unban`,
       undefined,
     )
@@ -229,9 +240,10 @@ export const chatModerationApi = {
     params?: BannedUsersParams,
     signal?: AbortSignal,
   ): Promise<BannedUsersPage> => {
+    const requestedSize = params?.size ?? 20
     const cleanParams = {
-      page: params?.page ?? 0,
-      size: params?.size ?? 20,
+      page: Math.max(0, params?.page ?? 0),
+      size: Math.min(50, Math.max(1, requestedSize)),
     }
     const response = await apiClient.get<ApiResponse<BannedUsersPage>>(
       `${channelBase(channelId)}/bans`,

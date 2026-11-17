@@ -1,24 +1,28 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, Ban, Loader2, RefreshCw, ShieldAlert } from 'lucide-react'
+import { AlertCircle, Ban, Check, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-import { parseChatModerationError } from '@/api/chat-moderation.api'
+import { parseChannelModerationError } from '@/api/channel-moderation.api'
 import {
-  useBanChatUserMutation,
-  useTargetBanStatus,
-} from '@/hooks/useChatModeration'
-import type { BanType } from '@/types/chat-moderation.types'
+  useChannelBanMutation,
+  useTargetBanState,
+} from '@/hooks/useChannelModeration'
+import {
+  BAN_TYPE_OPTIONS,
+  getBanTypeLabel,
+  type BanType,
+} from '@/types/channel-moderation.types'
 
-export interface ChatModerationTarget {
+export interface ChannelModerationTarget {
   userId: string
   displayName: string
   avatarUrl: string | null
 }
 
-interface ChatUserBanMenuProps {
+interface ChannelUserBanMenuProps {
   viewerId: string
   channelId: string
-  target: ChatModerationTarget
+  target: ChannelModerationTarget
   getAnchorElement: () => HTMLButtonElement | null
   getScrollContainer: () => HTMLDivElement | null
   onClose: (restoreFocus?: boolean) => void
@@ -26,8 +30,8 @@ interface ChatUserBanMenuProps {
 
 const VIEWPORT_PADDING = 8
 const MENU_GAP = 6
-const FALLBACK_WIDTH = 256
-const FALLBACK_HEIGHT = 180
+const FALLBACK_WIDTH = 272
+const FALLBACK_HEIGHT = 280
 
 function isAnchorVisibleInContainer(
   anchor: HTMLElement | null,
@@ -70,32 +74,49 @@ function MenuAvatar({
   )
 }
 
-function higherBanLabel(banType: Exclude<BanType, 'CHAT_BAN'>): string {
-  return banType === 'LIVE_VIEW_BAN' ? 'Livestream ban' : 'Full ban'
+function banSuccessToastMessage(
+  previousBanType: BanType | null,
+  nextBanType: BanType | null,
+): string {
+  if (!nextBanType) return 'Channel ban updated'
+  if (previousBanType) {
+    return `Updated ban to ${getBanTypeLabel(nextBanType)}`
+  }
+  switch (nextBanType) {
+    case 'CHAT_BAN':
+      return 'User banned from chat'
+    case 'LIVE_VIEW_BAN':
+      return 'User banned from livestream'
+    case 'FULL_BAN':
+      return 'User given a full channel ban'
+  }
 }
 
-export function ChatUserBanMenu({
+export function ChannelUserBanMenu({
   viewerId,
   channelId,
   target,
   getAnchorElement,
   getScrollContainer,
   onClose,
-}: ChatUserBanMenuProps) {
+}: ChannelUserBanMenuProps) {
   const menuId = useId()
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number }>({
     top: VIEWPORT_PADDING,
     left: VIEWPORT_PADDING,
   })
+  const [pendingBanType, setPendingBanType] = useState<BanType | null>(null)
   const [mutationError, setMutationError] = useState<string | null>(null)
 
-  const targetBanQuery = useTargetBanStatus(viewerId, channelId, target.userId)
-  const banMutation = useBanChatUserMutation(viewerId, channelId)
+  const targetBanQuery = useTargetBanState(viewerId, channelId, target.userId)
+  const banMutation = useChannelBanMutation(viewerId, channelId)
 
   const isChecking = targetBanQuery.isPending || targetBanQuery.isFetching
-  const banType = targetBanQuery.data?.banType ?? null
-  const isMutating = banMutation.isPending
+  const targetState = targetBanQuery.data
+  const currentBanType = targetState?.banType ?? null
+  const allowedBanTypes = targetState?.allowedBanTypes ?? []
+  const isMutating = banMutation.isUserPending(target.userId)
 
   // Position menu relative to anchor and clamp within viewport
   useLayoutEffect(() => {
@@ -171,7 +192,7 @@ export function ChatUserBanMenu({
   }, [
     target.userId,
     isChecking,
-    banType,
+    currentBanType,
     targetBanQuery.isError,
     mutationError,
     getAnchorElement,
@@ -202,7 +223,7 @@ export function ChatUserBanMenu({
       )
       firstItem?.focus()
     }
-  }, [isChecking, banType, targetBanQuery.isError])
+  }, [isChecking, currentBanType, targetBanQuery.isError])
 
   // Close on Escape or outside pointer interaction
   useEffect(() => {
@@ -269,30 +290,39 @@ export function ChatUserBanMenu({
     }
   }
 
-  async function handleBan() {
-    if (isChecking || isMutating || banType !== null) return
+  async function handleSelectBanType(banType: BanType) {
+    if (
+      isChecking ||
+      isMutating ||
+      currentBanType === banType ||
+      !allowedBanTypes.includes(banType)
+    ) {
+      return
+    }
     setMutationError(null)
+    setPendingBanType(banType)
     try {
-      const result = await banMutation.mutateBan(target.userId)
+      const result = await banMutation.banUser({
+        targetUserId: target.userId,
+        banType,
+      })
       if (!result) return
-      toast.success('User banned from chat')
+      toast.success(banSuccessToastMessage(currentBanType, result.banType))
       onClose(true)
     } catch (error) {
-      const parsed = parseChatModerationError(
+      const parsed = parseChannelModerationError(
         error,
-        'Unable to ban user from chat.',
+        'Unable to update channel ban.',
       )
       toast.error(parsed.message)
-      if (parsed.isForbidden) {
-        onClose(false)
-        return
-      }
       setMutationError(parsed.message)
+    } finally {
+      setPendingBanType(null)
     }
   }
 
   const fetchErrorMessage = targetBanQuery.isError
-    ? parseChatModerationError(
+    ? parseChannelModerationError(
         targetBanQuery.error,
         'Unable to check ban status.',
       ).message
@@ -311,7 +341,7 @@ export function ChatUserBanMenu({
         top: `${position.top}px`,
         left: `${position.left}px`,
       }}
-      className="z-50 w-64 max-w-[calc(100vw-16px)] rounded-xl border border-[#2a2a35] bg-[#101014] p-3 text-gray-100 shadow-2xl outline-none focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
+      className="z-50 w-72 max-w-[calc(100vw-16px)] rounded-xl border border-[#2a2a35] bg-[#101014] p-3 text-gray-100 shadow-2xl outline-none focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
     >
       <div className="flex items-center gap-2.5 border-b border-[#1f1f26] pb-2.5">
         <MenuAvatar url={target.avatarUrl} name={target.displayName} />
@@ -319,7 +349,9 @@ export function ChatUserBanMenu({
           <p className="truncate text-xs font-semibold text-white">
             {target.displayName}
           </p>
-          <p className="truncate text-[10px] text-gray-400">Chat moderation</p>
+          <p className="truncate text-[10px] text-gray-400">
+            Channel moderation
+          </p>
         </div>
       </div>
 
@@ -354,43 +386,60 @@ export function ChatUserBanMenu({
               Retry
             </button>
           </div>
-        ) : banType === null ? (
-          <button
-            type="button"
-            role="menuitem"
-            disabled={isMutating}
-            onClick={() => void handleBan()}
-            className="flex w-full items-center gap-2 rounded-lg bg-[#ff2b42] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#e02237] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white cursor-pointer"
-          >
-            {isMutating ? (
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
-            ) : (
-              <Ban className="h-3.5 w-3.5 shrink-0" />
-            )}
-            <span>{isMutating ? 'Banning…' : 'Ban from chat'}</span>
-          </button>
-        ) : banType === 'CHAT_BAN' ? (
-          <button
-            type="button"
-            role="menuitem"
-            aria-disabled="true"
-            disabled
-            className="flex w-full cursor-not-allowed items-center gap-2 rounded-lg border border-[#1f1f26] bg-[#16181c] px-3 py-2 text-left text-xs font-medium text-gray-400"
-          >
-            <Ban className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-            <span>Already banned from chat</span>
-          </button>
         ) : (
-          <div className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs">
-            <div className="flex items-center gap-1.5 font-semibold text-amber-200">
-              <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-              <span>{higherBanLabel(banType)}</span>
-            </div>
-            <p className="text-[11px] leading-relaxed text-amber-100/90">
-              This user has an active{' '}
-              {banType === 'LIVE_VIEW_BAN' ? 'livestream' : 'full'} ban and
-              cannot be managed with chat ban.
-            </p>
+          <div className="space-y-1.5">
+            {BAN_TYPE_OPTIONS.map((option) => {
+              const isCurrent = currentBanType === option.value
+              const isAllowed = allowedBanTypes.includes(option.value)
+              const isOptionPending =
+                isMutating && pendingBanType === option.value
+              const isDisabled = isMutating || isCurrent || !isAllowed
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="menuitem"
+                  disabled={isDisabled}
+                  aria-disabled={isDisabled}
+                  onClick={() => void handleSelectBanType(option.value)}
+                  className={`flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-xs transition focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#ff2b42] ${
+                    isCurrent
+                      ? 'cursor-not-allowed border border-amber-500/30 bg-amber-500/10 text-amber-200'
+                      : isAllowed
+                        ? 'cursor-pointer border border-[#262632] bg-[#16181c] font-semibold text-gray-100 hover:border-[#ff2b42]/60 hover:bg-[#ff2b42] hover:text-white disabled:cursor-not-allowed disabled:opacity-60'
+                        : 'cursor-not-allowed border border-[#1f1f26] bg-[#121216] text-gray-500'
+                  }`}
+                >
+                  {isOptionPending ? (
+                    <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+                  ) : isCurrent ? (
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+                  ) : (
+                    <Ban
+                      className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                        isAllowed ? 'text-[#ff2b42]' : 'text-gray-600'
+                      }`}
+                    />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span>{option.label}</span>
+                      {isCurrent && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                          Current
+                        </span>
+                      )}
+                    </span>
+                    {!isCurrent && !isAllowed && (
+                      <span className="mt-0.5 block text-[11px] font-normal text-gray-400">
+                        You do not have permission to switch to this level.
+                      </span>
+                    )}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         )}
 
