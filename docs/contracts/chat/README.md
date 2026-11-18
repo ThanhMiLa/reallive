@@ -44,10 +44,18 @@ Channel owners and assigned moderators can manage all three ban levels on their 
 | GET | `/channel/api/channels/{channelId}/users/{userId}/ban` | Current state and target-specific capabilities |
 | GET | `/channel/api/channels/{channelId}/bans?page=0&size=20` | Paginated active bans and target-specific capabilities |
 | GET | `/channel/api/channels/{channelId}/moderation-context` | Caller capabilities scoped to the channel |
+| GET | `/channel/api/channels/{channelId}/moderators?page=0&size=20` | `200` with paginated moderator assignments |
+| GET | `/channel/api/channels/{channelId}/moderators/candidate?displayName=…&page=0&size=20` | `200` with paginated accounts and their assignment eligibility |
 | POST | `/channel/api/channels/{channelId}/moderators/{userId}` | `201` with `{channelId,userId}` in `ApiResponse.result` |
 | DELETE | `/channel/api/channels/{channelId}/moderators/{userId}` | `204` |
 
 Assigning and removing moderators require `CHANNEL_MODERATOR_MANAGE` and ownership of the active channel. User Service V14 grants the authority to `STREAMER` and queues Redis updates for existing streamers. Deploy User Service and apply V14 first, verify the authority is available in Redis, then deploy Channel Service.
+
+The two moderator reads require the same authority and channel ownership. The list uses zero-based pages, with a default size of 20 and a maximum of 50. `ApiResponse.result` contains `content`, `page`, `size`, `totalElements`, and `totalPages`. Each row contains `{userId,username,displayName,avatarUrl,assignedAt}`. Rows sort by assignment time descending and user ID ascending. `assignedAt` is an ISO 8601 UTC timestamp. Channel Service fetches the page's profiles through the existing batch chat-profile endpoint, which now includes `username`. If a profile or User Service is unavailable, the assignment still appears with nullable profile fields.
+
+The candidate endpoint matches a literal substring of the display name, ignoring case. It trims surrounding whitespace and rejects a blank term or a term longer than 100 characters with `400`. Paging uses the same defaults and limits as the moderator list. Results sort by case-insensitive display name, then by user ID ascending. A search with no matches returns `200` with empty `content`. A failed identity search returns `503`. Each item contains `{userId,displayName,avatarUrl,eligibility}`. The eligibility values, in check order, are `CHANNEL_OWNER`, `ALREADY_MODERATOR`, `CHANNEL_BANNED`, `ACCOUNT_INACTIVE`, and `ELIGIBLE`. Use `userId` to select a candidate. Assignment checks eligibility again when it writes.
+
+Channel Service searches candidates through `GET /user/internal/api/users/identities?displayName=…&page=0&size=20` on the private service network. Each item contains `{userId,displayName,avatarUrl,status}`. Deploy the updated User Service before the Channel Service reads, then deploy the frontend.
 
 Assignment checks the channel before looking up the target. Conflicts include self-assignment (1027), an existing assignment (1028), a ban on that channel (1029), and an inactive target account (1030). A missing target account returns `404` (1022). Channel Service calls User Service directly via `GET /user/internal/api/users/{userId}/status`, which returns `{userId,status}` in `ApiResponse.result`. The internal route uses the private service network without credentials. If status lookup fails, assignment returns `503` (1008).
 

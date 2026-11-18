@@ -120,11 +120,11 @@ class ChannelModeratorIntegrationTest {
         banService.banUserFromChannel(owner, otherChannel, target, ChannelBanType.FULL_BAN);
         banService.banUserFromChannel(owner, ownChannel, banned, ChannelBanType.CHAT_BAN);
         var matches = List.of(
-                new UserIdentity(target, "target01", "Match", null, Status.ACTIVE),
-                new UserIdentity(owner, "owner01", "Match", null, Status.ACTIVE),
-                new UserIdentity(moderator, "moderator01", "Match", null, Status.ACTIVE),
-                new UserIdentity(banned, "banned01", "Match", null, Status.ACTIVE),
-                new UserIdentity(inactive, "inactive01", "Match", null, Status.BANNED));
+                new UserIdentity(target, "Match", null, Status.ACTIVE),
+                new UserIdentity(owner, "Match", null, Status.ACTIVE),
+                new UserIdentity(moderator, "Match", null, Status.ACTIVE),
+                new UserIdentity(banned, "Match", null, Status.ACTIVE),
+                new UserIdentity(inactive, "Match", null, Status.BANNED));
         when(users.searchIdentities("match", 1, 5)).thenReturn(identityPage(matches, 1, 5, 10, 2));
         when(users.searchIdentities("none", 0, 20)).thenReturn(identityPage(List.of(), 0, 20, 0, 0));
         when(users.searchIdentities("unavailable", 0, 20)).thenThrow(mock(FeignException.ServiceUnavailable.class));
@@ -135,7 +135,7 @@ class ChannelModeratorIntegrationTest {
                 .andExpect(jsonPath("$.result.totalElements").value(10))
                 .andExpect(jsonPath("$.result.totalPages").value(2))
                 .andExpect(jsonPath("$.result.content[0].userId").value(target.toString()))
-                .andExpect(jsonPath("$.result.content[0].username").value("target01"))
+                .andExpect(jsonPath("$.result.content[0].username").doesNotExist())
                 .andExpect(jsonPath("$.result.content[0].eligibility").value("ELIGIBLE"))
                 .andExpect(jsonPath("$.result.content[1].eligibility").value("CHANNEL_OWNER"))
                 .andExpect(jsonPath("$.result.content[2].eligibility").value("ALREADY_MODERATOR"))

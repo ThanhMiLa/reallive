@@ -17,6 +17,22 @@ public class UserStatusApiClient {
 
     UserStatusClient client;
 
+    public UserStatusClient.IdentityPage searchIdentities(String displayName, int page, int size) {
+        try {
+            var response = client.searchIdentities(displayName, page, size);
+            var identities = response == null ? null : response.getResult();
+            if (identities == null || response.getCode() != 1000 || identities.content() == null
+                    || identities.page() != page || identities.size() != size || identities.content().size() > size
+                    || identities.content().stream().anyMatch(identity -> identity == null || identity.userId() == null
+                            || identity.displayName() == null || identity.status() == null)) {
+                throw new AppException(ErrorCode.USER_SERVICE_UNAVAILABLE);
+            }
+            return identities;
+        } catch (FeignException exception) {
+            throw new AppException(ErrorCode.USER_SERVICE_UNAVAILABLE);
+        }
+    }
+
     public UserStatusClient.Status getStatus(UUID userId) {
         try {
             var response = client.getStatus(userId);

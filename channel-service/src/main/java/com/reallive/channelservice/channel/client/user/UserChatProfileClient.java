@@ -24,6 +24,7 @@ public interface UserChatProfileClient {
     record ChatProfile(
             UUID userId,
             String displayName,
-            String avatarUrl
+            String avatarUrl,
+            String username
     ) {}
 }
