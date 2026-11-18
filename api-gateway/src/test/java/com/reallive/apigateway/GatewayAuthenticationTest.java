@@ -28,7 +28,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
-import reactor.netty.resources.ConnectionProvider;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -64,9 +63,6 @@ class GatewayAuthenticationTest {
     private static final AtomicInteger BACKEND_CALLS = new AtomicInteger();
     private static final AtomicReference<CapturedRequest> LAST_REQUEST = new AtomicReference<>();
     private static final HttpServer BACKEND = startBackend();
-    // A single connection exposes response bodies that were not consumed by an assertion.
-    private static final ConnectionProvider CLIENT_CONNECTIONS = ConnectionProvider.builder("gateway-authentication-test")
-            .maxConnections(1).pendingAcquireTimeout(Duration.ofSeconds(5)).build();
 
     private WebTestClient client;
 
@@ -98,7 +94,8 @@ class GatewayAuthenticationTest {
 
     @BeforeEach
     void setUp() {
-        client = WebTestClient.bindToServer(new ReactorClientHttpConnector(HttpClient.create(CLIENT_CONNECTIONS)))
+        // Exercise real HTTP without letting a previous request's connection affect this one.
+        client = WebTestClient.bindToServer(new ReactorClientHttpConnector(HttpClient.newConnection()))
                 .baseUrl("http://127.0.0.1:" + port).responseTimeout(Duration.ofSeconds(30)).build();
         BACKEND_CALLS.set(0);
         LAST_REQUEST.set(null);
@@ -527,12 +524,8 @@ class GatewayAuthenticationTest {
     }
 
     @AfterAll
-    static void stopResources() {
-        try {
-            BACKEND.stop(0);
-        } finally {
-            CLIENT_CONNECTIONS.disposeLater().block(Duration.ofSeconds(5));
-        }
+    static void stopBackend() {
+        BACKEND.stop(0);
     }
 
     private record CsrfCredentials(
