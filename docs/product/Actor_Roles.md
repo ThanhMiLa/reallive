@@ -43,8 +43,7 @@
   - Xóa message vi phạm
   - Mute user
   - Timeout user
-  - Ban user khỏi chat của channel
-  - Unban user
+  - Xem danh sách ban và đặt, đổi hoặc gỡ ban ở cả ba mức `CHAT_BAN`, `LIVE_VIEW_BAN` và `FULL_BAN` trong channel được giao
   - Xử lý spam hoặc hành vi vi phạm trong livestream
 - Quyền của CHANNEL MODERATOR chỉ có hiệu lực trong những channel mà user được cấp quyền.
 - CHANNEL MODERATOR không có quyền quản trị toàn hệ thống.

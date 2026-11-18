@@ -5,10 +5,6 @@ public enum ChannelBanType {
     LIVE_VIEW_BAN,
     FULL_BAN;
 
-    public String banPermission() { return "CHANNEL_" + name(); }
-
-    public String unbanPermission() { return "CHANNEL_" + name().replace("_BAN", "_UNBAN"); }
-
     public String reason() {
         return switch (this) {
             case CHAT_BAN -> "Banned from channel chat";

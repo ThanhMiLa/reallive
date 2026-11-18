@@ -5,15 +5,11 @@ import com.reallive.channelservice.channel.client.user.UserChatProfileClient.Cha
 import com.reallive.channelservice.channel.dto.response.ChannelBanResponse;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
 import com.reallive.channelservice.channel.entity.ChannelUserBanEntity;
-import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.entity.enums.ChannelBanType;
-import com.reallive.channelservice.channel.entity.ChannelModeratorId;
-import com.reallive.channelservice.channel.repository.ChannelModeratorRepository;
-import org.springframework.security.core.context.SecurityContextHolder;
-import java.util.Arrays;
-import java.util.List;
+import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.repository.ChannelUserBanRepository;
+import com.reallive.channelservice.channel.security.ChannelAuthorization;
 import com.reallive.channelservice.channel.service.ChannelBanService;
 import com.reallive.channelservice.common.dto.PageResponse;
 import com.reallive.channelservice.common.exception.AppException;
@@ -25,11 +21,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.UUID;
-import java.util.Map;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -38,26 +37,27 @@ public class ChannelBanServiceImpl implements ChannelBanService {
     ChannelRepository channels;
     ChannelUserBanRepository bans;
     UserChatProfileApiClient profiles;
-    ChannelModeratorRepository moderators;
+    ChannelAuthorization authorization;
 
     @Override
     @Transactional
     public ChannelBanResponse.State banUserFromChannel(UUID actorId, UUID channelId, UUID userId, ChannelBanType requested) {
-        ChannelEntity channel = channel(actorId, channelId, true);
-        if (channel.getUserId().equals(userId)) throw new AppException(ErrorCode.CANNOT_BAN_CHANNEL_OWNER);
-        requirePermission(requested.banPermission());
+        ChannelEntity channel = requireActiveChannel(channelId, true);
+        if (channel.getUserId().equals(userId)) {
+            throw new AppException(ErrorCode.CANNOT_BAN_CHANNEL_OWNER);
+        }
         var existing = bans.findByChannelIdAndUserId(channelId, userId);
         if (existing.isPresent()) {
             var ban = existing.get();
-            if (ban.getBanType() == requested) throw new AppException(ErrorCode.CHANNEL_USER_ALREADY_BANNED);
-            if (requested.ordinal() < ban.getBanType().ordinal()) requirePermission(ban.getBanType().unbanPermission());
+            if (ban.getBanType() == requested) {
+                throw new AppException(ErrorCode.CHANNEL_USER_ALREADY_BANNED);
+            }
             ban.setBanType(requested);
             ban.setPerformedBy(actorId);
             ban.setReason(requested.reason());
-            bans.saveAndFlush(ban);
         } else {
             profiles.profile(userId);
-            bans.saveAndFlush(ChannelUserBanEntity.builder().id(UUID.randomUUID()).channelId(channelId).userId(userId)
+            bans.save(ChannelUserBanEntity.builder().id(UUID.randomUUID()).channelId(channelId).userId(userId)
                     .banType(requested).performedBy(actorId).reason(requested.reason())
                     .createdAt(LocalDateTime.now(ZoneOffset.UTC)).build());
         }
@@ -66,27 +66,26 @@ public class ChannelBanServiceImpl implements ChannelBanService {
 
     @Override
     @Transactional
-    public ChannelBanResponse.State unbanUserFromChannel(UUID actorId, UUID channelId, UUID userId) {
-        channel(actorId, channelId, true);
+    public ChannelBanResponse.State unbanUserFromChannel(UUID channelId, UUID userId) {
+        requireActiveChannel(channelId, true);
         var ban = bans.findByChannelIdAndUserId(channelId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_USER_NOT_BANNED));
-        requirePermission(ban.getBanType().unbanPermission());
         bans.delete(ban);
         return state(channelId, userId, null, false);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public ChannelBanResponse.State getUserBanStatus(UUID actorId, UUID channelId, UUID userId) {
-        var channel = channel(actorId, channelId, false);
+    public ChannelBanResponse.State getUserBanStatus(UUID channelId, UUID userId) {
+        var channel = requireActiveChannel(channelId, false);
         var type = bans.findByChannelIdAndUserId(channelId, userId).map(ChannelUserBanEntity::getBanType).orElse(null);
         return state(channelId, userId, type, channel.getUserId().equals(userId));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<ChannelBanResponse.Item> getBannedUsers(UUID actorId, UUID channelId, int page, int size) {
-        var channel = channel(actorId, channelId, false);
+    public PageResponse<ChannelBanResponse.Item> getBannedUsers(UUID channelId, int page, int size) {
+        var channel = requireActiveChannel(channelId, false);
         if (page < 0 || size < 1 || size > 50) throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         var result = bans.findByChannelId(channelId, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
         Map<UUID, ChatProfile> snapshots = new HashMap<>();
@@ -111,43 +110,31 @@ public class ChannelBanServiceImpl implements ChannelBanService {
     @Transactional(readOnly = true)
     public ChannelBanResponse.Context getChannelModerationContext(UUID actorId, UUID channelId) {
         var channel = channels.findById(channelId).orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
-        if (channel.getUserId() == null) throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
-        boolean eligible = channel.getStatus() == ChannelStatus.ACTIVE && (channel.getUserId().equals(actorId)
-                || moderators.existsById(new ChannelModeratorId(channelId, actorId)));
-        return new ChannelBanResponse.Context(channelId, channel.getUserId(),
-                eligible ? Arrays.stream(ChannelBanType.values()).filter(type -> hasPermission(type.banPermission())).toList() : List.of(),
-                eligible ? Arrays.stream(ChannelBanType.values()).filter(type -> hasPermission(type.unbanPermission())).toList() : List.of(),
-                eligible && hasPermission("CHANNEL_BAN_VIEW"));
+        if (channel.getUserId() == null) {
+            throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
+        }
+        boolean canModerate = channel.getStatus() == ChannelStatus.ACTIVE
+                && authorization.isOwnerOrModerator(channel, actorId);
+        List<ChannelBanType> allowedTypes = canModerate ? List.of(ChannelBanType.values()) : List.of();
+        return new ChannelBanResponse.Context(channelId, channel.getUserId(), allowedTypes, allowedTypes, canModerate);
     }
 
     private ChannelBanResponse.State state(UUID channelId, UUID userId, ChannelBanType current, boolean owner) {
-        var allowed = owner ? List.<ChannelBanType>of() : Arrays.stream(ChannelBanType.values())
-                .filter(type -> type != current && hasPermission(type.banPermission()))
-                .filter(type -> current == null || type.ordinal() > current.ordinal() || hasPermission(current.unbanPermission()))
+        List<ChannelBanType> allowed = owner ? List.of() : Arrays.stream(ChannelBanType.values())
+                .filter(type -> type != current)
                 .toList();
-        return new ChannelBanResponse.State(channelId, userId, current, allowed,
-                current != null && hasPermission(current.unbanPermission()));
+        return new ChannelBanResponse.State(channelId, userId, current, allowed, current != null);
     }
 
-    private boolean hasPermission(String permission) {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication != null && authentication.isAuthenticated()
-                && authentication.getAuthorities().stream().anyMatch(authority -> permission.equals(authority.getAuthority()));
-    }
-
-    private void requirePermission(String permission) {
-        if (!hasPermission(permission)) throw new AppException(ErrorCode.ACCESS_DENIED);
-    }
-
-    private ChannelEntity channel(UUID actorId, UUID channelId, boolean lock) {
+    private ChannelEntity requireActiveChannel(UUID channelId, boolean lock) {
         var channel = (lock ? channels.findByIdForUpdate(channelId) : channels.findById(channelId))
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
-        if (channel.getUserId() == null)
+        if (channel.getUserId() == null) {
             throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
-        if (!channel.getUserId().equals(actorId) && !moderators.existsById(new ChannelModeratorId(channelId, actorId)))
-            throw new AppException(ErrorCode.ACCESS_DENIED);
-        if (channel.getStatus() != ChannelStatus.ACTIVE)
+        }
+        if (channel.getStatus() != ChannelStatus.ACTIVE) {
             throw new AppException(ErrorCode.CHANNEL_NOT_ACTIVE);
+        }
         return channel;
     }
 }
