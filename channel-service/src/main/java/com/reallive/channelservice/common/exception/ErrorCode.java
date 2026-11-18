@@ -31,7 +31,8 @@ public enum ErrorCode {
     USER_NOT_FOUND(1022, "User not found", HttpStatus.NOT_FOUND),
     CHANNEL_USER_ALREADY_BANNED(1023, "User already has this ban level", HttpStatus.CONFLICT),
     CHANNEL_USER_NOT_BANNED(1024, "User is not banned from this channel", HttpStatus.CONFLICT),
-    CANNOT_BAN_CHANNEL_OWNER(1025, "Cannot ban channel owner", HttpStatus.CONFLICT);
+    CANNOT_BAN_CHANNEL_OWNER(1025, "Cannot ban channel owner", HttpStatus.CONFLICT),
+    CANNOT_BAN_CHANNEL_MODERATOR(1026, "Remove the user's moderator assignment before banning them", HttpStatus.CONFLICT);
 
     private final int code;
     private final String message;

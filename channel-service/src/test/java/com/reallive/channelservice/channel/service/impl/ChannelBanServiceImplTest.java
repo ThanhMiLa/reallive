@@ -5,6 +5,7 @@ import com.reallive.channelservice.channel.entity.ChannelEntity;
 import com.reallive.channelservice.channel.entity.ChannelUserBanEntity;
 import com.reallive.channelservice.channel.entity.enums.ChannelBanType;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
+import com.reallive.channelservice.channel.repository.ChannelModeratorRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.repository.ChannelUserBanRepository;
 import com.reallive.channelservice.channel.security.ChannelAuthorization;
@@ -23,7 +24,8 @@ class ChannelBanServiceImplTest {
     ChannelRepository channels = mock(ChannelRepository.class);
     ChannelUserBanRepository bans = mock(ChannelUserBanRepository.class);
     UserChatProfileApiClient profiles = mock(UserChatProfileApiClient.class);
-    ChannelBanServiceImpl service = new ChannelBanServiceImpl(channels, bans, profiles, mock(ChannelAuthorization.class));
+    ChannelBanServiceImpl service = new ChannelBanServiceImpl(
+            channels, bans, profiles, mock(ChannelAuthorization.class), mock(ChannelModeratorRepository.class));
     UUID channelId = UUID.randomUUID();
     UUID owner = UUID.randomUUID();
     UUID user = UUID.randomUUID();

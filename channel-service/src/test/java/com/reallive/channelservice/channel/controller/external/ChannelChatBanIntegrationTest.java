@@ -72,6 +72,29 @@ class ChannelChatBanIntegrationTest {
                 .andExpect(jsonPath("$.code").value(1024));
     }
 
+    @Test
+    void ownerCanBanModeratorOnlyAfterAssignmentIsRemovedFromThatChannel() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID channel = createChannel(owner, ChannelStatus.ACTIVE);
+        UUID otherChannel = createChannel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        UUID target = UUID.randomUUID();
+        var assignment = new ChannelModeratorId(channel, target);
+        moderators.saveAndFlush(ChannelModeratorEntity.builder().id(assignment).build());
+        moderators.saveAndFlush(ChannelModeratorEntity.builder().id(new ChannelModeratorId(otherChannel, target)).build());
+        var ownerJwt = jwt().jwt(token -> token.subject(owner.toString()));
+        String path = "/api/channels/" + channel + "/users/" + target + "/ban";
+        String request = banRequest(ChannelBanType.FULL_BAN);
+
+        mvc.perform(post(path).contentType("application/json").content(request).with(ownerJwt))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1026));
+
+        moderators.deleteById(assignment);
+        when(profiles.profile(target)).thenReturn(new ChatProfile(target, "Viewer", null));
+
+        mvc.perform(post(path).contentType("application/json").content(request).with(ownerJwt))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.banType").value("FULL_BAN"));
+    }
+
     @ParameterizedTest
     @EnumSource(ChannelBanType.class)
     void assignedModeratorCanSetChangeAndRemoveEveryLevel(ChannelBanType initialType) throws Exception {

@@ -11,7 +11,7 @@ import java.util.UUID;
  */
 public interface ChannelBanService {
     /**
-     * Creates or changes an active ban for a non-owner in an active channel.
+     * Creates or changes an active ban. Channel owners and assigned moderators are protected from bans.
      *
      * @param actorId authorized caller recorded as the performer
      * @param channelId channel to manage

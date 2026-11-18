@@ -4,9 +4,11 @@ import com.reallive.channelservice.channel.client.user.UserChatProfileApiClient;
 import com.reallive.channelservice.channel.client.user.UserChatProfileClient.ChatProfile;
 import com.reallive.channelservice.channel.dto.response.ChannelBanResponse;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
+import com.reallive.channelservice.channel.entity.ChannelModeratorId;
 import com.reallive.channelservice.channel.entity.ChannelUserBanEntity;
 import com.reallive.channelservice.channel.entity.enums.ChannelBanType;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
+import com.reallive.channelservice.channel.repository.ChannelModeratorRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.repository.ChannelUserBanRepository;
 import com.reallive.channelservice.channel.security.ChannelAuthorization;
@@ -38,6 +40,7 @@ public class ChannelBanServiceImpl implements ChannelBanService {
     ChannelUserBanRepository bans;
     UserChatProfileApiClient profiles;
     ChannelAuthorization authorization;
+    ChannelModeratorRepository moderators;
 
     @Override
     @Transactional
@@ -45,6 +48,9 @@ public class ChannelBanServiceImpl implements ChannelBanService {
         ChannelEntity channel = requireActiveChannel(channelId, true);
         if (channel.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.CANNOT_BAN_CHANNEL_OWNER);
+        }
+        if (moderators.existsById(new ChannelModeratorId(channelId, userId))) {
+            throw new AppException(ErrorCode.CANNOT_BAN_CHANNEL_MODERATOR);
         }
         var existing = bans.findByChannelIdAndUserId(channelId, userId);
         if (existing.isPresent()) {
