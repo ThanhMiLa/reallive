@@ -5,5 +5,6 @@ import java.util.UUID;
 public record ChatProfileSnapshot(
         UUID userId,
         String displayName,
-        String avatarUrl
+        String avatarUrl,
+        String username
 ) {}

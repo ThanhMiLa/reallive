@@ -1,4 +1,4 @@
-package com.reallive.userservice.auth.controller;
+package com.reallive.userservice.user.controller.internal;
 
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:internal_user_status;MODE=PostgreSQL;DB_CLOSE_DELAY=-1")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class InternalUserStatusIntegrationTest {
+class InternalUserAccountIntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired UserRepository users;
@@ -47,6 +47,7 @@ class InternalUserStatusIntegrationTest {
                 .andExpect(jsonPath("$.result.content[*].userId", containsInAnyOrder(
                         first.getId().toString(), second.getId().toString())))
                 .andExpect(jsonPath("$.result.content[0].displayName").value(shared))
+                .andExpect(jsonPath("$.result.content[0].username").doesNotExist())
                 .andExpect(jsonPath("$.result.content[0].email").doesNotExist());
         mvc.perform(get(path).param("displayName", fragment).param("page", "1").param("size", "1"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result.content.length()").value(1))

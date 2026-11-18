@@ -1,5 +1,6 @@
 package com.reallive.userservice.auth.repository;
 
+import com.reallive.userservice.auth.dto.response.UserIdentityResponse;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import jakarta.persistence.LockModeType;
@@ -65,6 +66,24 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
             WHERE user.id = :userId
             """)
     Optional<UserStatus> findStatusById(UUID userId);
+
+    @Query(value = """
+            SELECT NEW com.reallive.userservice.auth.dto.response.UserIdentityResponse(
+                user.id,
+                profile.displayName,
+                profile.avatarUrl,
+                user.status
+            )
+            FROM ProfileEntity profile
+            JOIN profile.user user
+            WHERE LOWER(profile.displayName) LIKE LOWER(:pattern) ESCAPE '!'
+            ORDER BY LOWER(profile.displayName), user.id
+            """, countQuery = """
+            SELECT COUNT(profile)
+            FROM ProfileEntity profile
+            WHERE LOWER(profile.displayName) LIKE LOWER(:pattern) ESCAPE '!'
+            """)
+    Page<UserIdentityResponse> searchIdentitiesByDisplayName(String pattern, Pageable pageable);
 
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);

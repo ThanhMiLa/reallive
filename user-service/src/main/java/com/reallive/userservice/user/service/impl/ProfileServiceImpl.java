@@ -41,7 +41,8 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional(readOnly = true)
     public List<ChatProfileSnapshot> getChatProfiles(List<UUID> userIds) {
         return profileRepository.findByUserIdIn(userIds).stream()
-                .map(profile -> new ChatProfileSnapshot(profile.getUser().getId(), profile.getDisplayName(), profile.getAvatarUrl()))
+                .map(profile -> new ChatProfileSnapshot(profile.getUser().getId(), profile.getDisplayName(),
+                        profile.getAvatarUrl(), profile.getUser().getUsername()))
                 .toList();
     }
 

@@ -52,7 +52,8 @@ public enum ErrorCode {
     CHANNEL_NOT_FOUND(1040, "Channel not found", HttpStatus.NOT_FOUND),
     CHANNEL_REQUEST_INVALID(1041, "Invalid channel request", HttpStatus.BAD_REQUEST),
     CATEGORY_NOT_FOUND(1042, "Category not found", HttpStatus.BAD_REQUEST),
-    CATEGORY_NOT_ACTIVE(1043, "Category is not active", HttpStatus.BAD_REQUEST);
+    CATEGORY_NOT_ACTIVE(1043, "Category is not active", HttpStatus.BAD_REQUEST),
+    USER_SEARCH_PAGINATION_INVALID(1045, "Invalid user search pagination", HttpStatus.BAD_REQUEST);
 
     private final int code;
     private final String message;
