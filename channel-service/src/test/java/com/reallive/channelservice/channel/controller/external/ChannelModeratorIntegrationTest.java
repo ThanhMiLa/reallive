@@ -3,6 +3,7 @@ package com.reallive.channelservice.channel.controller.external;
 import com.reallive.channelservice.channel.client.user.UserChatProfileApiClient;
 import com.reallive.channelservice.channel.client.user.UserChatProfileClient.ChatProfile;
 import com.reallive.channelservice.channel.client.user.UserStatusClient;
+import com.reallive.channelservice.channel.client.user.UserStatusClient.IdentityPage;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.Status;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.StatusResponse;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.UserIdentity;
@@ -107,53 +108,60 @@ class ChannelModeratorIntegrationTest {
     }
 
     @Test
-    void candidateReportsEachEligibilityAndAssignmentRechecksTheLocalBan() throws Exception {
+    void candidateSearchPaginatesMatchesAndReportsEachEligibility() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID ownChannel = channel(owner, ChannelStatus.ACTIVE);
         UUID otherChannel = channel(owner, ChannelStatus.ACTIVE);
         UUID target = UUID.randomUUID();
         UUID moderator = UUID.randomUUID();
+        UUID banned = UUID.randomUUID();
         UUID inactive = UUID.randomUUID();
         saveAssignment(ownChannel, moderator);
         banService.banUserFromChannel(owner, otherChannel, target, ChannelBanType.FULL_BAN);
-        when(users.findIdentity("ExactViewer")).thenReturn(identity(target, "ExactViewer", Status.ACTIVE));
-        when(users.findIdentity("owner01")).thenReturn(identity(owner, "owner01", Status.ACTIVE));
-        when(users.findIdentity("moderator01")).thenReturn(identity(moderator, "moderator01", Status.ACTIVE));
-        when(users.findIdentity("inactive01")).thenReturn(identity(inactive, "inactive01", Status.BANNED));
-        when(users.findIdentity("exactviewer")).thenThrow(mock(FeignException.NotFound.class));
-        when(users.findIdentity("unavailable")).thenThrow(mock(FeignException.ServiceUnavailable.class));
+        banService.banUserFromChannel(owner, ownChannel, banned, ChannelBanType.CHAT_BAN);
+        var matches = List.of(
+                new UserIdentity(target, "target01", "Match", null, Status.ACTIVE),
+                new UserIdentity(owner, "owner01", "Match", null, Status.ACTIVE),
+                new UserIdentity(moderator, "moderator01", "Match", null, Status.ACTIVE),
+                new UserIdentity(banned, "banned01", "Match", null, Status.ACTIVE),
+                new UserIdentity(inactive, "inactive01", "Match", null, Status.BANNED));
+        when(users.searchIdentities("match", 1, 5)).thenReturn(identityPage(matches, 1, 5, 10, 2));
+        when(users.searchIdentities("none", 0, 20)).thenReturn(identityPage(List.of(), 0, 20, 0, 0));
+        when(users.searchIdentities("unavailable", 0, 20)).thenThrow(mock(FeignException.ServiceUnavailable.class));
         String path = moderatorsPath(ownChannel) + "/candidate";
 
-        mvc.perform(get(path).param("username", "ExactViewer").with(streamer(owner)))
+        mvc.perform(get(path).param("displayName", " match ").param("page", "1").param("size", "5").with(streamer(owner)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.userId").value(target.toString()))
-                .andExpect(jsonPath("$.result.username").value("ExactViewer"))
-                .andExpect(jsonPath("$.result.eligibility").value("ELIGIBLE"));
-        mvc.perform(get(path).param("username", "   ").with(streamer(owner))).andExpect(status().isBadRequest());
-        mvc.perform(get(path).param("username", "a".repeat(256)).with(streamer(owner))).andExpect(status().isBadRequest());
-        mvc.perform(get(path).param("username", "exactviewer").with(streamer(owner))).andExpect(status().isNotFound());
-        mvc.perform(get(path).param("username", "unavailable").with(streamer(owner))).andExpect(status().isServiceUnavailable());
-        mvc.perform(get(path).param("username", "ExactViewer").with(streamer(UUID.randomUUID())))
+                .andExpect(jsonPath("$.result.totalElements").value(10))
+                .andExpect(jsonPath("$.result.totalPages").value(2))
+                .andExpect(jsonPath("$.result.content[0].userId").value(target.toString()))
+                .andExpect(jsonPath("$.result.content[0].username").value("target01"))
+                .andExpect(jsonPath("$.result.content[0].eligibility").value("ELIGIBLE"))
+                .andExpect(jsonPath("$.result.content[1].eligibility").value("CHANNEL_OWNER"))
+                .andExpect(jsonPath("$.result.content[2].eligibility").value("ALREADY_MODERATOR"))
+                .andExpect(jsonPath("$.result.content[3].eligibility").value("CHANNEL_BANNED"))
+                .andExpect(jsonPath("$.result.content[4].eligibility").value("ACCOUNT_INACTIVE"));
+        mvc.perform(get(path).param("displayName", "   ").with(streamer(owner))).andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("displayName", "a".repeat(101)).with(streamer(owner))).andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("displayName", "match").param("size", "51").with(streamer(owner)))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("displayName", "none").with(streamer(owner))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content").isEmpty());
+        mvc.perform(get(path).param("displayName", "unavailable").with(streamer(owner)))
+                .andExpect(status().isServiceUnavailable());
+        mvc.perform(get(path).param("displayName", "match").param("page", "1").param("size", "5")
+                        .with(streamer(UUID.randomUUID())))
                 .andExpect(status().isForbidden());
-        verify(users).findIdentity("ExactViewer");
-        expectEligibility(path, owner, "owner01", "CHANNEL_OWNER");
-        expectEligibility(path, owner, "moderator01", "ALREADY_MODERATOR");
-        expectEligibility(path, owner, "inactive01", "ACCOUNT_INACTIVE");
+        verify(users).searchIdentities("match", 1, 5);
 
         banService.banUserFromChannel(owner, ownChannel, target, ChannelBanType.CHAT_BAN);
-        expectEligibility(path, owner, "ExactViewer", "CHANNEL_BANNED");
         mvc.perform(post(path(ownChannel, target)).with(streamer(owner)))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1029));
     }
 
-    private void expectEligibility(String path, UUID owner, String username, String eligibility) throws Exception {
-        mvc.perform(get(path).param("username", username).with(streamer(owner)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.result.eligibility").value(eligibility));
-    }
-
-    private ApiResponse<UserIdentity> identity(UUID userId, String username, Status status) {
-        return ApiResponse.<UserIdentity>builder().status(200).code(1000)
-                .result(new UserIdentity(userId, username, "Viewer", null, status)).build();
+    private ApiResponse<IdentityPage> identityPage(List<UserIdentity> matches, int page, int size, long total, int pages) {
+        return ApiResponse.<IdentityPage>builder().status(200).code(1000)
+                .result(new IdentityPage(matches, page, size, total, pages)).build();
     }
 
     private void saveAssignment(UUID channel, UUID user) {

@@ -13,7 +13,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Locale;
 import java.util.UUID;
+
+import static org.hamcrest.Matchers.containsInAnyOrder;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,26 +33,38 @@ class InternalUserStatusIntegrationTest {
     @Autowired ProfileRepository profiles;
 
     @Test
-    void findsExactUsernameWithStatusAndOptionalProfile() throws Exception {
-        String username = "CaseSensitive-" + UUID.randomUUID();
-        var user = users.saveAndFlush(UserEntity.builder().username(username)
-                .email(username + "@example.com").passwordHash("test-hash").status(UserStatus.BANNED).build());
-        String path = "/internal/api/users/by-username/identity";
-        mvc.perform(get(path).param("username", username)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.userId").value(user.getId().toString()))
-                .andExpect(jsonPath("$.result.status").value("BANNED"))
-                .andExpect(jsonPath("$.result.displayName").doesNotExist());
-        profiles.saveAndFlush(ProfileEntity.builder().user(user).displayName("Viewer").build());
-        mvc.perform(get(path).param("username", username)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.displayName").value("Viewer"))
-                .andExpect(jsonPath("$.result.username").value(username))
-                .andExpect(jsonPath("$.result.email").doesNotExist());
-        mvc.perform(get(path).param("username", username.toLowerCase(java.util.Locale.ROOT)))
-                .andExpect(status().isNotFound());
-        mvc.perform(post(path).param("username", username)).andExpect(status().isUnauthorized());
+    void searchesCaseInsensitiveDisplayNameFragmentsAndKeepsDuplicateNames() throws Exception {
+        String shared = "Viewer_" + UUID.randomUUID();
+        var first = createProfile(shared, UserStatus.BANNED);
+        var second = createProfile(shared, UserStatus.ACTIVE);
+        createProfile(shared.replaceFirst("_", "X"), UserStatus.ACTIVE);
+        String fragment = shared.substring(4).toUpperCase(Locale.ROOT);
+        String path = "/internal/api/users/identities";
+
+        mvc.perform(get(path).param("displayName", fragment))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.totalElements").value(2))
+                .andExpect(jsonPath("$.result.content[*].userId", containsInAnyOrder(
+                        first.getId().toString(), second.getId().toString())))
+                .andExpect(jsonPath("$.result.content[0].displayName").value(shared))
+                .andExpect(jsonPath("$.result.content[0].email").doesNotExist());
+        mvc.perform(get(path).param("displayName", fragment).param("page", "1").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.content.length()").value(1))
+                .andExpect(jsonPath("$.result.totalPages").value(2));
+        mvc.perform(get(path).param("displayName", UUID.randomUUID().toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.content").isEmpty());
+        mvc.perform(post(path).param("displayName", fragment)).andExpect(status().isUnauthorized());
         mvc.perform(post("/internal/api/users/chat-profiles").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"userIds\":[\"%s\"]}".formatted(user.getId())))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.result[0].username").value(username));
+                .content("{\"userIds\":[\"%s\"]}".formatted(first.getId())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result[0].username").value(first.getUsername()));
+    }
+
+    private UserEntity createProfile(String displayName, UserStatus state) {
+        String username = UUID.randomUUID().toString();
+        var user = users.saveAndFlush(UserEntity.builder().username(username)
+                .email(username + "@example.com").passwordHash("test-hash").status(state).build());
+        profiles.saveAndFlush(ProfileEntity.builder().user(user).displayName(displayName).build());
+        return user;
     }
 
     @Test
