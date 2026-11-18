@@ -106,6 +106,16 @@ class PaymentInternalRouteTest {
                 .expectBody().returnResult();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void internalAccountStatusIsNeverRouted(boolean authenticated) throws Exception {
+        var request = client.get().uri("/user/internal/api/users/" + UUID.randomUUID() + "/status");
+        if (authenticated) {
+            request.cookie("access_token", accessToken());
+        }
+        request.exchange().expectStatus().isNotFound().expectBody().returnResult();
+    }
+
     @Test
     void configuredPublicPaymentPrefixStillRoutesAuthenticatedRequests() throws Exception {
         client.post().uri("/payment/api/balance").cookie("access_token", accessToken())
