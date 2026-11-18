@@ -24,18 +24,16 @@ class ChannelBanServiceImplTest {
     ChannelRepository channels = mock(ChannelRepository.class);
     ChannelUserBanRepository bans = mock(ChannelUserBanRepository.class);
     UserChatProfileApiClient profiles = mock(UserChatProfileApiClient.class);
-    ChannelAuthorization authorization = mock(ChannelAuthorization.class);
     ChannelBanServiceImpl service = new ChannelBanServiceImpl(
-            channels, bans, profiles, authorization, mock(ChannelModeratorRepository.class));
+            channels, bans, profiles, mock(ChannelAuthorization.class), mock(ChannelModeratorRepository.class));
     UUID channelId = UUID.randomUUID();
     UUID owner = UUID.randomUUID();
     UUID user = UUID.randomUUID();
 
     @BeforeEach
     void setup() {
-        var channel = ChannelEntity.builder().id(channelId).userId(owner).status(ChannelStatus.ACTIVE).build();
-        when(channels.findByIdForUpdate(channelId)).thenReturn(Optional.of(channel));
-        when(authorization.isOwnerOrModerator(channel, owner)).thenReturn(true);
+        when(channels.findByIdForUpdate(channelId)).thenReturn(Optional.of(ChannelEntity.builder()
+                .id(channelId).userId(owner).status(ChannelStatus.ACTIVE).build()));
     }
 
     @Test
@@ -51,7 +49,7 @@ class ChannelBanServiceImplTest {
         assertEquals(ChannelBanType.CHAT_BAN, service.banUserFromChannel(owner, channelId, user, ChannelBanType.CHAT_BAN).banType());
         assertEquals(ChannelBanType.CHAT_BAN, ban.getBanType());
         verifyNoInteractions(profiles);
-        assertNull(service.unbanUserFromChannel(owner, channelId, user).banType());
+        assertNull(service.unbanUserFromChannel(channelId, user).banType());
         verify(bans).delete(ban);
     }
 
@@ -74,7 +72,7 @@ class ChannelBanServiceImplTest {
     void removesAnyLevel(ChannelBanType type) {
         var ban = ChannelUserBanEntity.builder().banType(type).build();
         when(bans.findByChannelIdAndUserId(channelId, user)).thenReturn(Optional.of(ban));
-        assertNull(service.unbanUserFromChannel(owner, channelId, user).banType());
+        assertNull(service.unbanUserFromChannel(channelId, user).banType());
         verify(bans).delete(ban);
     }
 

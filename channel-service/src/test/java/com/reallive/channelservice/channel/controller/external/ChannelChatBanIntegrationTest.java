@@ -210,7 +210,7 @@ class ChannelChatBanIntegrationTest {
             java.util.concurrent.Callable<Integer> request = () -> {
                 ready.await();
                 try {
-                    banService.unbanUserFromChannel(owner, channel, user);
+                    banService.unbanUserFromChannel(channel, user);
                     return 0;
                 } catch (AppException exception) {
                     return exception.getErrorCode().getCode();

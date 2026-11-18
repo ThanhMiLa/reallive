@@ -11,7 +11,6 @@ import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.repository.ChannelModeratorRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.repository.ChannelUserBanRepository;
-import com.reallive.channelservice.channel.security.ChannelAuthorization;
 import com.reallive.channelservice.channel.service.ChannelBanService;
 import com.reallive.channelservice.channel.service.ChannelModeratorService;
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
@@ -25,12 +24,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
@@ -41,9 +38,6 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -69,7 +63,6 @@ class ChannelModeratorIntegrationTest {
     @MockitoBean UserStatusClient users;
     @MockitoBean UserChatProfileApiClient profiles;
     @MockitoBean RedisAuthoritiesReader authorities;
-    @MockitoSpyBean ChannelAuthorization authorization;
 
     @Test
     void assignsAndRemovesFromOnlyTheRequestedChannel() throws Exception {
@@ -183,7 +176,7 @@ class ChannelModeratorIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void rechecksWriteAccessWhenAssignmentIsRevokedAfterPreAuthorize(boolean unban) throws Exception {
+    void rejectsNewModerationRequestsAfterRevocation(boolean unban) throws Exception {
         UUID owner = UUID.randomUUID();
         UUID channel = channel(owner, ChannelStatus.ACTIVE);
         UUID moderator = UUID.randomUUID();
@@ -193,12 +186,7 @@ class ChannelModeratorIntegrationTest {
         if (unban) {
             banService.banUserFromChannel(owner, channel, target, ChannelBanType.CHAT_BAN);
         }
-        doAnswer(invocation -> {
-            boolean allowed = (boolean) invocation.callRealMethod();
-            assertTrue(allowed);
-            assignments.remove(owner, channel, moderator);
-            return allowed;
-        }).when(authorization).canModerate(any(Authentication.class), eq(channel));
+        assignments.remove(owner, channel, moderator);
 
         String path = "/api/channels/" + channel + "/users/" + target + (unban ? "/unban" : "/ban");
         var request = post(path).with(jwt().jwt(token -> token.subject(moderator.toString())));
