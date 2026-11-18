@@ -14,18 +14,21 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.ReactiveValueOperations;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -52,7 +55,6 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "gateway.security.csrf-enabled=true")
-@AutoConfigureWebTestClient(timeout = "PT30S")
 @ActiveProfiles({"dev", "test"})
 class GatewayAuthenticationTest {
 
@@ -62,9 +64,14 @@ class GatewayAuthenticationTest {
     private static final AtomicInteger BACKEND_CALLS = new AtomicInteger();
     private static final AtomicReference<CapturedRequest> LAST_REQUEST = new AtomicReference<>();
     private static final HttpServer BACKEND = startBackend();
+    // A single connection exposes response bodies that were not consumed by an assertion.
+    private static final ConnectionProvider CLIENT_CONNECTIONS = ConnectionProvider.builder("gateway-authentication-test")
+            .maxConnections(1).pendingAcquireTimeout(Duration.ofSeconds(5)).build();
 
-    @Autowired
     private WebTestClient client;
+
+    @LocalServerPort
+    private int port;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -91,6 +98,8 @@ class GatewayAuthenticationTest {
 
     @BeforeEach
     void setUp() {
+        client = WebTestClient.bindToServer(new ReactorClientHttpConnector(HttpClient.create(CLIENT_CONNECTIONS)))
+                .baseUrl("http://127.0.0.1:" + port).responseTimeout(Duration.ofSeconds(30)).build();
         BACKEND_CALLS.set(0);
         LAST_REQUEST.set(null);
         revoked.clear();
@@ -111,14 +120,16 @@ class GatewayAuthenticationTest {
     @ParameterizedTest
     @ValueSource(strings = {"login", "register", "refresh", "logout", "forgot-password", "verify-reset-otp", "reset-password"})
     void publicPostWithoutTokensReachesBackend(String action) {
-        request(HttpMethod.POST, AUTH_PATH + "/" + action).exchange().expectStatus().isOk();
+        request(HttpMethod.POST, AUTH_PATH + "/" + action).exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
         verifyNoInteractions(redisTemplate);
     }
 
     @Test
     void channelListWithoutCookiesReachesBackendWithoutAccountStatusLookup() {
-        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isOk();
+        client.get().uri("/channel/api/channels?page=1&size=20").exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
         verifyNoInteractions(redisTemplate);
     }
@@ -127,7 +138,8 @@ class GatewayAuthenticationTest {
     void channelListForwardsValidAccessCookieWithoutAccountStatusLookup() throws Exception {
         Token access = token("ACCESS");
         client.get().uri("/channel/api/channels").cookie("access_token", access.value())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
         assertTrue(LAST_REQUEST.get().cookies().contains("access_token=" + access.value()));
         verify(redisTemplate).hasKey("auth:revoked:access:" + access.jti());
@@ -137,16 +149,21 @@ class GatewayAuthenticationTest {
     @Test
     void channelListRejectsInvalidAccessCookie() {
         client.get().uri("/channel/api/channels").cookie("access_token", "malformed-token")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
     void publicChannelListDoesNotMakeWritesOrChildPathsPublic() {
-        request(HttpMethod.POST, "/channel/api/channels").exchange().expectStatus().isUnauthorized();
-        request(HttpMethod.PATCH, "/channel/api/channels/me").exchange().expectStatus().isUnauthorized();
-        client.get().uri("/channel/api/channels/me").exchange().expectStatus().isUnauthorized();
-        client.get().uri("/channel/api/channels/following").exchange().expectStatus().isUnauthorized();
+        request(HttpMethod.POST, "/channel/api/channels").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        request(HttpMethod.PATCH, "/channel/api/channels/me").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        client.get().uri("/channel/api/channels/me").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        client.get().uri("/channel/api/channels/following").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -157,7 +174,8 @@ class GatewayAuthenticationTest {
                 .header("X-Twilio-Email-Event-Webhook-Signature", "provider-signature")
                 .header("X-Twilio-Email-Event-Webhook-Timestamp", "1700000000")
                 .contentType(MediaType.APPLICATION_JSON).bodyValue(body)
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
         assertEquals("/notification/api/webhooks/sendgrid", LAST_REQUEST.get().path());
         assertEquals(body, LAST_REQUEST.get().body());
@@ -170,16 +188,21 @@ class GatewayAuthenticationTest {
     @ValueSource(strings = {"/notification/api/webhooks/sendgrid/extra",
             "/notification/api/webhooks/sendgrid/events", "/notification/api/private"})
     void otherNotificationPathsStillRequireAuthenticationAndCsrf(String path) {
-        client.post().uri(path).exchange().expectStatus().isForbidden();
-        request(HttpMethod.POST, path).exchange().expectStatus().isUnauthorized();
+        client.post().uri(path).exchange().expectStatus().isForbidden()
+                .expectBody().returnResult();
+        request(HttpMethod.POST, path).exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
     void otherWebhookMethodsAreNotPublic() {
-        client.get().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized();
-        client.put().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isForbidden();
-        request(HttpMethod.PUT, "/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        client.put().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isForbidden()
+                .expectBody().returnResult();
+        request(HttpMethod.PUT, "/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -187,8 +210,10 @@ class GatewayAuthenticationTest {
     @ValueSource(strings = {"email-verification/otp", "email-verification/verify", "become-streamer"})
     void userRegistrationApisRemainProtected(String action) {
         String path = "/user/api/users/me/" + action;
-        client.post().uri(path).exchange().expectStatus().isForbidden();
-        request(HttpMethod.POST, path).exchange().expectStatus().isUnauthorized();
+        client.post().uri(path).exchange().expectStatus().isForbidden()
+                .expectBody().returnResult();
+        request(HttpMethod.POST, path).exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -200,7 +225,8 @@ class GatewayAuthenticationTest {
                 .expectHeader().values(HttpHeaders.SET_COOKIE, values -> {
                     assertTrue(values.stream().anyMatch(value -> value.startsWith("access_token=")));
                     assertTrue(values.stream().anyMatch(value -> value.startsWith("refresh_token=")));
-                });
+                })
+                .expectBody().returnResult();
         assertEquals(AUTH_PATH + "/login", LAST_REQUEST.get().path());
         assertTrue(LAST_REQUEST.get().body().contains("tester"));
     }
@@ -222,7 +248,8 @@ class GatewayAuthenticationTest {
         Token refresh = token("REFRESH");
         request(HttpMethod.GET, "/channel/api/private")
                 .cookie("access_token", access.value()).cookie("refresh_token", refresh.value())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         verify(redisTemplate).hasKey("auth:revoked:access:" + access.jti());
         verify(redisTemplate).hasKey("auth:revoked:refresh:" + refresh.jti());
         assertTrue(LAST_REQUEST.get().cookies().contains("access_token=" + access.value()));
@@ -235,7 +262,8 @@ class GatewayAuthenticationTest {
                 .cookie("refresh_token", "invalid")
                 .exchange().expectStatus().isUnauthorized()
                 .expectCookie().maxAge("refresh_token", Duration.ZERO).expectCookie().path("refresh_token", AUTH_PATH)
-                .expectCookie().doesNotExist("access_token");
+                .expectCookie().doesNotExist("access_token")
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -244,16 +272,19 @@ class GatewayAuthenticationTest {
         request(HttpMethod.POST, AUTH_PATH + "/login")
                 .cookie("access_token", "bad-access").cookie("refresh_token", "bad-refresh")
                 .exchange().expectStatus().isUnauthorized()
-                .expectCookie().maxAge("access_token", Duration.ZERO).expectCookie().maxAge("refresh_token", Duration.ZERO);
+                .expectCookie().maxAge("access_token", Duration.ZERO).expectCookie().maxAge("refresh_token", Duration.ZERO)
+                .expectBody().returnResult();
     }
 
     @Test
     void refreshOnlyCookieCanRefreshButCannotAccessBusinessApi() throws Exception {
         Token refresh = token("REFRESH");
         request(HttpMethod.POST, AUTH_PATH + "/refresh").cookie("refresh_token", refresh.value())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         request(HttpMethod.GET, "/channel/api/private").cookie("refresh_token", refresh.value())
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
     }
 
@@ -261,7 +292,8 @@ class GatewayAuthenticationTest {
     void refreshWithoutRefreshCookieIsForwardedWithVerifiedAccess() throws Exception {
         Token access = token("ACCESS");
         request(HttpMethod.POST, AUTH_PATH + "/refresh").cookie("access_token", access.value())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
         verify(redisTemplate).hasKey("auth:revoked:access:" + access.jti());
     }
@@ -272,7 +304,8 @@ class GatewayAuthenticationTest {
                 .cookie("access_token", token("ACCESS", SUBJECT, "reallive.com", Instant.now().minusSeconds(1),
                         Map.of(), SIGNING_KEY, JWSAlgorithm.HS512).value())
                 .cookie("refresh_token", token("REFRESH").value())
-                .exchange().expectStatus().isUnauthorized().expectCookie().maxAge("access_token", Duration.ZERO);
+                .exchange().expectStatus().isUnauthorized().expectCookie().maxAge("access_token", Duration.ZERO)
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -282,7 +315,8 @@ class GatewayAuthenticationTest {
         Token token = token(kind.toUpperCase());
         revoked.add("auth:revoked:" + kind + ":" + token.jti());
         request(HttpMethod.POST, AUTH_PATH + "/logout").cookie(kind + "_token", token.value())
-                .exchange().expectStatus().isUnauthorized().expectCookie().maxAge(kind + "_token", Duration.ZERO);
+                .exchange().expectStatus().isUnauthorized().expectCookie().maxAge(kind + "_token", Duration.ZERO)
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -292,7 +326,8 @@ class GatewayAuthenticationTest {
                 .cookie("refresh_token", token("REFRESH", UUID.randomUUID().toString(), "reallive.com",
                         Instant.now().plusSeconds(300), Map.of(), SIGNING_KEY, JWSAlgorithm.HS512).value())
                 .exchange().expectStatus().isUnauthorized()
-                .expectCookie().maxAge("access_token", Duration.ZERO).expectCookie().maxAge("refresh_token", Duration.ZERO);
+                .expectCookie().maxAge("access_token", Duration.ZERO).expectCookie().maxAge("refresh_token", Duration.ZERO)
+                .expectBody().returnResult();
     }
 
     @ParameterizedTest
@@ -313,7 +348,8 @@ class GatewayAuthenticationTest {
         Instant expiration = failure.equals("exp") ? null : Instant.now().plusSeconds(300);
         Token invalid = token(type, subject, issuer, expiration, overrides, key, algorithm);
         request(HttpMethod.GET, "/channel/api/private").cookie("access_token", invalid.value())
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         verifyNoInteractions(redisTemplate);
         assertEquals(0, BACKEND_CALLS.get());
     }
@@ -328,7 +364,8 @@ class GatewayAuthenticationTest {
         assertEquals(0, BACKEND_CALLS.get());
         accountStatus = "ACTIVE";
         request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
-                .expectStatus().isOk();
+                .expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
     }
 
@@ -338,7 +375,8 @@ class GatewayAuthenticationTest {
         accountStatus = value.equals("null") ? null : value;
         Token access = token("ACCESS");
         request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
-                .expectStatus().isEqualTo(503).expectHeader().doesNotExist(HttpHeaders.SET_COOKIE);
+                .expectStatus().isEqualTo(503).expectHeader().doesNotExist(HttpHeaders.SET_COOKIE)
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -349,7 +387,8 @@ class GatewayAuthenticationTest {
                 ? Mono.never() : Mono.error(new IOException("Redis status unavailable")));
         Token access = token("ACCESS");
         request(HttpMethod.GET, "/channel/api/private").cookie("access_token", access.value()).exchange()
-                .expectStatus().isEqualTo(503).expectHeader().doesNotExist(HttpHeaders.SET_COOKIE);
+                .expectStatus().isEqualTo(503).expectHeader().doesNotExist(HttpHeaders.SET_COOKIE)
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -358,7 +397,8 @@ class GatewayAuthenticationTest {
         accountStatus = "BANNED";
         Token access = token("ACCESS");
         request(HttpMethod.POST, AUTH_PATH + "/logout").cookie("access_token", access.value())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         Mockito.verify(redisTemplate.opsForValue(), Mockito.never()).get(anyString());
     }
 
@@ -366,9 +406,11 @@ class GatewayAuthenticationTest {
     void rejectsDuplicateAndBlankAuthCookies() throws Exception {
         request(HttpMethod.GET, "/channel/api/private")
                 .cookie("access_token", token("ACCESS").value()).cookie("access_token", token("ACCESS").value())
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         request(HttpMethod.POST, AUTH_PATH + "/login").cookie("access_token", "")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         verifyNoInteractions(redisTemplate);
     }
 
@@ -398,8 +440,10 @@ class GatewayAuthenticationTest {
     @ParameterizedTest
     @ValueSource(strings = {"login", "register", "refresh", "logout", "forgot-password", "verify-reset-otp", "reset-password"})
     void publicPathWithWrongHttpMethodIsProtected(String action) {
-        request(HttpMethod.GET, AUTH_PATH + "/" + action).exchange().expectStatus().isUnauthorized();
-        request(HttpMethod.GET, "/channel/api/private").exchange().expectStatus().isUnauthorized();
+        request(HttpMethod.GET, AUTH_PATH + "/" + action).exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        request(HttpMethod.GET, "/channel/api/private").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -408,7 +452,8 @@ class GatewayAuthenticationTest {
         client.post().uri(AUTH_PATH + "/login").exchange().expectStatus().isForbidden()
                 .expectBody().jsonPath("$.code").isEqualTo(1002);
         client.get().uri("/api/auth/csrf").cookie("access_token", "bad")
-                .exchange().expectStatus().isUnauthorized().expectCookie().maxAge("access_token", Duration.ZERO);
+                .exchange().expectStatus().isUnauthorized().expectCookie().maxAge("access_token", Duration.ZERO)
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -420,9 +465,11 @@ class GatewayAuthenticationTest {
                 .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "content-type,x-xsrf-token")
                 .exchange().expectStatus().isOk()
                 .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173")
-                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true")
+                .expectBody().returnResult();
         client.get().uri("/api/auth/csrf").header(HttpHeaders.ORIGIN, "https://unknown.example")
-                .exchange().expectStatus().isForbidden();
+                .exchange().expectStatus().isForbidden()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
@@ -480,8 +527,12 @@ class GatewayAuthenticationTest {
     }
 
     @AfterAll
-    static void stopBackend() {
-        BACKEND.stop(0);
+    static void stopResources() {
+        try {
+            BACKEND.stop(0);
+        } finally {
+            CLIENT_CONNECTIONS.disposeLater().block(Duration.ofSeconds(5));
+        }
     }
 
     private record CsrfCredentials(

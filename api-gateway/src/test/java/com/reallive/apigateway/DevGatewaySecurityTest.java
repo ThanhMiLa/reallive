@@ -53,7 +53,8 @@ class DevGatewaySecurityTest {
     @ValueSource(strings = {"login", "register", "refresh", "logout"})
     void publicPostWithoutCsrfReachesBackend(String action) {
         client.post().uri("/user/api/auth/" + action).exchange().expectStatus().isOk()
-                .expectCookie().doesNotExist("XSRF-TOKEN");
+                .expectCookie().doesNotExist("XSRF-TOKEN")
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
     }
 
@@ -67,27 +68,33 @@ class DevGatewaySecurityTest {
 
     @Test
     void protectedPostStillRequiresAccessCookie() {
-        client.post().uri("/user/api/private").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/user/api/private").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
     void webhookIsPublicWhenDevCsrfIsDisabled() {
-        client.post().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isOk();
+        client.post().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
     }
 
     @Test
     void otherNotificationEndpointsRemainProtectedWhenCsrfIsDisabled() {
-        client.post().uri("/notification/api/webhooks/sendgrid/extra").exchange().expectStatus().isUnauthorized();
-        client.post().uri("/notification/api/webhooks/sendgrid/events").exchange().expectStatus().isUnauthorized();
-        client.get().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/notification/api/webhooks/sendgrid/extra").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        client.post().uri("/notification/api/webhooks/sendgrid/events").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        client.get().uri("/notification/api/webhooks/sendgrid").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
     void csrfEndpointIsNotRegisteredWhenDisabled() {
-        client.get().uri("/api/auth/csrf").exchange().expectStatus().isNotFound();
+        client.get().uri("/api/auth/csrf").exchange().expectStatus().isNotFound()
+                .expectBody().returnResult();
         assertEquals(0, BACKEND_CALLS.get());
     }
 

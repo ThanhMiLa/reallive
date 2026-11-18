@@ -117,7 +117,8 @@ class StreamInternalRouteTest {
             if (authenticated) {
                 request.cookie("access_token", accessToken());
             }
-            request.exchange().expectStatus().isNotFound();
+            request.exchange().expectStatus().isNotFound()
+                    .expectBody().returnResult();
             assertEquals(0, CALLS.get());
         }
     }
@@ -130,7 +131,8 @@ class StreamInternalRouteTest {
     })
     void everyInternalStreamPathIsRejectedEvenWithValidCredentials(String path) throws Exception {
         client.get().uri(path).cookie("access_token", accessToken())
-                .exchange().expectStatus().isNotFound();
+                .exchange().expectStatus().isNotFound()
+                .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }
 
@@ -143,20 +145,23 @@ class StreamInternalRouteTest {
     })
     void ambiguousPathsCannotReachInternalEndpoints(String path) throws Exception {
         client.post().uri(URI.create("http://localhost:" + gatewayPort + path)).cookie("access_token", accessToken())
-                .exchange().expectStatus().is4xxClientError();
+                .exchange().expectStatus().is4xxClientError()
+                .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }
 
     @Test
     void configuredPublicStreamPrefixStillRoutesAuthenticatedRequests() throws Exception {
         client.get().uri("/stream/api/sessions/current").cookie("access_token", accessToken())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, CALLS.get());
     }
 
     @Test
     void publicStreamPrefixStillRequiresAccessCookie() {
-        client.get().uri("/stream/api/sessions/current").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/stream/api/sessions/current").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }
 

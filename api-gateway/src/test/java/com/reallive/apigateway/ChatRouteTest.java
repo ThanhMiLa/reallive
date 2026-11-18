@@ -87,13 +87,15 @@ class ChatRouteTest {
 
     @Test
     void proxiesHistoryAndDoesNotExposeInternalChatOrIntegrationEndpoints() throws Exception {
-        client.get().uri("/chat/api/streams/test/messages").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/chat/api/streams/test/messages").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         client.get().uri("/chat/api/streams/test/messages").cookie("access_token", token())
                 .exchange().expectStatus().isOk().expectBody(String.class).isEqualTo("history");
         for (String path : new String[]{"/chat/internal/health/ready", "/internal/health/ready",
                 "/stream/internal/api/streams/test/chat-context", "/channel/internal/api/channels/test/chat-access",
                 "/user/internal/api/users/test/chat-profile"}) {
-            client.get().uri(path).cookie("access_token", token()).exchange().expectStatus().isNotFound();
+            client.get().uri(path).cookie("access_token", token()).exchange().expectStatus().isNotFound()
+                    .expectBody().returnResult();
         }
     }
     @Test
@@ -121,7 +123,8 @@ class ChatRouteTest {
         client.get().uri("/chat/socket.io/?EIO=4&transport=websocket")
                 .header("Upgrade", "websocket").header("Connection", "Upgrade")
                 .header("Sec-WebSocket-Version", "13").header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
-                .exchange().expectStatus().isUnauthorized();
+                .exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
     }
     private String uncheckedToken() {
         try { return token(); } catch (Exception error) { throw new IllegalStateException(error); }

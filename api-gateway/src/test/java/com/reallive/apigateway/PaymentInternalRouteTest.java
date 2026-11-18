@@ -90,7 +90,8 @@ class PaymentInternalRouteTest {
         if (authenticated) {
             request.cookie("access_token", accessToken());
         }
-        request.exchange().expectStatus().isNotFound();
+        request.exchange().expectStatus().isNotFound()
+                .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }
 
@@ -101,19 +102,22 @@ class PaymentInternalRouteTest {
         if (authenticated) {
             request.cookie("access_token", accessToken());
         }
-        request.exchange().expectStatus().isNotFound();
+        request.exchange().expectStatus().isNotFound()
+                .expectBody().returnResult();
     }
 
     @Test
     void configuredPublicPaymentPrefixStillRoutesAuthenticatedRequests() throws Exception {
         client.post().uri("/payment/api/balance").cookie("access_token", accessToken())
-                .exchange().expectStatus().isOk();
+                .exchange().expectStatus().isOk()
+                .expectBody().returnResult();
         assertEquals(1, CALLS.get());
     }
 
     @Test
     void publicPaymentPrefixStillRequiresAccessCookie() {
-        client.post().uri("/payment/api/balance").exchange().expectStatus().isUnauthorized();
+        client.post().uri("/payment/api/balance").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }
 
@@ -121,7 +125,8 @@ class PaymentInternalRouteTest {
     @ValueSource(strings = {"/payment/wallets/create/", "/payment/api-internal/wallets/create/"})
     void legacyAndSimilarPrefixesDoNotAccidentallyExposeWalletCreation(String prefix) throws Exception {
         client.post().uri(prefix + UUID.randomUUID()).cookie("access_token", accessToken())
-                .exchange().expectStatus().isNotFound();
+                .exchange().expectStatus().isNotFound()
+                .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }
 
