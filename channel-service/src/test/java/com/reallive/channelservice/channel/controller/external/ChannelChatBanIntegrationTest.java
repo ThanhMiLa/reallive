@@ -47,7 +47,7 @@ class ChannelChatBanIntegrationTest {
         UUID owner = UUID.randomUUID();
         UUID user = UUID.randomUUID();
         UUID channel = createChannel(owner, ChannelStatus.ACTIVE);
-        when(profiles.profile(user)).thenReturn(new ChatProfile(user, "Viewer", null));
+        when(profiles.profile(user)).thenReturn(new ChatProfile(user, "Viewer", null, null));
         var ownerJwt = jwt().jwt(token -> token.subject(owner.toString()));
         String path = "/api/channels/" + channel + "/users/" + user;
 
@@ -89,7 +89,7 @@ class ChannelChatBanIntegrationTest {
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1026));
 
         moderators.deleteById(assignment);
-        when(profiles.profile(target)).thenReturn(new ChatProfile(target, "Viewer", null));
+        when(profiles.profile(target)).thenReturn(new ChatProfile(target, "Viewer", null, null));
 
         mvc.perform(post(path).contentType("application/json").content(request).with(ownerJwt))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result.banType").value("FULL_BAN"));
@@ -102,7 +102,7 @@ class ChannelChatBanIntegrationTest {
         UUID moderator = UUID.randomUUID();
         UUID target = UUID.randomUUID();
         moderators.saveAndFlush(ChannelModeratorEntity.builder().id(new ChannelModeratorId(channel, moderator)).build());
-        when(profiles.profile(target)).thenReturn(new ChatProfile(target, "Viewer", null));
+        when(profiles.profile(target)).thenReturn(new ChatProfile(target, "Viewer", null, null));
         var moderatorJwt = jwt().jwt(token -> token.subject(moderator.toString()));
         String path = "/api/channels/" + channel + "/users/" + target;
 
@@ -177,7 +177,7 @@ class ChannelChatBanIntegrationTest {
         UUID user = UUID.randomUUID();
         UUID channel = channels.saveAndFlush(ChannelEntity.builder().streamerId(UUID.randomUUID()).userId(owner)
                 .name("Concurrent ban test").slug("ban-" + UUID.randomUUID()).status(ChannelStatus.ACTIVE).build()).getId();
-        when(profiles.profile(any())).thenAnswer(invocation -> new ChatProfile(invocation.getArgument(0), "Viewer", null));
+        when(profiles.profile(any())).thenAnswer(invocation -> new ChatProfile(invocation.getArgument(0), "Viewer", null, null));
         var ready = new java.util.concurrent.CountDownLatch(1);
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
             java.util.concurrent.Callable<Integer> request = () -> {
@@ -203,7 +203,7 @@ class ChannelChatBanIntegrationTest {
         UUID user = UUID.randomUUID();
         UUID channel = channels.saveAndFlush(ChannelEntity.builder().streamerId(UUID.randomUUID()).userId(owner)
                 .name("Concurrent unban test").slug("ban-" + UUID.randomUUID()).status(ChannelStatus.ACTIVE).build()).getId();
-        when(profiles.profile(any())).thenAnswer(invocation -> new ChatProfile(invocation.getArgument(0), "Viewer", null));
+        when(profiles.profile(any())).thenAnswer(invocation -> new ChatProfile(invocation.getArgument(0), "Viewer", null, null));
         banService.banUserFromChannel(owner, channel, user, ChannelBanType.CHAT_BAN);
         var ready = new java.util.concurrent.CountDownLatch(1);
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {

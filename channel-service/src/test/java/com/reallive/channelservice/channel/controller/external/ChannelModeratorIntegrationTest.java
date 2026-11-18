@@ -1,10 +1,13 @@
 package com.reallive.channelservice.channel.controller.external;
 
 import com.reallive.channelservice.channel.client.user.UserChatProfileApiClient;
+import com.reallive.channelservice.channel.client.user.UserChatProfileClient.ChatProfile;
 import com.reallive.channelservice.channel.client.user.UserStatusClient;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.Status;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.StatusResponse;
+import com.reallive.channelservice.channel.client.user.UserStatusClient.UserIdentity;
 import com.reallive.channelservice.channel.entity.ChannelEntity;
+import com.reallive.channelservice.channel.entity.ChannelModeratorEntity;
 import com.reallive.channelservice.channel.entity.ChannelModeratorId;
 import com.reallive.channelservice.channel.entity.enums.ChannelBanType;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
@@ -16,6 +19,7 @@ import com.reallive.channelservice.channel.service.ChannelModeratorService;
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.channelservice.common.dto.ApiResponse;
 import com.reallive.channelservice.common.exception.AppException;
+import com.reallive.channelservice.common.exception.ErrorCode;
 import feign.FeignException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,12 +28,14 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -45,6 +51,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -55,6 +62,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ChannelModeratorIntegrationTest {
 
     @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
     @Autowired ChannelRepository channels;
     @Autowired ChannelModeratorRepository moderators;
     @Autowired ChannelUserBanRepository bans;
@@ -63,6 +71,98 @@ class ChannelModeratorIntegrationTest {
     @MockitoBean UserStatusClient users;
     @MockitoBean UserChatProfileApiClient profiles;
     @MockitoBean RedisAuthoritiesReader authorities;
+
+    @Test
+    void listsOnlyChannelAssignmentsInStableOrderWithProfileFallback() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID ownChannel = channel(owner, ChannelStatus.ACTIVE);
+        UUID otherChannel = channel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        UUID first = new UUID(0, 1);
+        UUID second = new UUID(0, 2);
+        saveAssignment(ownChannel, second);
+        saveAssignment(ownChannel, first);
+        saveAssignment(otherChannel, UUID.randomUUID());
+        jdbc.update("UPDATE channel_moderators SET assigned_at = TIMESTAMP '2026-11-18 13:00:00' WHERE channel_id = ?",
+                ownChannel);
+        when(profiles.profiles(List.of(first))).thenReturn(List.of(new ChatProfile(first, "Viewer", null, "viewer01")));
+        when(profiles.profiles(List.of(second))).thenThrow(new AppException(
+                ErrorCode.USER_SERVICE_UNAVAILABLE));
+        String path = moderatorsPath(ownChannel);
+
+        mvc.perform(get(path).param("size", "1").with(streamer(owner))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content[0].userId").value(first.toString()))
+                .andExpect(jsonPath("$.result.content[0].username").value("viewer01"))
+                .andExpect(jsonPath("$.result.content[0].assignedAt").value("2026-11-18T13:00:00Z"))
+                .andExpect(jsonPath("$.result.totalElements").value(2))
+                .andExpect(jsonPath("$.result.totalPages").value(2));
+        mvc.perform(get(path).param("size", "1").param("page", "1").with(streamer(owner))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content[0].userId").value(second.toString()))
+                .andExpect(jsonPath("$.result.content[0].username").doesNotExist());
+        mvc.perform(get(path).param("size", "51").with(streamer(owner))).andExpect(status().isBadRequest());
+        mvc.perform(get(path).with(streamer(UUID.randomUUID()))).andExpect(status().isForbidden());
+        mvc.perform(get(path).with(jwt().jwt(token -> token.subject(owner.toString()))))
+                .andExpect(status().isForbidden());
+        verify(profiles).profiles(List.of(first));
+        verify(profiles).profiles(List.of(second));
+    }
+
+    @Test
+    void candidateReportsEachEligibilityAndAssignmentRechecksTheLocalBan() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID ownChannel = channel(owner, ChannelStatus.ACTIVE);
+        UUID otherChannel = channel(owner, ChannelStatus.ACTIVE);
+        UUID target = UUID.randomUUID();
+        UUID moderator = UUID.randomUUID();
+        UUID inactive = UUID.randomUUID();
+        saveAssignment(ownChannel, moderator);
+        banService.banUserFromChannel(owner, otherChannel, target, ChannelBanType.FULL_BAN);
+        when(users.findIdentity("ExactViewer")).thenReturn(identity(target, "ExactViewer", Status.ACTIVE));
+        when(users.findIdentity("owner01")).thenReturn(identity(owner, "owner01", Status.ACTIVE));
+        when(users.findIdentity("moderator01")).thenReturn(identity(moderator, "moderator01", Status.ACTIVE));
+        when(users.findIdentity("inactive01")).thenReturn(identity(inactive, "inactive01", Status.BANNED));
+        when(users.findIdentity("exactviewer")).thenThrow(mock(FeignException.NotFound.class));
+        when(users.findIdentity("unavailable")).thenThrow(mock(FeignException.ServiceUnavailable.class));
+        String path = moderatorsPath(ownChannel) + "/candidate";
+
+        mvc.perform(get(path).param("username", "ExactViewer").with(streamer(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.userId").value(target.toString()))
+                .andExpect(jsonPath("$.result.username").value("ExactViewer"))
+                .andExpect(jsonPath("$.result.eligibility").value("ELIGIBLE"));
+        mvc.perform(get(path).param("username", "   ").with(streamer(owner))).andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("username", "a".repeat(256)).with(streamer(owner))).andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("username", "exactviewer").with(streamer(owner))).andExpect(status().isNotFound());
+        mvc.perform(get(path).param("username", "unavailable").with(streamer(owner))).andExpect(status().isServiceUnavailable());
+        mvc.perform(get(path).param("username", "ExactViewer").with(streamer(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
+        verify(users).findIdentity("ExactViewer");
+        expectEligibility(path, owner, "owner01", "CHANNEL_OWNER");
+        expectEligibility(path, owner, "moderator01", "ALREADY_MODERATOR");
+        expectEligibility(path, owner, "inactive01", "ACCOUNT_INACTIVE");
+
+        banService.banUserFromChannel(owner, ownChannel, target, ChannelBanType.CHAT_BAN);
+        expectEligibility(path, owner, "ExactViewer", "CHANNEL_BANNED");
+        mvc.perform(post(path(ownChannel, target)).with(streamer(owner)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1029));
+    }
+
+    private void expectEligibility(String path, UUID owner, String username, String eligibility) throws Exception {
+        mvc.perform(get(path).param("username", username).with(streamer(owner)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.eligibility").value(eligibility));
+    }
+
+    private ApiResponse<UserIdentity> identity(UUID userId, String username, Status status) {
+        return ApiResponse.<UserIdentity>builder().status(200).code(1000)
+                .result(new UserIdentity(userId, username, "Viewer", null, status)).build();
+    }
+
+    private void saveAssignment(UUID channel, UUID user) {
+        moderators.saveAndFlush(ChannelModeratorEntity.builder().id(new ChannelModeratorId(channel, user)).build());
+    }
+
+    private String moderatorsPath(UUID channel) {
+        return "/api/channels/" + channel + "/moderators";
+    }
 
     @Test
     void assignsAndRemovesFromOnlyTheRequestedChannel() throws Exception {
