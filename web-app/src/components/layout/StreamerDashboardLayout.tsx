@@ -1,26 +1,30 @@
 import { useState } from 'react'
-import { ChevronLeft, KeyRound, LayoutDashboard, ShieldBan, Tv, UserRound } from 'lucide-react'
-import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom'
+import { ChevronLeft, KeyRound, LayoutDashboard, Shield, ShieldBan, Tv, UserRound } from 'lucide-react'
+import { Link, NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
 import {
   useChannelModerationContext,
   useOwnChannelForModeration,
 } from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
+import { hasStreamerRole } from '@/lib/utils'
 import realLiveLogo from '@/assets/RealLive-logo.svg'
 import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
 
 const navigationItems = [
   { to: '/dashboard', label: 'Stream Manager', icon: LayoutDashboard, end: true },
   { to: '/dashboard/stream-key', label: 'Stream URL & Key', icon: KeyRound },
-  { to: '/dashboard/channel', label: 'My Channel', icon: Tv },
+  { to: '/dashboard/channel', label: 'My Channel', icon: Tv, end: true },
 ]
 
 export function StreamerDashboardLayout() {
   const { user, isAuthenticated } = useAuthStore()
   const [searchParams] = useSearchParams()
-  const queryChannelId = searchParams.get('channelId')?.trim() || ''
+  const isBannedUsersPage = useMatch('/dashboard/chat-bans')
+  const queryChannelId = isBannedUsersPage ? searchParams.get('channelId')?.trim() || '' : ''
   const userId = isAuthenticated && user?.userId ? user.userId : ''
-  const ownChannelQuery = useOwnChannelForModeration(userId, !queryChannelId)
+  const isStreamer = hasStreamerRole(user)
+  const ownChannelQuery = useOwnChannelForModeration(userId, !queryChannelId || isStreamer)
+  const canManageModerators = Boolean(isStreamer && ownChannelQuery.data?.status === 'ACTIVE')
   const moderationChannelId = queryChannelId || ownChannelQuery.data?.id || ''
   const moderationContextQuery = useChannelModerationContext(
     userId,
@@ -32,12 +36,13 @@ export function StreamerDashboardLayout() {
   const bannedUsersTo = queryChannelId
     ? `/dashboard/chat-bans?channelId=${encodeURIComponent(queryChannelId)}`
     : '/dashboard/chat-bans'
-  const visibleNavigationItems = canViewBans
-    ? [
-        ...navigationItems,
-        { to: bannedUsersTo, label: 'Banned users', icon: ShieldBan },
-      ]
-    : navigationItems
+  const visibleNavigationItems = [
+    ...navigationItems,
+    ...(canManageModerators
+      ? [{ to: '/dashboard/channel/moderators', label: 'Moderators', icon: Shield }]
+      : []),
+    ...(canViewBans ? [{ to: bannedUsersTo, label: 'Banned users', icon: ShieldBan }] : []),
+  ]
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return localStorage.getItem('reallive_streamer_sidebar_collapsed') === 'true'

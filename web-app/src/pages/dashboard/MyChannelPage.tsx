@@ -512,7 +512,7 @@ function ChannelEditor({ channel, allCategories, isCategoriesLoading }: ChannelE
             My Channel
           </h1>
         </div>
-        <div className="flex items-center gap-2 pt-2 sm:pt-0">
+        <div className="flex flex-wrap items-center gap-2 pt-2 sm:pt-0">
           <Link
             to="/profile"
             className="inline-flex items-center gap-2 rounded-lg border border-[#22222d] bg-[#101016] px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-[#181822] hover:text-white transition cursor-pointer"

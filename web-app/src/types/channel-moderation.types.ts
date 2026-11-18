@@ -1,3 +1,26 @@
+export interface ModeratorProfile {
+  userId: string
+  username: string | null
+  displayName: string | null
+  avatarUrl: string | null
+}
+
+export interface ModeratorAssignment extends ModeratorProfile {
+  assignedAt: string
+}
+
+export type ModeratorEligibility =
+  | 'ELIGIBLE'
+  | 'CHANNEL_OWNER'
+  | 'ALREADY_MODERATOR'
+  | 'CHANNEL_BANNED'
+  | 'ACCOUNT_INACTIVE'
+
+export interface ModeratorCandidate extends Omit<ModeratorProfile, 'username' | 'displayName'> {
+  displayName: string
+  eligibility: ModeratorEligibility
+}
+
 export type BanType = 'CHAT_BAN' | 'LIVE_VIEW_BAN' | 'FULL_BAN'
 
 export interface ChannelModerationContext {

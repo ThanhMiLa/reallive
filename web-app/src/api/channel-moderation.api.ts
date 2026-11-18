@@ -1,11 +1,14 @@
 import { isAxiosError } from 'axios'
 import apiClient from './client'
+import type { PageResponse } from '@/types/channel.types'
 import type { ApiResponse } from '@/types/auth.types'
 import type {
   BanType,
   BannedUsersPage,
   BannedUsersParams,
   ChannelModerationContext,
+  ModeratorAssignment,
+  ModeratorCandidate,
   SetChannelBanRequest,
   TargetChannelBanState,
 } from '@/types/channel-moderation.types'
@@ -187,7 +190,55 @@ export function parseChannelModerationError(
   }
 }
 
+async function getCsrfHeaders(): Promise<Record<string, string>> {
+  try {
+    const { data } = await apiClient.get<ApiResponse<{ headerName: string; token: string }>>(
+      '/api/auth/csrf',
+    )
+    const { headerName, token } = unwrapEnvelope(data)
+    return { [headerName]: token }
+  } catch (error) {
+    // The gateway omits this endpoint when CSRF is disabled in development.
+    if (isAxiosError(error) && error.response?.status === 404) return {}
+    throw error
+  }
+}
+
 export const channelModerationApi = {
+  async getModerators(channelId: string, page: number, size: number, signal?: AbortSignal) {
+    const { data } = await apiClient.get<ApiResponse<PageResponse<ModeratorAssignment>>>(
+      `${channelBase(channelId)}/moderators`,
+      { params: { page, size }, signal },
+    )
+    return unwrapEnvelope(data)
+  },
+
+  async searchModeratorCandidates(channelId: string, displayName: string, page: number, size: number, signal: AbortSignal) {
+    const { data } = await apiClient.get<ApiResponse<PageResponse<ModeratorCandidate>>>(
+      `${channelBase(channelId)}/moderators/candidate`,
+      { params: { displayName, page, size }, signal },
+    )
+    return unwrapEnvelope(data)
+  },
+
+  async addModerator(channelId: string, userId: string) {
+    const headers = await getCsrfHeaders()
+    const { data } = await apiClient.post<ApiResponse<{ channelId: string; userId: string }>>(
+      `${channelBase(channelId)}/moderators/${encodeURIComponent(userId)}`,
+      undefined,
+      { headers },
+    )
+    return unwrapEnvelope(data)
+  },
+
+  async removeModerator(channelId: string, userId: string) {
+    const headers = await getCsrfHeaders()
+    await apiClient.delete(
+      `${channelBase(channelId)}/moderators/${encodeURIComponent(userId)}`,
+      { headers },
+    )
+  },
+
   getModerationContext: async (
     channelId: string,
     signal?: AbortSignal,
