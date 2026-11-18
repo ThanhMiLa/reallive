@@ -15,13 +15,21 @@ async function port() {
 }
 try {
   const mongoPort = await port(), redisPort = await port();
-  docker('run', '-d', '--rm', '--name', mongo, '-p', `127.0.0.1:${mongoPort}:${mongoPort}`, 'mongo:8.0.29', '--replSet', 'rs0', '--bind_ip_all', '--port', String(mongoPort));
+  docker('run', '-d', '--name', mongo, '-p', `127.0.0.1:${mongoPort}:${mongoPort}`, 'mongo:8.0.38', '--replSet', 'rs0', '--bind_ip_all', '--port', String(mongoPort));
   created.push(mongo);
-  docker('run', '-d', '--rm', '--name', redis, '-p', `127.0.0.1:${redisPort}:6379`, 'redis:7-alpine');
+  docker('run', '-d', '--name', redis, '-p', `127.0.0.1:${redisPort}:6379`, 'redis:7-alpine');
   created.push(redis);
   for (let attempt = 0; ; attempt++) {
     try { docker('exec', mongo, 'mongosh', '--port', String(mongoPort), '--quiet', '--eval', 'db.adminCommand({ping:1})'); break; }
-    catch { if (attempt > 100) throw new Error('Test MongoDB did not start'); await new Promise(r => setTimeout(r, 250)); }
+    catch {
+      let status = '';
+      try { status = docker('inspect', '-f', '{{.State.Status}}', mongo); } catch { /* Ignore inspect failure. */ }
+      if (status === 'exited' || status === 'dead' || attempt > 100) {
+        try { execFileSync('docker', ['logs', mongo], { stdio: 'inherit' }); } catch { /* Ignore log failure. */ }
+        throw new Error(status === 'exited' || status === 'dead' ? 'Test MongoDB exited unexpectedly' : 'Test MongoDB did not start');
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
   }
   docker('exec', mongo, 'mongosh', '--port', String(mongoPort), '--quiet', '--eval',
     `rs.initiate({_id:'rs0',members:[{_id:0,host:'127.0.0.1:${mongoPort}'}]})`);
@@ -38,6 +46,6 @@ try {
   process.exitCode = 1;
 } finally {
   for (const name of created.reverse()) {
-    try { docker('stop', name); } catch { /* Containers have unique per-run names. */ }
+    try { docker('rm', '-f', name); } catch { /* Containers have unique per-run names. */ }
   }
 }
