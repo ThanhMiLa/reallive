@@ -42,7 +42,8 @@ public class SecurityConfig {
             "/internal/api/streamers/by-user/*/active",
             "/internal/api/streamers/by-user/*/streaming-eligibility",
             "/internal/api/users/*/category-preferences",
-            "/internal/api/users/*/chat-profile"
+            "/internal/api/users/*/chat-profile",
+            "/internal/api/users/*/status"
     };
 
     private static final String[] INTERNAL_ENDPOINTS_POST = {"/internal/api/users/chat-profiles"};

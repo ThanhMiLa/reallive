@@ -44,6 +44,14 @@ Channel owners and assigned moderators can manage all three ban levels on their 
 | GET | `/channel/api/channels/{channelId}/users/{userId}/ban` | Current state and target-specific capabilities |
 | GET | `/channel/api/channels/{channelId}/bans?page=0&size=20` | Paginated active bans and target-specific capabilities |
 | GET | `/channel/api/channels/{channelId}/moderation-context` | Caller capabilities scoped to the channel |
+| POST | `/channel/api/channels/{channelId}/moderators/{userId}` | `201` with `{channelId,userId}` in `ApiResponse.result` |
+| DELETE | `/channel/api/channels/{channelId}/moderators/{userId}` | `204` |
+
+Assigning and removing moderators require `CHANNEL_MODERATOR_MANAGE` and ownership of the active channel. User Service V14 grants the authority to `STREAMER` and queues Redis updates for existing streamers. Deploy User Service and apply V14 first, verify the authority is available in Redis, then deploy Channel Service.
+
+Assignment checks the channel before looking up the target. Conflicts include self-assignment (1027), an existing assignment (1028), a ban on that channel (1029), and an inactive target account (1030). A missing target account returns `404` (1022). Channel Service calls User Service directly via `GET /user/internal/api/users/{userId}/status`, which returns `{userId,status}` in `ApiResponse.result`. The internal route uses the private service network without credentials. If status lookup fails, assignment returns `503` (1008).
+
+Removal acts on the channel and user pair and returns `404` (1031) when the assignment is absent. Assignment, removal, ban and unban share the channel row lock. Ban and unban check the caller's moderation access before entering the transaction. A request that passes this check can complete after the caller's assignment is removed.
 
 Ban requires JSON `{ "banType": "CHAT_BAN" | "LIVE_VIEW_BAN" | "FULL_BAN" }`. A new ban checks target profile existence. An authorized caller can change the active ban to any other level or remove it. The response state is `{channelId,userId,banType,allowedBanTypes,canUnban}`. A conflict 1023 means the requested level is already active, 1024 means no active ban and 1025 protects the owner. Conflict 1026 requires removing the target's moderator assignment on that channel before applying a ban.
 

@@ -1,6 +1,7 @@
 package com.reallive.userservice.auth.repository;
 
 import com.reallive.userservice.auth.entity.UserEntity;
+import com.reallive.userservice.auth.entity.UserStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -57,6 +58,13 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
             WHERE role.id = :roleId
             """)
     Page<UUID> findIdsByRoleId(UUID roleId, Pageable pageable);
+
+    @Query("""
+            SELECT user.status
+            FROM UserEntity user
+            WHERE user.id = :userId
+            """)
+    Optional<UserStatus> findStatusById(UUID userId);
 
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);

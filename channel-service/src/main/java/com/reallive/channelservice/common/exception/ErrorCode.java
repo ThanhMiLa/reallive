@@ -32,7 +32,12 @@ public enum ErrorCode {
     CHANNEL_USER_ALREADY_BANNED(1023, "User already has this ban level", HttpStatus.CONFLICT),
     CHANNEL_USER_NOT_BANNED(1024, "User is not banned from this channel", HttpStatus.CONFLICT),
     CANNOT_BAN_CHANNEL_OWNER(1025, "Cannot ban channel owner", HttpStatus.CONFLICT),
-    CANNOT_BAN_CHANNEL_MODERATOR(1026, "Remove the user's moderator assignment before banning them", HttpStatus.CONFLICT);
+    CANNOT_BAN_CHANNEL_MODERATOR(1026, "Remove the user's moderator assignment before banning them", HttpStatus.CONFLICT),
+    CANNOT_ASSIGN_CHANNEL_OWNER_AS_MODERATOR(1027, "The channel owner already has moderation access", HttpStatus.CONFLICT),
+    CHANNEL_MODERATOR_ALREADY_ASSIGNED(1028, "User is already a moderator of this channel", HttpStatus.CONFLICT),
+    CANNOT_ASSIGN_BANNED_USER_AS_MODERATOR(1029, "Remove the channel ban before assigning the user as a moderator", HttpStatus.CONFLICT),
+    MODERATOR_TARGET_NOT_ACTIVE(1030, "The moderator account must be active", HttpStatus.CONFLICT),
+    CHANNEL_MODERATOR_NOT_FOUND(1031, "Channel moderator assignment not found", HttpStatus.NOT_FOUND);
 
     private final int code;
     private final String message;

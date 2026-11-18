@@ -10,5 +10,7 @@ import java.util.UUID;
 public interface ChannelUserBanRepository extends JpaRepository<ChannelUserBanEntity, UUID> {
     Optional<ChannelUserBanEntity> findByChannelIdAndUserId(UUID channelId, UUID userId);
 
+    boolean existsByChannelIdAndUserId(UUID channelId, UUID userId);
+
     Page<ChannelUserBanEntity> findByChannelId(UUID channelId, Pageable pageable);
 }
