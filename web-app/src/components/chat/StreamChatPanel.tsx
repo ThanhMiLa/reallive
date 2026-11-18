@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Loader2, MessageSquare, RefreshCw, Send, ShieldBan } from 'lucide-react'
+import { Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react'
 import {
   ChannelUserBanMenu,
   type ChannelModerationTarget,
@@ -36,7 +35,6 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
     channelId && moderationContext &&
     (moderationContext.allowedBanTypes.length > 0 || moderationContext.allowedUnbanTypes.length > 0),
   )
-  const canViewBans = Boolean(channelId && moderationContext?.canViewBans)
   const ownerId = moderationContext?.ownerUserId || streamerUserId || ''
   const menuScope = `${viewerId}:${sessionId}:${channelId ?? ''}:${canOpenBanMenu}`
 
@@ -96,12 +94,7 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
   // eslint-disable-next-line react-hooks/incompatible-library -- The virtualizer intentionally reads the live scroll viewport.
   const virtualizer = useVirtualizer({
     count: chat.messages.length, getScrollElement: () => scrollRef.current,
-    estimateSize: index => {
-      const msg = chat.messages[index]
-      if (!msg) return 52
-      const bordered = (Boolean(ownerId) && msg.userId === ownerId) || (Boolean(viewerId) && msg.userId === viewerId)
-      return bordered ? 68 : 52
-    },
+    estimateSize: () => 62,
     overscan: 12, getItemKey: index => chat.messages[index].id,
   })
   const tailId = chat.messages.at(-1)?.id ?? null
@@ -171,15 +164,6 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#1f1f26] px-4">
           <MessageSquare className="h-4 w-4 text-gray-400" /><h2 className="font-outfit text-sm font-bold text-gray-200">Chat</h2>
           <div className="ml-auto flex items-center gap-2">
-            {canViewBans && channelId && (
-              <Link
-                to={`/dashboard/chat-bans?channelId=${encodeURIComponent(channelId)}`}
-                className="inline-flex items-center gap-1 rounded-md border border-[#2a2a35] bg-[#121216] px-2 py-1 text-[11px] font-medium text-gray-300 transition hover:bg-[#1a1a22] hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff2b42]"
-              >
-                <ShieldBan className="h-3 w-3 text-[#ff2b42]" />
-                <span>Manage banned users</span>
-              </Link>
-            )}
             {connecting && <RefreshCw aria-label="Connecting chat" className="h-3.5 w-3.5 animate-spin text-gray-500" />}
           </div>
         </div>
@@ -222,13 +206,14 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
               const canModerateSender = canOpenBanMenu && message.userId !== ownerId
               const isMenuOpenForUser =
                 activeMenu?.target.userId === message.userId
-              const wrapperClass = isStreamer
-                ? 'flex items-start gap-2 rounded-lg border border-[#ff2b42] px-2.5 py-2'
+              const borderClass = isStreamer
+                ? 'border-[#ff2b42]'
                 : isCurrentUser
-                  ? 'flex items-start gap-2 rounded-lg border border-[#0084ff] px-2.5 py-2'
-                  : 'flex items-start gap-2'
+                  ? 'border-[#0084ff]'
+                  : 'border-transparent'
+              const wrapperClass = `flex items-start gap-2 rounded-lg border px-2.5 py-2 ${borderClass}`
               const nameColor = isStreamer ? 'text-green-400' : 'text-white'
-              return <div key={message.id} data-index={item.index} ref={virtualizer.measureElement} className="absolute top-0 left-0 w-full px-3 py-2" style={{ transform: `translateY(${item.start}px)` }}>
+              return <div key={message.id} data-index={item.index} ref={virtualizer.measureElement} className="absolute top-0 left-0 w-full px-3 py-1" style={{ transform: `translateY(${item.start}px)` }}>
                 <div className={wrapperClass}>
                   {canModerateSender ? (
                     <button

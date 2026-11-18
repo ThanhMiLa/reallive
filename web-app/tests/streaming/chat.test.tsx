@@ -161,6 +161,8 @@ describe('stream chat', () => {
     expect(ownName.closest('[data-index]')?.firstElementChild?.className).toContain('border-[#0084ff]')
     expect(ownName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#ff2b42]')
     expect(otherName.className).toContain('text-white')
+    expect(otherName.closest('[data-index]')?.firstElementChild?.className).toContain('border-transparent')
+    expect(otherName.closest('[data-index]')?.firstElementChild?.className).toContain('px-2.5 py-2')
     expect(otherName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#ff2b42]')
     expect(otherName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#0084ff]')
   })

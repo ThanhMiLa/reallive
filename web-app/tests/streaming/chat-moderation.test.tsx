@@ -966,7 +966,7 @@ describe('avatar ban menu in chat', () => {
     ).toBeTruthy()
   })
 
-  it('includes channelId query param on Manage banned users in Watch chat and omits it from embedded Stream Manager chat', async () => {
+  it('omits Manage banned users link from both embedded Stream Manager chat and Watch chat', async () => {
     mountWithRouter(
       <Routes>
         <Route path="/dashboard" element={<StreamerDashboardPage />} />
@@ -992,12 +992,10 @@ describe('avatar ban menu in chat', () => {
         streamerUserId={OWNER_ID}
       />,
     )
-    const watchLink = await screen.findByRole('link', {
-      name: 'Manage banned users',
-    })
-    expect(watchLink.getAttribute('href')).toBe(
-      `/dashboard/chat-bans?channelId=${CHANNEL_ID}`,
-    )
+    await waitFor(() => expect(mocks.getModerationContext).toHaveBeenCalled())
+    expect(
+      screen.queryByRole('link', { name: 'Manage banned users' }),
+    ).toBeNull()
   })
 })
 
