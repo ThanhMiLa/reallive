@@ -104,3 +104,23 @@ it('calls GET /stream/api/streams with pagination, optional categoryId, and no s
   expect(requests[3].params).not.toHaveProperty('sort')
 })
 
+it('fetches viewer pages with a default or supplied cursor and size', async () => {
+  const requests: InternalAxiosRequestConfig[] = []
+  const page = { items: [], nextCursor: '48', hasMore: true }
+  apiClient.defaults.adapter = async (config): Promise<AxiosResponse> => {
+    requests.push(config)
+    return { data: { result: page }, status: 200, statusText: 'OK', headers: {}, config }
+  }
+  const id = '462c912c-ee66-4477-9852-bed13d377297'
+  const { signal } = new AbortController()
+
+  expect(await streamApi.viewers(id)).toEqual(page)
+  expect(await streamApi.viewers(id, { cursor: '48', size: 12 }, signal)).toEqual(page)
+
+  expect(requests).toMatchObject([
+    { method: 'get', url: `/stream/api/streams/${id}/viewers`, params: { cursor: '0', size: 50 }, withCredentials: true },
+    { method: 'get', url: `/stream/api/streams/${id}/viewers`, params: { cursor: '48', size: 12 }, withCredentials: true },
+  ])
+  expect(requests[1].signal).toBe(signal)
+})
+

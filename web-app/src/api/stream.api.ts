@@ -10,6 +10,8 @@ import type {
   StreamSession,
   StreamSetup,
   StreamViewerDetails,
+  StreamViewerPage,
+  StreamViewersParams,
 } from '@/types/stream.types'
 
 const base = '/stream/api/streams'
@@ -54,6 +56,13 @@ export const streamApi = {
   details: async (id: string, signal?: AbortSignal) =>
     (await apiClient.get<ApiResponse<StreamViewerDetails>>(`${path(id)}/details`, { signal })).data
       .result,
+  viewers: async (id: string, params?: StreamViewersParams, signal?: AbortSignal) =>
+    (
+      await apiClient.get<ApiResponse<StreamViewerPage>>(`${path(id)}/viewers`, {
+        params: { cursor: params?.cursor ?? '0', size: params?.size ?? 50 },
+        signal,
+      })
+    ).data.result,
   access: async (id: string, signal?: AbortSignal) =>
     (
       await apiClient.post<ApiResponse<PlaybackAccess>>(`${path(id)}/playback-access`, undefined, {

@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   issueKey: vi.fn(),
   current: vi.fn(),
   metadata: vi.fn(),
+  viewers: vi.fn(),
   access: vi.fn(),
   categories: vi.fn(),
   chatHistory: vi.fn(),
@@ -248,6 +249,7 @@ beforeEach(() => {
     { id: categoryId, name: 'Gaming', slug: 'gaming', thumbnailUrl: null },
   ])
   mocks.metadata.mockResolvedValue({ ...liveSession, currentViewerCount: 0 })
+  mocks.viewers.mockResolvedValue({ items: [], nextCursor: null, hasMore: false })
   mocks.access.mockResolvedValue({
     sessionId,
     playbackUrl: `http://localhost:8898/live/${sessionId}/index.m3u8`,
@@ -558,6 +560,9 @@ it('renders Stream Manager in 3 columns with Edit Stream Info popup and moves St
   mountDashboardRoutes(['/dashboard'])
 
   const streamInfoPanel = await screen.findByLabelText('Stream Information')
+  const viewersPanel = screen.getByRole('region', { name: 'Active viewers' })
+  expect(streamInfoPanel.parentElement?.nextElementSibling).toBe(viewersPanel)
+  expect(within(viewersPanel).getByRole('status').textContent).toBe('Viewers appear here when your stream is live.')
   expect(screen.getByLabelText('Session Info')).toBeTruthy()
   expect(screen.getByLabelText('Stream chat')).toBeTruthy()
   expect(within(streamInfoPanel).getByText('Morning')).toBeTruthy()

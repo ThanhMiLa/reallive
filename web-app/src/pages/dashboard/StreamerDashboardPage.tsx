@@ -4,6 +4,7 @@ import { isAxiosError } from 'axios'
 import { MessageSquare, MonitorPlay, Radio } from 'lucide-react'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 import { StreamInfoPanel } from '@/components/stream/StreamInfoPanel'
+import { StreamViewersPanel } from '@/components/stream/StreamViewersPanel'
 import { StreamAuthGate, StreamSetupFallback } from '@/components/stream/StreamPageStates'
 import { useSessionElapsed, type SessionClock } from '@/components/stream/useSessionElapsed'
 import { useAuthStore } from '@/stores/auth.store'
@@ -261,20 +262,30 @@ function Dashboard({ userId }: { userId: string }) {
             )}
           </aside>
 
-          {/* Column 3: Stream Information */}
-          <div className="min-w-0 xl:sticky xl:top-2.5">
-            <StreamInfoPanel
-              initial={{
-                title: streamConfig.title || '',
-                categoryId: streamConfig.categoryId || '',
-              }}
-              categories={categories.data || []}
-              categoriesLoading={categories.isPending}
-              categoriesError={categories.isError}
-              onRetryCategories={() => void categories.refetch()}
-              configStatus={streamConfig.status}
-              pending={pending === 'save'}
-              onSubmit={saveSetup}
+          {/* Column 3: Stream Information & Viewers */}
+          <div className="flex min-w-0 flex-col gap-2 xl:sticky xl:top-2.5 xl:h-[calc(100dvh-1.25rem)] xl:min-h-[540px]">
+            <div className="shrink-0">
+              <StreamInfoPanel
+                initial={{
+                  title: streamConfig.title || '',
+                  categoryId: streamConfig.categoryId || '',
+                }}
+                categories={categories.data || []}
+                categoriesLoading={categories.isPending}
+                categoriesError={categories.isError}
+                onRetryCategories={() => void categories.refetch()}
+                configStatus={streamConfig.status}
+                pending={pending === 'save'}
+                onSubmit={saveSetup}
+              />
+            </div>
+            <StreamViewersPanel
+              key={id ?? ''}
+              userId={userId}
+              sessionId={id}
+              status={status}
+              currentViewerCount={session?.currentViewerCount ?? null}
+              lastEndedAt={lastEndedAt}
             />
           </div>
         </div>

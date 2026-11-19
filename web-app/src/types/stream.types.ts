@@ -115,3 +115,21 @@ export interface StreamViewerDetails {
   category: StreamDetailsCategorySummary | null
 }
 
+export interface StreamViewerItem {
+  userId: string
+  displayName: string
+  username: string
+  avatarUrl: string | null
+}
+
+export interface StreamViewerPage {
+  items: StreamViewerItem[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
+export interface StreamViewersParams {
+  cursor?: string
+  size?: number
+}
+

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
 import {
   ChannelUserBanMenu,
   type ChannelModerationTarget,
@@ -8,13 +9,6 @@ import {
 import { isChatBannedError, useStreamChat } from './useStreamChat'
 import { useChannelModerationContext } from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
-
-function Avatar({ url, name }: { url: string | null; name: string }) {
-  const [failed, setFailed] = useState<string | null>(null)
-  return url && failed !== url
-    ? <img src={url} onError={() => setFailed(url)} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
-    : <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#25252d] text-xs text-gray-300">{name.charAt(0).toUpperCase()}</span>
-}
 
 export function StreamChatPanel({ sessionId, channelId, status, streamerUserId, onAccessError, embedded = false }: {
   sessionId: string; channelId?: string; status?: string; streamerUserId?: string; onAccessError?: (error: unknown) => void; embedded?: boolean
