@@ -198,11 +198,12 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
               const message = chat.messages[item.index]
               const isStreamer = Boolean(ownerId) && message.userId === ownerId
               const isModerator = !isStreamer && moderators.isSuccess && moderators.data.has(message.userId)
+              const avatarRole = isStreamer ? 'owner' : isModerator ? 'moderator' : undefined
               const canModerateSender = canOpenBanMenu && message.userId !== ownerId
               const isMenuOpenForUser =
                 activeMenu?.target.userId === message.userId
               const nameColor = isStreamer
-                ? 'text-red-400 text-shadow-[0_0_2px_#ff818b66,0_0_8px_#ff174499]'
+                ? 'text-[#ff1a1a] text-shadow-[0_0_2px_#ff000066,0_0_8px_#d9000099]'
                 : isModerator
                   ? 'text-purple-400 text-shadow-moderator'
                   : 'text-white'
@@ -234,10 +235,10 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
                       }}
                       className="h-7 w-7 shrink-0 rounded-full border-0 bg-transparent p-0 cursor-pointer transition hover:ring-2 hover:ring-[#ff2b42]/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42]"
                     >
-                      <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} />
+                      <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} role={avatarRole} />
                     </button>
                   ) : (
-                    <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} />
+                    <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} role={avatarRole} />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">

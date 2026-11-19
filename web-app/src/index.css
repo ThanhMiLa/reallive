@@ -26,6 +26,14 @@
   text-shadow: 0 0 2px #e6bcff66, 0 0 8px #a020ff99;
 }
 
+@utility avatar-owner {
+  box-shadow: 0 0 0 1.5px #ff1a1a, 0 0 7px #d9000099;
+}
+
+@utility avatar-moderator {
+  box-shadow: 0 0 0 1.5px #c084fc, 0 0 7px #a020ff99;
+}
+
 :root {
   color-scheme: dark;
 }

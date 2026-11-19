@@ -150,7 +150,8 @@ describe('stream chat', () => {
     mocks.history.mockResolvedValue(page([streamerComment]))
     mount('LIVE', USER)
     const streamerName = await screen.findByText('Channel Owner')
-    expect(streamerName.classList.contains('text-red-400')).toBe(true)
+    expect(streamerName.classList.contains('text-[#ff1a1a]')).toBe(true)
+    expect(streamerName.closest('[data-index]')?.querySelector('.avatar-owner')).toBeTruthy()
     expect(streamerName.className).toContain('text-shadow-')
     expect(streamerName.classList.contains('text-white')).toBe(false)
     expect(streamerName.closest('[data-index]')?.firstElementChild?.classList.contains('border')).toBe(false)
@@ -172,6 +173,7 @@ describe('stream chat', () => {
       for (const displayName of ['Current Moderator', 'Other Moderator']) {
         const name = screen.getByText(displayName)
         expect(name.classList.contains('text-purple-400')).toBe(true)
+        expect(name.closest('[data-index]')?.querySelector('.avatar-moderator')).toBeTruthy()
         expect(name.className).toContain('text-shadow-')
         expect(name.classList.contains('text-white')).toBe(false)
       }

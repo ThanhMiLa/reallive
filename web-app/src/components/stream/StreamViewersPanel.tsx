@@ -134,7 +134,7 @@ export function StreamViewersPanel({ userId, sessionId, channelId, status, curre
                 const nameColor = isModerator ? 'text-purple-400 text-shadow-moderator' : 'text-gray-100'
                 return (
                   <li key={viewer.userId} className="flex min-w-0 items-center gap-2.5 px-3 py-2">
-                    <Avatar url={viewer.avatarUrl} name={viewer.displayName} />
+                    <Avatar url={viewer.avatarUrl} name={viewer.displayName} role={isModerator ? 'moderator' : undefined} />
                     <p className={`min-w-0 flex-1 truncate text-xs font-medium ${nameColor}`}>{viewer.displayName}</p>
                     {isModerator && <span className="sr-only">Channel moderator</span>}
                   </li>

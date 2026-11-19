@@ -535,6 +535,8 @@ describe('Stream Manager (persistent stream key)', () => {
     const moderatorViewer = viewersPanel.getByText('Viewer One')
     expect(moderatorViewer.classList.contains('text-purple-400')).toBe(true)
     expect(moderatorViewer.classList.contains('text-shadow-moderator')).toBe(true)
+    expect(moderatorViewer.closest('li')?.querySelector('.avatar-moderator')).toBeTruthy()
+    expect(viewersPanel.getByText('Viewer Two').closest('li')?.querySelector('.avatar-moderator')).toBeNull()
     expect(viewersPanel.getByText('Viewer Two').classList.contains('text-gray-100')).toBe(true)
     expect(mocks.getModeratorRoster).toHaveBeenCalledTimes(2)
     expect(mocks.getModeratorRoster).toHaveBeenNthCalledWith(2, channelId, 1, 50, expect.any(AbortSignal))
@@ -545,6 +547,7 @@ describe('Stream Manager (persistent stream key)', () => {
     await waitFor(() => {
       expect(moderatorName.classList.contains('text-white')).toBe(true)
       expect(moderatorViewer.classList.contains('text-gray-100')).toBe(true)
+      expect(moderatorViewer.closest('li')?.querySelector('.avatar-moderator')).toBeNull()
     })
 
     const input = within(chatAside).getByLabelText('Send a message') as HTMLInputElement
@@ -554,7 +557,7 @@ describe('Stream Manager (persistent stream key)', () => {
 
     await within(chatAside).findByText('Welcome everyone!')
     const ownerName = within(chatAside).getByText('Owner')
-    expect(ownerName.classList.contains('text-red-400')).toBe(true)
+    expect(ownerName.classList.contains('text-[#ff1a1a]')).toBe(true)
     expect(ownerName.classList.contains('text-white')).toBe(false)
     expect(document.activeElement).toBe(input)
   })
