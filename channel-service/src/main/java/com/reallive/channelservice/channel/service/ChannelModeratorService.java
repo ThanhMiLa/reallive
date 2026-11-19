@@ -23,7 +23,7 @@ public interface ChannelModeratorService {
     PageResponse<Item> list(UUID actorId, UUID channelId, int page, int size);
 
     /**
-     * Searches display names and evaluates assignment eligibility for the caller's active channel.
+     * Searches the caller's active channel followers by display name and evaluates assignment eligibility.
      * Assignment revalidates eligibility when the caller submits a write.
      *
      * @param actorId authenticated channel owner

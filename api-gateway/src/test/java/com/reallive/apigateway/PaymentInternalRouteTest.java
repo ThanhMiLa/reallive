@@ -119,7 +119,7 @@ class PaymentInternalRouteTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void internalDisplayNameSearchIsNeverRouted(boolean authenticated) throws Exception {
-        var request = client.get().uri("/user/internal/api/users/identities?displayName=test-user");
+        var request = client.post().uri("/user/internal/api/users/identities");
         if (authenticated) {
             request.cookie("access_token", accessToken());
         }

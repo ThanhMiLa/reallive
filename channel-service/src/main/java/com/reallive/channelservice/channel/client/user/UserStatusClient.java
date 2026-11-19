@@ -4,7 +4,8 @@ import com.reallive.channelservice.common.dto.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 import java.util.UUID;
@@ -15,11 +16,15 @@ public interface UserStatusClient {
     @GetMapping("/internal/api/users/{userId}/status")
     ApiResponse<StatusResponse> getStatus(@PathVariable("userId") UUID userId);
 
-    @GetMapping("/internal/api/users/identities")
-    ApiResponse<IdentityPage> searchIdentities(
-            @RequestParam("displayName") String displayName,
-            @RequestParam("page") int page,
-            @RequestParam("size") int size);
+    @PostMapping("/internal/api/users/identities")
+    ApiResponse<IdentityPage> searchIdentities(@RequestBody IdentitySearchRequest request);
+
+    record IdentitySearchRequest(
+            String displayName,
+            List<UUID> followerIds,
+            int page,
+            int size
+    ) {}
 
     record IdentityPage(
             List<UserIdentity> content,

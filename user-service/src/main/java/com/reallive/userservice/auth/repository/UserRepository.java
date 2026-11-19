@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -77,13 +78,17 @@ public interface UserRepository extends JpaRepository<UserEntity, UUID> {
             FROM ProfileEntity profile
             JOIN profile.user user
             WHERE LOWER(profile.displayName) LIKE LOWER(:pattern) ESCAPE '!'
+              AND user.id IN :followerIds
             ORDER BY LOWER(profile.displayName), user.id
             """, countQuery = """
             SELECT COUNT(profile)
             FROM ProfileEntity profile
+            JOIN profile.user user
             WHERE LOWER(profile.displayName) LIKE LOWER(:pattern) ESCAPE '!'
+              AND user.id IN :followerIds
             """)
-    Page<UserIdentityResponse> searchIdentitiesByDisplayName(String pattern, Pageable pageable);
+    Page<UserIdentityResponse> searchFollowerIdentitiesByDisplayName(
+            @Param("pattern") String pattern, @Param("followerIds") Collection<UUID> followerIds, Pageable pageable);
 
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);

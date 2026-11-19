@@ -11,6 +11,7 @@ import com.reallive.channelservice.channel.dto.response.ChannelModeratorResponse
 import com.reallive.channelservice.channel.entity.ChannelModeratorEntity;
 import com.reallive.channelservice.channel.entity.ChannelModeratorId;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
+import com.reallive.channelservice.channel.repository.ChannelFollowerRepository;
 import com.reallive.channelservice.channel.repository.ChannelModeratorRepository;
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.repository.ChannelUserBanRepository;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class ChannelModeratorServiceImpl implements ChannelModeratorService {
 
     ChannelRepository channels;
+    ChannelFollowerRepository followers;
     ChannelModeratorRepository moderators;
     ChannelUserBanRepository bans;
     UserStatusApiClient users;
@@ -74,7 +76,13 @@ public class ChannelModeratorServiceImpl implements ChannelModeratorService {
             throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         }
 
-        var identities = users.searchIdentities(fragment, page, size);
+        var followerIds = followers.findFollowerUserIdsByChannelId(channelId);
+        if (followerIds.isEmpty()) {
+            return PageResponse.<Candidate>builder().content(List.of()).page(page).size(size)
+                    .totalElements(0).totalPages(0).build();
+        }
+
+        var identities = users.searchIdentities(fragment, followerIds, page, size);
         var ids = identities.content().stream().map(UserIdentity::userId).toList();
         Set<UUID> assigned = ids.isEmpty() ? Set.of() : Set.copyOf(moderators.findUserIdsForChannel(channelId, ids));
         Set<UUID> banned = ids.isEmpty() ? Set.of() : Set.copyOf(bans.findUserIdsForChannel(channelId, ids));

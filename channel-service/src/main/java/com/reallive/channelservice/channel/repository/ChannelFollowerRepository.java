@@ -7,9 +7,17 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface ChannelFollowerRepository extends JpaRepository<ChannelFollowerEntity, ChannelFollowerId> {
+
+    @Query("""
+            SELECT follower.id.userId
+            FROM ChannelFollowerEntity follower
+            WHERE follower.id.channelId = :channelId
+            """)
+    List<UUID> findFollowerUserIdsByChannelId(@Param("channelId") UUID channelId);
 
     /**
      * Uses the composite primary key to atomically reject an existing follow, including concurrent inserts.

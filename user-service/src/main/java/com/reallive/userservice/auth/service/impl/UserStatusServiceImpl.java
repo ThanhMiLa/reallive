@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -24,7 +25,7 @@ public class UserStatusServiceImpl implements UserStatusService {
 
     @Override
     @Transactional(readOnly = true)
-    public UserIdentityResponse.Page searchIdentities(String displayName, int page, int size) {
+    public UserIdentityResponse.Page searchIdentities(String displayName, List<UUID> followerIds, int page, int size) {
         String fragment = displayName.strip();
         if (fragment.isEmpty() || fragment.length() > 100) {
             throw new AppException(ErrorCode.DISPLAY_NAME_INVALID);
@@ -32,9 +33,12 @@ public class UserStatusServiceImpl implements UserStatusService {
         if (page < 0 || size < 1 || size > 50 || (long) page * size > Integer.MAX_VALUE) {
             throw new AppException(ErrorCode.USER_SEARCH_PAGINATION_INVALID);
         }
+        if (followerIds.isEmpty()) {
+            return new UserIdentityResponse.Page(List.of(), page, size, 0, 0);
+        }
 
         String pattern = "%" + fragment.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
-        var identities = users.searchIdentitiesByDisplayName(pattern, PageRequest.of(page, size));
+        var identities = users.searchFollowerIdentitiesByDisplayName(pattern, followerIds, PageRequest.of(page, size));
         return new UserIdentityResponse.Page(identities.getContent(), page, size,
                 identities.getTotalElements(), identities.getTotalPages());
     }

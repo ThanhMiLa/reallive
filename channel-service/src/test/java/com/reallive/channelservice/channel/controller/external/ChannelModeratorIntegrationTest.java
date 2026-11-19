@@ -4,6 +4,7 @@ import com.reallive.channelservice.channel.client.user.UserChatProfileApiClient;
 import com.reallive.channelservice.channel.client.user.UserChatProfileClient.ChatProfile;
 import com.reallive.channelservice.channel.client.user.UserStatusClient;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.IdentityPage;
+import com.reallive.channelservice.channel.client.user.UserStatusClient.IdentitySearchRequest;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.Status;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.StatusResponse;
 import com.reallive.channelservice.channel.client.user.UserStatusClient.UserIdentity;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -37,6 +39,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -45,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -116,31 +120,37 @@ class ChannelModeratorIntegrationTest {
         UUID moderator = UUID.randomUUID();
         UUID banned = UUID.randomUUID();
         UUID inactive = UUID.randomUUID();
+        Set<UUID> ownFollowerIds = Set.of(target, moderator, banned, inactive, UUID.randomUUID());
+        for (UUID follower : ownFollowerIds) {
+            jdbc.update("INSERT INTO channel_followers (channel_id, user_id) VALUES (?, ?)", ownChannel, follower);
+        }
+        jdbc.update("INSERT INTO channel_followers (channel_id, user_id) VALUES (?, ?)", otherChannel, UUID.randomUUID());
         saveAssignment(ownChannel, moderator);
         banService.banUserFromChannel(owner, otherChannel, target, ChannelBanType.FULL_BAN);
         banService.banUserFromChannel(owner, ownChannel, banned, ChannelBanType.CHAT_BAN);
         var matches = List.of(
                 new UserIdentity(target, "Match", null, Status.ACTIVE),
-                new UserIdentity(owner, "Match", null, Status.ACTIVE),
                 new UserIdentity(moderator, "Match", null, Status.ACTIVE),
                 new UserIdentity(banned, "Match", null, Status.ACTIVE),
                 new UserIdentity(inactive, "Match", null, Status.BANNED));
-        when(users.searchIdentities("match", 1, 5)).thenReturn(identityPage(matches, 1, 5, 10, 2));
-        when(users.searchIdentities("none", 0, 20)).thenReturn(identityPage(List.of(), 0, 20, 0, 0));
-        when(users.searchIdentities("unavailable", 0, 20)).thenThrow(mock(FeignException.ServiceUnavailable.class));
+        when(users.searchIdentities(argThat(request -> request != null && request.displayName().equals("match"))))
+                .thenReturn(identityPage(matches, 0, 4, 5, 2));
+        when(users.searchIdentities(argThat(request -> request != null && request.displayName().equals("none"))))
+                .thenReturn(identityPage(List.of(), 0, 20, 0, 0));
+        when(users.searchIdentities(argThat(request -> request != null && request.displayName().equals("unavailable"))))
+                .thenThrow(mock(FeignException.ServiceUnavailable.class));
         String path = moderatorsPath(ownChannel) + "/candidate";
 
-        mvc.perform(get(path).param("displayName", " match ").param("page", "1").param("size", "5").with(streamer(owner)))
+        mvc.perform(get(path).param("displayName", " match ").param("page", "0").param("size", "4").with(streamer(owner)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.totalElements").value(10))
+                .andExpect(jsonPath("$.result.totalElements").value(5))
                 .andExpect(jsonPath("$.result.totalPages").value(2))
                 .andExpect(jsonPath("$.result.content[0].userId").value(target.toString()))
                 .andExpect(jsonPath("$.result.content[0].username").doesNotExist())
                 .andExpect(jsonPath("$.result.content[0].eligibility").value("ELIGIBLE"))
-                .andExpect(jsonPath("$.result.content[1].eligibility").value("CHANNEL_OWNER"))
-                .andExpect(jsonPath("$.result.content[2].eligibility").value("ALREADY_MODERATOR"))
-                .andExpect(jsonPath("$.result.content[3].eligibility").value("CHANNEL_BANNED"))
-                .andExpect(jsonPath("$.result.content[4].eligibility").value("ACCOUNT_INACTIVE"));
+                .andExpect(jsonPath("$.result.content[1].eligibility").value("ALREADY_MODERATOR"))
+                .andExpect(jsonPath("$.result.content[2].eligibility").value("CHANNEL_BANNED"))
+                .andExpect(jsonPath("$.result.content[3].eligibility").value("ACCOUNT_INACTIVE"));
         mvc.perform(get(path).param("displayName", "   ").with(streamer(owner))).andExpect(status().isBadRequest());
         mvc.perform(get(path).param("displayName", "a".repeat(101)).with(streamer(owner))).andExpect(status().isBadRequest());
         mvc.perform(get(path).param("displayName", "match").param("size", "51").with(streamer(owner)))
@@ -152,11 +162,31 @@ class ChannelModeratorIntegrationTest {
         mvc.perform(get(path).param("displayName", "match").param("page", "1").param("size", "5")
                         .with(streamer(UUID.randomUUID())))
                 .andExpect(status().isForbidden());
-        verify(users).searchIdentities("match", 1, 5);
+        var requests = ArgumentCaptor.forClass(IdentitySearchRequest.class);
+        verify(users, times(3)).searchIdentities(requests.capture());
+        for (var request : requests.getAllValues()) {
+            assertEquals(ownFollowerIds, Set.copyOf(request.followerIds()));
+        }
 
         banService.banUserFromChannel(owner, ownChannel, target, ChannelBanType.CHAT_BAN);
         mvc.perform(post(path(ownChannel, target)).with(streamer(owner)))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1029));
+    }
+
+    @Test
+    void candidateSearchSkipsUserServiceWhenChannelHasNoFollowers() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID channel = channel(owner, ChannelStatus.ACTIVE);
+
+        mvc.perform(get(moderatorsPath(channel) + "/candidate")
+                        .param("displayName", "Viewer").param("page", "2").param("size", "3").with(streamer(owner)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.content").isEmpty())
+                .andExpect(jsonPath("$.result.page").value(2))
+                .andExpect(jsonPath("$.result.size").value(3))
+                .andExpect(jsonPath("$.result.totalElements").value(0))
+                .andExpect(jsonPath("$.result.totalPages").value(0));
+        verifyNoInteractions(users);
     }
 
     private ApiResponse<IdentityPage> identityPage(List<UserIdentity> matches, int page, int size, long total, int pages) {

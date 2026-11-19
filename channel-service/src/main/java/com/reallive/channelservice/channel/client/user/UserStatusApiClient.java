@@ -1,5 +1,6 @@
 package com.reallive.channelservice.channel.client.user;
 
+import com.reallive.channelservice.channel.client.user.UserStatusClient.IdentitySearchRequest;
 import com.reallive.channelservice.common.exception.AppException;
 import com.reallive.channelservice.common.exception.ErrorCode;
 import feign.FeignException;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -17,9 +19,9 @@ public class UserStatusApiClient {
 
     UserStatusClient client;
 
-    public UserStatusClient.IdentityPage searchIdentities(String displayName, int page, int size) {
+    public UserStatusClient.IdentityPage searchIdentities(String displayName, List<UUID> followerIds, int page, int size) {
         try {
-            var response = client.searchIdentities(displayName, page, size);
+            var response = client.searchIdentities(new IdentitySearchRequest(displayName, followerIds, page, size));
             var identities = response == null ? null : response.getResult();
             if (identities == null || response.getCode() != 1000 || identities.content() == null
                     || identities.page() != page || identities.size() != size || identities.content().size() > size

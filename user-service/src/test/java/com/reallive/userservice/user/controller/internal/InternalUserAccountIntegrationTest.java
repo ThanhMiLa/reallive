@@ -1,5 +1,6 @@
 package com.reallive.userservice.user.controller.internal;
 
+import tools.jackson.databind.ObjectMapper;
 import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
@@ -12,8 +13,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -31,17 +35,20 @@ class InternalUserAccountIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired UserRepository users;
     @Autowired ProfileRepository profiles;
+    @Autowired ObjectMapper objectMapper;
 
     @Test
-    void searchesCaseInsensitiveDisplayNameFragmentsAndKeepsDuplicateNames() throws Exception {
+    void searchesFollowerDisplayNameFragmentsAndPaginatesDuplicateNames() throws Exception {
         String shared = "Viewer_" + UUID.randomUUID();
         var first = createProfile(shared, UserStatus.BANNED);
         var second = createProfile(shared, UserStatus.ACTIVE);
-        createProfile(shared.replaceFirst("_", "X"), UserStatus.ACTIVE);
+        var similar = createProfile(shared.replaceFirst("_", "X"), UserStatus.ACTIVE);
+        createProfile(shared, UserStatus.ACTIVE);
+        var followerIds = List.of(first.getId(), second.getId(), similar.getId());
         String fragment = shared.substring(4).toUpperCase(Locale.ROOT);
         String path = "/internal/api/users/identities";
 
-        mvc.perform(get(path).param("displayName", fragment))
+        mvc.perform(searchIdentities(path, fragment, followerIds, 0, 20))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.totalElements").value(2))
                 .andExpect(jsonPath("$.result.content[*].userId", containsInAnyOrder(
@@ -49,15 +56,27 @@ class InternalUserAccountIntegrationTest {
                 .andExpect(jsonPath("$.result.content[0].displayName").value(shared))
                 .andExpect(jsonPath("$.result.content[0].username").doesNotExist())
                 .andExpect(jsonPath("$.result.content[0].email").doesNotExist());
-        mvc.perform(get(path).param("displayName", fragment).param("page", "1").param("size", "1"))
+        mvc.perform(searchIdentities(path, fragment, followerIds, 1, 1))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result.content.length()").value(1))
+                .andExpect(jsonPath("$.result.totalElements").value(2))
                 .andExpect(jsonPath("$.result.totalPages").value(2));
-        mvc.perform(get(path).param("displayName", UUID.randomUUID().toString()))
+        mvc.perform(searchIdentities(path, UUID.randomUUID().toString(), followerIds, 0, 20))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result.content").isEmpty());
-        mvc.perform(post(path).param("displayName", fragment)).andExpect(status().isUnauthorized());
+        mvc.perform(searchIdentities(path, fragment, List.of(), 0, 20))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.content").isEmpty());
+        mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("displayName", fragment, "page", 0, "size", 20))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(path).param("displayName", fragment)).andExpect(status().isUnauthorized());
         mvc.perform(post("/internal/api/users/chat-profiles").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"userIds\":[\"%s\"]}".formatted(first.getId())))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result[0].username").value(first.getUsername()));
+    }
+
+    private MockHttpServletRequestBuilder searchIdentities(
+            String path, String displayName, List<UUID> followerIds, int page, int size) {
+        return post(path).contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
+                Map.of("displayName", displayName, "followerIds", followerIds, "page", page, "size", size)));
     }
 
     private UserEntity createProfile(String displayName, UserStatus state) {
