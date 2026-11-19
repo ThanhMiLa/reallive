@@ -17,8 +17,8 @@
 - Update Channel ✅
 - Follow / Unfollow Channel ✅
 - View Follower
-- Assign Channel Moderator
-- Remove Channel Moderator
+- Assign Channel Moderator ✅
+- Remove Channel Moderator ✅
 
 ## III - Stream Setup
 - Create / Update Stream Session  ✅
@@ -35,6 +35,7 @@
 - Notify Email Followers When Stream Starts
 - Set thumbnail  ✅
 - Ban/Unban User Watch Livestream ✅
+- View user list watching livestream 
 
 ## V - Chat Realtime
 - Send Message ✅
