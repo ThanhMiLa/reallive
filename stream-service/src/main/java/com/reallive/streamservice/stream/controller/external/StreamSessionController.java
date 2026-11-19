@@ -9,10 +9,12 @@ import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSessionResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSetupResponse;
+import com.reallive.streamservice.stream.dto.response.StreamViewerPageResponse;
 import com.reallive.streamservice.stream.service.StreamDetailsService;
 import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import com.reallive.streamservice.stream.service.StreamSetupService;
+import com.reallive.streamservice.stream.service.StreamViewerListService;
 
 import jakarta.validation.Valid;
 
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -46,6 +49,7 @@ public class StreamSessionController {
     StreamSessionService streamSessionService;
     StreamPlaybackService streamPlaybackService;
     StreamDetailsService streamDetailsService;
+    StreamViewerListService streamViewerListService;
 
     @GetMapping("/me/setup")
     @PreAuthorize("hasAuthority('STREAM_VIEW_OWN') and hasAuthority('STREAM_PUBLISH')")
@@ -120,6 +124,26 @@ public class StreamSessionController {
                                 streamDetailsService.details(sessionId),
                                 200,
                                 "Stream details retrieved"));
+    }
+
+    @GetMapping("/{sessionId}/viewers")
+    @PreAuthorize("hasAuthority('STREAM_VIEW_OWN')")
+    public ResponseEntity<ApiResponse<StreamViewerPageResponse>> getStreamViewers(
+            @PathVariable UUID sessionId,
+            @AuthenticationPrincipal Jwt principal,
+            @RequestParam(defaultValue = "0") String cursor,
+            @RequestParam(defaultValue = "50") int size) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(
+                        buildApiResponse(
+                                streamViewerListService.list(
+                                        sessionId,
+                                        AuthenticationUserId.getAuthenticatedUserId(principal),
+                                        cursor,
+                                        size),
+                                200,
+                                "Stream viewers retrieved"));
     }
 
     @PostMapping("/{sessionId}/playback-access")

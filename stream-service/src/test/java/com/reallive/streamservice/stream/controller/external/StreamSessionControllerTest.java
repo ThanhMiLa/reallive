@@ -349,7 +349,7 @@ class StreamSessionControllerTest {
         UUID viewerId = UUID.randomUUID();
         var defaultPage = new StreamViewerPageResponse(
                 List.of(new StreamViewerPageResponse.ViewerItem(
-                        viewerId, "Alice", "alice", "https://cdn.example.com/a.jpg")),
+                        viewerId, "Alice", "https://cdn.example.com/a.jpg")),
                 "48",
                 true);
         when(viewerListService.list(session, owner, "0", 50)).thenReturn(defaultPage);
@@ -360,8 +360,8 @@ class StreamSessionControllerTest {
                 .andExpect(jsonPath("$.code").value(1000))
                 .andExpect(jsonPath("$.result.items[0].userId").value(viewerId.toString()))
                 .andExpect(jsonPath("$.result.items[0].displayName").value("Alice"))
-                .andExpect(jsonPath("$.result.items[0].username").value("alice"))
                 .andExpect(jsonPath("$.result.items[0].avatarUrl").value("https://cdn.example.com/a.jpg"))
+                .andExpect(jsonPath("$.result.items[0].username").doesNotExist())
                 .andExpect(jsonPath("$.result.nextCursor").value("48"))
                 .andExpect(jsonPath("$.result.hasMore").value(true));
 

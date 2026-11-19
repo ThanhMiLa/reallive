@@ -8,6 +8,14 @@ GET /stream/api/streams adds result.content[].currentViewerCount (integer or nul
 
 Web livestream cards in Browse and category detail display currentViewerCount using the shared viewer-count badge: counts are formatted with thousands separators, 0 remains visible, and null or a missing field displays —. Counts refresh with the existing list query; cards do not fetch individual session metadata or add separate polling.
 
+## Active viewer list
+
+GET /stream/api/streams/{sessionId}/viewers returns one cursor-paginated slice of currently tracked viewer profiles (`result.items[]` with `userId`, `displayName`, `avatarUrl`, plus `result.nextCursor` and `result.hasMore`) with `Cache-Control: no-store`. Account authentication with authority `STREAM_VIEW_OWN` and session ownership (`ownerUserId == subject`) are required; non-owners receive `403` (`1007`), unknown sessions return `404` (`1006`), and invalid parameters return `400` (`1004`).
+
+Query parameters: `cursor` (non-negative base-10 integer string, default `0`) and `size` (`1..50`, default `50`). `READY` and `ENDED` sessions (or `CLOSED` Redis state) return `200` with empty `items`, `nextCursor: null`, and `hasMore: false` without querying Redis/User Service for inactive DB rows. Disabled CCU, Redis failure, or non-`ACTIVE` presence (`RECOVERING`/missing) returns `503` (`1016`) rather than masquerading as an empty list.
+
+For `ACTIVE` presence, Stream Service atomically checks state and executes `SSCAN` (`COUNT size`) over `stream:{sessionId}:viewers` (advancing up to 5 rounds when encountering only empty buckets), then enriches scanned account IDs in batches of up to 50 via User Service `POST /internal/api/users/chat-profiles`. Because `SSCAN` count is a hash-table step hint, a single page may return more or fewer than `size` items and clients must deduplicate flattened pages by `userId`.
+
 ## Internal reader callback
 
 POST /stream/internal/api/viewer-events uses method-scoped permitAll in Stream Service; it requires no internal token and is not routed through Gateway. Hooks send no account cookies or player Read JWT.

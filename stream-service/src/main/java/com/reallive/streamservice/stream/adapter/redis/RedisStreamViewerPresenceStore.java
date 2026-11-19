@@ -16,9 +16,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -37,6 +39,8 @@ public class RedisStreamViewerPresenceStore implements StreamViewerPresenceStore
     static final DefaultRedisScript<Long> COMPLETE_RECOVERY = script("complete-recovery");
     static final DefaultRedisScript<Long> MARK_CLOSED = script("mark-closed");
     static final DefaultRedisScript<Long> COMPLETE_CLOSE = script("complete-close");
+    @SuppressWarnings("rawtypes")
+    static final DefaultRedisScript<List> SCAN_VIEWERS = listScript("scan-viewers");
 
     StringRedisTemplate redis;
     Clock streamClock;
@@ -143,6 +147,47 @@ public class RedisStreamViewerPresenceStore implements StreamViewerPresenceStore
         });
     }
 
+    @Override
+    public ViewerScanPage scanViewers(UUID sessionId, String cursor, int count) {
+        var keys = keys(sessionId);
+        String scanCursor = Objects.requireNonNull(cursor);
+        if (count < 1) {
+            throw new AppException(ErrorCode.STREAM_REQUEST_INVALID);
+        }
+        return access(() -> {
+            List<?> raw = redis.execute(
+                    SCAN_VIEWERS,
+                    List.of(keys.state(), keys.viewers()),
+                    scanCursor,
+                    Integer.toString(count));
+            if (raw == null || raw.isEmpty() || raw.getFirst() == null) {
+                throw unavailable();
+            }
+            String statusText = String.valueOf(raw.getFirst());
+            return switch (statusText) {
+                case "CLOSED" -> ViewerScanPage.closed();
+                case "UNAVAILABLE" -> ViewerScanPage.unavailable();
+                case "ACTIVE" -> parseActiveScanPage(raw);
+                default -> throw unavailable();
+            };
+        });
+    }
+
+    private ViewerScanPage parseActiveScanPage(List<?> raw) {
+        if (raw.size() < 2 || raw.get(1) == null) {
+            throw unavailable();
+        }
+        String nextCursor = String.valueOf(raw.get(1));
+        Set<UUID> viewers = new LinkedHashSet<>(Math.max(0, raw.size() - 2));
+        for (int index = 2; index < raw.size(); index++) {
+            Object entry = raw.get(index);
+            if (entry != null) {
+                viewers.add(UUID.fromString(String.valueOf(entry)));
+            }
+        }
+        return new ViewerScanPage(ViewerScanPage.Status.ACTIVE, nextCursor, List.copyOf(viewers));
+    }
+
     private Long addReader(PresenceKeys keys, UUID userId, UUID readerId, String expectedGeneration) {
         long outcome = execute(JOIN,
                 List.of(keys.state(), keys.closedReaders(), keys.readerUsers(),
@@ -201,6 +246,14 @@ public class RedisStreamViewerPresenceStore implements StreamViewerPresenceStore
         var script = new DefaultRedisScript<Long>();
         script.setLocation(new ClassPathResource("redis/stream-viewer-presence/" + name + ".lua"));
         script.setResultType(Long.class);
+        return script;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static DefaultRedisScript<List> listScript(String name) {
+        var script = new DefaultRedisScript<List>();
+        script.setLocation(new ClassPathResource("redis/stream-viewer-presence/" + name + ".lua"));
+        script.setResultType(List.class);
         return script;
     }
 

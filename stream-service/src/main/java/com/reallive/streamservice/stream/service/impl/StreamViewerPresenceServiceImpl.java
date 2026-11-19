@@ -3,6 +3,7 @@ package com.reallive.streamservice.stream.service.impl;
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.adapter.redis.StreamViewerPresenceStore;
+import com.reallive.streamservice.stream.adapter.redis.ViewerScanPage;
 import com.reallive.streamservice.stream.dto.request.ViewerPresenceEvent;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.repository.StreamSessionRepository;
@@ -10,6 +11,7 @@ import com.reallive.streamservice.stream.service.StreamViewerPresenceService;
 import io.micrometer.core.instrument.Metrics;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.AccessLevel;
@@ -28,6 +30,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class StreamViewerPresenceServiceImpl implements StreamViewerPresenceService {
+    static final int MAX_EMPTY_SCAN_ROUNDS = 5;
+
     @NonFinal
     @Value("${stream.ccu.enabled:false}")
     boolean ccuEnabled;
@@ -66,6 +70,48 @@ public class StreamViewerPresenceServiceImpl implements StreamViewerPresenceServ
             Metrics.counter("ccu.count.failures").increment();
             log.warn("CCU count unavailable: sessionId={}", sessionId);
             return null;
+        }
+    }
+
+    @Override
+    public ViewerScanPage scan(UUID sessionId, StreamSessionStatus status, String cursor, int count) {
+        if (status == StreamSessionStatus.READY || status == StreamSessionStatus.ENDED) {
+            return ViewerScanPage.closed();
+        }
+        if (!ccuEnabled) {
+            throw new AppException(ErrorCode.VIEWER_PRESENCE_UNAVAILABLE);
+        }
+        String nextCursor = cursor;
+        for (int round = 0; round < MAX_EMPTY_SCAN_ROUNDS; round++) {
+            ViewerScanPage page = readScanPage(sessionId, nextCursor, count);
+            if (page.status() == ViewerScanPage.Status.UNAVAILABLE) {
+                Metrics.counter("ccu.viewers.failures").increment();
+                log.warn("CCU viewer scan unavailable: sessionId={}", sessionId);
+                throw new AppException(ErrorCode.VIEWER_PRESENCE_UNAVAILABLE);
+            }
+            if (page.status() == ViewerScanPage.Status.CLOSED
+                    || !page.viewerIds().isEmpty()
+                    || "0".equals(page.nextCursor())) {
+                return page;
+            }
+            nextCursor = page.nextCursor();
+        }
+        return new ViewerScanPage(ViewerScanPage.Status.ACTIVE, nextCursor, List.of());
+    }
+
+    private ViewerScanPage readScanPage(UUID sessionId, String cursor, int count) {
+        try {
+            return store.scanViewers(sessionId, cursor, count);
+        } catch (AppException exception) {
+            if (exception.getErrorCode() == ErrorCode.VIEWER_PRESENCE_UNAVAILABLE) {
+                Metrics.counter("ccu.viewers.failures").increment();
+                log.warn("CCU viewer scan unavailable: sessionId={}", sessionId);
+            }
+            throw exception;
+        } catch (RuntimeException exception) {
+            Metrics.counter("ccu.viewers.failures").increment();
+            log.warn("CCU viewer scan unavailable: sessionId={}", sessionId);
+            throw new AppException(ErrorCode.VIEWER_PRESENCE_UNAVAILABLE);
         }
     }
 

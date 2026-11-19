@@ -131,26 +131,26 @@ class StreamViewerListServiceTest {
         when(presence.scan(sessionId, StreamSessionStatus.LIVE, "0", 20))
                 .thenReturn(new ViewerScanPage(ViewerScanPage.Status.ACTIVE, "48", List.of(first, missingProfile, second)));
         when(userClient.getViewerProfiles(List.of(first, missingProfile, second))).thenReturn(Map.of(
-                first, new ViewerProfile(first, "Alice", "https://cdn.example.com/a.jpg", "alice"),
-                second, new ViewerProfile(second, "Bob", null, "bob")));
+                first, new ViewerProfile(first, "Alice", "https://cdn.example.com/a.jpg"),
+                second, new ViewerProfile(second, "Bob", null)));
 
         StreamViewerPageResponse page = service.list(sessionId, ownerId, "0", 20);
         assertThat(page.hasMore()).isTrue();
         assertThat(page.nextCursor()).isEqualTo("48");
         assertThat(page.items()).containsExactly(
-                new StreamViewerPageResponse.ViewerItem(first, "Alice", "alice", "https://cdn.example.com/a.jpg"),
-                new StreamViewerPageResponse.ViewerItem(second, "Bob", "bob", null));
+                new StreamViewerPageResponse.ViewerItem(first, "Alice", "https://cdn.example.com/a.jpg"),
+                new StreamViewerPageResponse.ViewerItem(second, "Bob", null));
 
         when(presence.scan(sessionId, StreamSessionStatus.RECONNECTING, "48", 20))
                 .thenReturn(new ViewerScanPage(ViewerScanPage.Status.ACTIVE, "0", List.of(second)));
         when(userClient.getViewerProfiles(List.of(second))).thenReturn(Map.of(
-                second, new ViewerProfile(second, "Bob", null, "bob")));
+                second, new ViewerProfile(second, "Bob", null)));
         session.setStatus(StreamSessionStatus.RECONNECTING);
         StreamViewerPageResponse lastPage = service.list(sessionId, ownerId, "48", 20);
         assertThat(lastPage.hasMore()).isFalse();
         assertThat(lastPage.nextCursor()).isNull();
         assertThat(lastPage.items()).containsExactly(
-                new StreamViewerPageResponse.ViewerItem(second, "Bob", "bob", null));
+                new StreamViewerPageResponse.ViewerItem(second, "Bob", null));
         verify(userClient).getViewerProfiles(List.of(second));
     }
 }

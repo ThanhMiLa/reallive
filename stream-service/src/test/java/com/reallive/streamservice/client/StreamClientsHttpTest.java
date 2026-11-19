@@ -150,7 +150,7 @@ class StreamClientsHttpTest {
         assertEquals(List.of("/user/internal/api/users/chat-profiles", "/user/internal/api/users/chat-profiles"), CALLS);
         assertEquals(List.of(50, 15), PROFILE_BATCHES.stream().map(List::size).toList());
         assertEquals("Display-" + ids.getFirst(), profiles.get(ids.getFirst()).displayName());
-        assertEquals("user-" + ids.getFirst(), profiles.get(ids.getFirst()).username());
+        assertEquals("https://cdn.example.com/" + ids.getFirst() + ".jpg", profiles.get(ids.getFirst()).avatarUrl());
     }
 
     private static HttpServer server() {
@@ -179,7 +179,11 @@ class StreamClientsHttpTest {
                     List<String> requested = (List<String>) payload.get("userIds");
                     PROFILE_BATCHES.add(requested);
                     result = requested.stream()
-                            .map(id -> Map.of("userId", id, "displayName", "Display-" + id, "username", "user-" + id))
+                            .map(id -> Map.of(
+                                    "userId", id,
+                                    "displayName", "Display-" + id,
+                                    "avatarUrl", "https://cdn.example.com/" + id + ".jpg",
+                                    "username", "user-" + id))
                             .toList();
                 } else if (path.endsWith("/categories/validate")) {
                     result = !invalidCategory;

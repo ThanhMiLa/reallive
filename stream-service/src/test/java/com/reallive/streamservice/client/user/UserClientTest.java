@@ -50,7 +50,7 @@ class UserClientTest {
             UserApiClient.ViewerProfileBatchRequest request = invocation.getArgument(0);
             batchSizes.add(request.userIds().size());
             List<ViewerProfile> result = request.userIds().stream()
-                    .map(id -> new ViewerProfile(id, "User-" + id.toString().substring(0, 4), null, "user_" + id.toString().substring(0, 4)))
+                    .map(id -> new ViewerProfile(id, "User-" + id.toString().substring(0, 4), null))
                     .toList();
             return ApiResponse.<List<ViewerProfile>>builder()
                     .status(200)
@@ -71,7 +71,7 @@ class UserClientTest {
         when(api.getViewerProfiles(any())).thenReturn(ApiResponse.<List<ViewerProfile>>builder()
                 .status(200)
                 .code(1000)
-                .result(List.of(new ViewerProfile(UUID.randomUUID(), "Other", null, "other")))
+                .result(List.of(new ViewerProfile(UUID.randomUUID(), "Other", null)))
                 .build());
         assertThatThrownBy(() -> client.getViewerProfiles(List.of(requested)))
                 .isInstanceOfSatisfying(AppException.class,
@@ -80,7 +80,7 @@ class UserClientTest {
         when(api.getViewerProfiles(any())).thenReturn(ApiResponse.<List<ViewerProfile>>builder()
                 .status(200)
                 .code(1000)
-                .result(List.of(new ViewerProfile(requested, null, null, "user")))
+                .result(List.of(new ViewerProfile(requested, null, null)))
                 .build());
         assertThatThrownBy(() -> client.getViewerProfiles(List.of(requested)))
                 .isInstanceOfSatisfying(AppException.class,

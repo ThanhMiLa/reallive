@@ -77,4 +77,14 @@ public interface StreamViewerPresenceStore {
      * @param generation expected current recovery generation
      */
     void observe(UUID sessionId, UUID userId, UUID readerId, UUID generation);
+
+    /**
+     * Atomically checks presence readiness and runs one {@code SSCAN} step over active viewers.
+     *
+     * @param sessionId stream session identifier
+     * @param cursor non-negative Redis scan cursor string
+     * @param count hint for the number of hash-table steps to scan
+     * @return scan result containing readiness status, next cursor, and scanned account IDs
+     */
+    ViewerScanPage scanViewers(UUID sessionId, String cursor, int count);
 }
