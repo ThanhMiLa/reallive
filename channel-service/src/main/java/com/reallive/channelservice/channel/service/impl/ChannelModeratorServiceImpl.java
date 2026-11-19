@@ -8,6 +8,7 @@ import com.reallive.channelservice.channel.client.user.UserStatusClient.UserIden
 import com.reallive.channelservice.channel.dto.response.ChannelModeratorResponse.Candidate;
 import com.reallive.channelservice.channel.dto.response.ChannelModeratorResponse.Eligibility;
 import com.reallive.channelservice.channel.dto.response.ChannelModeratorResponse.Item;
+import com.reallive.channelservice.channel.entity.ChannelFollowerId;
 import com.reallive.channelservice.channel.entity.ChannelModeratorEntity;
 import com.reallive.channelservice.channel.entity.ChannelModeratorId;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
@@ -111,6 +112,9 @@ public class ChannelModeratorServiceImpl implements ChannelModeratorService {
         }
         if (users.getStatus(userId) != Status.ACTIVE) {
             throw new AppException(ErrorCode.MODERATOR_TARGET_NOT_ACTIVE);
+        }
+        if (!followers.existsById(new ChannelFollowerId(channelId, userId))) {
+            throw new AppException(ErrorCode.MODERATOR_TARGET_NOT_FOLLOWING);
         }
         moderators.save(ChannelModeratorEntity.builder().id(assignment).build());
     }

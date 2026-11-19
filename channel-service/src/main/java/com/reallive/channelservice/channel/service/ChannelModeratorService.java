@@ -37,7 +37,7 @@ public interface ChannelModeratorService {
     PageResponse<Candidate> searchCandidates(UUID actorId, UUID channelId, String displayName, int page, int size);
 
     /**
-     * Assigns an active user as moderator of an active channel owned by the caller.
+     * Assigns an active follower as moderator of an active channel owned by the caller.
      *
      * @param actorId authenticated user who owns the channel
      * @param channelId channel receiving the assignment

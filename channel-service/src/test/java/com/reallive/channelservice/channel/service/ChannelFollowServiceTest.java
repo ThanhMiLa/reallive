@@ -59,7 +59,7 @@ class ChannelFollowServiceTest {
         assertTrue(service.followChannel(userId, channelId));
 
         assertEquals(123L, channel.getFollowerCount());
-        verify(channelRepository).findById(channelId);
+        verify(channelRepository).findByIdForUpdate(channelId);
         verify(channelFollowerRepository).insertFollowIfAbsent(channelId, userId);
         verify(channelRepository).incrementFollowerCount(channelId);
         verifyNoMoreInteractions(channelRepository, channelFollowerRepository);
@@ -94,7 +94,7 @@ class ChannelFollowServiceTest {
         AppException exception = assertThrows(AppException.class, () -> service.followChannel(userId, channelId));
 
         assertEquals(ErrorCode.CHANNEL_ALREADY_FOLLOWED, exception.getErrorCode());
-        verify(channelRepository).findById(channelId);
+        verify(channelRepository).findByIdForUpdate(channelId);
         verifyNoMoreInteractions(channelRepository);
     }
 
@@ -121,7 +121,7 @@ class ChannelFollowServiceTest {
         AppException exception = assertThrows(AppException.class, () -> service.unfollowChannel(userId, channelId));
 
         assertEquals(ErrorCode.CHANNEL_NOT_FOLLOWED, exception.getErrorCode());
-        verify(channelRepository).findById(channelId);
+        verify(channelRepository).findByIdForUpdate(channelId);
         verifyNoMoreInteractions(channelRepository);
     }
 
@@ -154,7 +154,7 @@ class ChannelFollowServiceTest {
                 .status(status)
                 .followerCount(123L)
                 .build();
-        when(channelRepository.findById(channelId)).thenReturn(Optional.of(channel));
+        when(channelRepository.findByIdForUpdate(channelId)).thenReturn(Optional.of(channel));
         return channel;
     }
 }

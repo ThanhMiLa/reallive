@@ -26,7 +26,7 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
     @Override
     @Transactional
     public boolean followChannel(UUID userId, UUID channelId) {
-        ChannelEntity channel = findChannel(userId, channelId);
+        ChannelEntity channel = lockChannel(userId, channelId);
         if (userId.equals(channel.getUserId())) {
             throw new AppException(ErrorCode.CANNOT_FOLLOW_OWN_CHANNEL);
         }
@@ -45,7 +45,7 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
     @Override
     @Transactional
     public boolean unfollowChannel(UUID userId, UUID channelId) {
-        findChannel(userId, channelId);
+        lockChannel(userId, channelId);
         if (channelFollowerRepository.deleteFollow(channelId, userId) == 0) {
             throw new AppException(ErrorCode.CHANNEL_NOT_FOLLOWED);
         }
@@ -55,14 +55,14 @@ public class ChannelFollowServiceImpl implements ChannelFollowService {
         return true;
     }
 
-    private ChannelEntity findChannel(UUID userId, UUID channelId) {
+    private ChannelEntity lockChannel(UUID userId, UUID channelId) {
         if (userId == null) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
         if (channelId == null) {
             throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
         }
-        return channelRepository.findById(channelId)
+        return channelRepository.findByIdForUpdate(channelId)
                 .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
     }
 }

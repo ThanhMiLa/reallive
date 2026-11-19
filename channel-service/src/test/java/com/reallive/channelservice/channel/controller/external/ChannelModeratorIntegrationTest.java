@@ -17,6 +17,7 @@ import com.reallive.channelservice.channel.repository.ChannelModeratorRepository
 import com.reallive.channelservice.channel.repository.ChannelRepository;
 import com.reallive.channelservice.channel.repository.ChannelUserBanRepository;
 import com.reallive.channelservice.channel.service.ChannelBanService;
+import com.reallive.channelservice.channel.service.ChannelFollowService;
 import com.reallive.channelservice.channel.service.ChannelModeratorService;
 import com.reallive.channelservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.channelservice.common.dto.ApiResponse;
@@ -73,6 +74,7 @@ class ChannelModeratorIntegrationTest {
     @Autowired ChannelUserBanRepository bans;
     @Autowired ChannelModeratorService assignments;
     @Autowired ChannelBanService banService;
+    @Autowired ChannelFollowService followService;
     @MockitoBean UserStatusClient users;
     @MockitoBean UserChatProfileApiClient profiles;
     @MockitoBean RedisAuthoritiesReader authorities;
@@ -210,6 +212,8 @@ class ChannelModeratorIntegrationTest {
         UUID otherChannel = channel(otherOwner, ChannelStatus.ACTIVE);
         UUID target = UUID.randomUUID();
         when(users.getStatus(target)).thenReturn(account(target, Status.ACTIVE));
+        followService.followChannel(target, otherChannel);
+        followService.followChannel(target, channel);
         assignments.assign(otherOwner, otherChannel, target);
         String path = path(channel, target);
 
@@ -226,6 +230,29 @@ class ChannelModeratorIntegrationTest {
         assertFalse(moderators.existsById(new ChannelModeratorId(channel, target)));
         assertTrue(moderators.existsById(new ChannelModeratorId(otherChannel, target)));
         verify(users, times(2)).getStatus(target);
+    }
+
+    @Test
+    void rejectsAssignmentWhenTargetOnlyFollowsAnotherChannelOrHasUnfollowed() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID channel = channel(owner, ChannelStatus.ACTIVE);
+        UUID otherChannel = channel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        UUID target = UUID.randomUUID();
+        when(users.getStatus(target)).thenReturn(account(target, Status.ACTIVE));
+        followService.followChannel(target, otherChannel);
+        String path = path(channel, target);
+        var assignment = new ChannelModeratorId(channel, target);
+
+        mvc.perform(post(path).with(streamer(owner))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(1032));
+        assertFalse(moderators.existsById(assignment));
+
+        followService.followChannel(target, channel);
+        followService.unfollowChannel(target, channel);
+
+        mvc.perform(post(path).with(streamer(owner))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(1032));
+        assertFalse(moderators.existsById(assignment));
     }
 
     @Test
@@ -291,6 +318,7 @@ class ChannelModeratorIntegrationTest {
         UUID channel = channel(owner, ChannelStatus.ACTIVE);
         UUID target = UUID.randomUUID();
         when(users.getStatus(target)).thenReturn(account(target, Status.ACTIVE));
+        followService.followChannel(target, channel);
         var start = new CountDownLatch(1);
         try (var executor = Executors.newFixedThreadPool(2)) {
             var assign = executor.submit(() -> {
@@ -320,6 +348,7 @@ class ChannelModeratorIntegrationTest {
         UUID moderator = UUID.randomUUID();
         UUID target = UUID.randomUUID();
         when(users.getStatus(moderator)).thenReturn(account(moderator, Status.ACTIVE));
+        followService.followChannel(moderator, channel);
         assignments.assign(owner, channel, moderator);
         if (unban) {
             banService.banUserFromChannel(owner, channel, target, ChannelBanType.CHAT_BAN);
