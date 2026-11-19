@@ -51,6 +51,20 @@ public class ChannelModeratorServiceImpl implements ChannelModeratorService {
     @Transactional(readOnly = true)
     public PageResponse<Item> list(UUID actorId, UUID channelId, int page, int size) {
         requireOwnedActiveChannel(actorId, channelId, false);
+        return listAssignments(channelId, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<Item> listForViewers(UUID channelId, int page, int size) {
+        var channel = channels.findById(channelId).orElseThrow(() -> new AppException(ErrorCode.CHANNEL_NOT_FOUND));
+        if (channel.getStatus() != ChannelStatus.ACTIVE) {
+            throw new AppException(ErrorCode.CHANNEL_NOT_ACTIVE);
+        }
+        return listAssignments(channelId, page, size);
+    }
+
+    private PageResponse<Item> listAssignments(UUID channelId, int page, int size) {
         validatePagination(page, size);
         var sort = Sort.by(Sort.Order.desc("assignedAt"), Sort.Order.asc("id.userId"));
         var assignments = moderators.findByIdChannelId(channelId, PageRequest.of(page, size, sort));
@@ -59,8 +73,8 @@ public class ChannelModeratorServiceImpl implements ChannelModeratorService {
         var items = assignments.getContent().stream().map(assignment -> {
             UUID userId = assignment.getId().getUserId();
             var profile = snapshots.get(userId);
-            return new Item(userId, profile == null ? null : profile.username(),
-                    profile == null ? null : profile.displayName(), profile == null ? null : profile.avatarUrl(),
+            return new Item(userId, profile == null ? null : profile.displayName(),
+                    profile == null ? null : profile.avatarUrl(),
                     assignment.getAssignedAt().toInstant(ZoneOffset.UTC));
         }).toList();
         return PageResponse.<Item>builder().content(items).page(page).size(size)

@@ -44,6 +44,15 @@ public class ChannelModeratorController {
                 AuthenticationUserId.getAuthenticatedUserId(jwt), channelId, page, size));
     }
 
+    @GetMapping("/roster")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<PageResponse<Item>> getChannelModeratorRoster(
+            @PathVariable UUID channelId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return buildSuccessResponse(moderators.listForViewers(channelId, page, size));
+    }
+
     @GetMapping("/candidate")
     public ApiResponse<PageResponse<Candidate>> searchChannelModeratorCandidates(
             @PathVariable UUID channelId,

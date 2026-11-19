@@ -23,6 +23,18 @@ public interface ChannelModeratorService {
     PageResponse<Item> list(UUID actorId, UUID channelId, int page, int size);
 
     /**
+     * Lists moderator assignments on an active channel for authenticated viewers.
+     * Profile fields may be absent when account details are unavailable.
+     *
+     * @param channelId channel to list
+     * @param page zero-based page number
+     * @param size page size from 1 to 50
+     * @return assignments ordered by assignment time descending, then user ID ascending
+     * @throws AppException if the channel is missing or inactive, or pagination is invalid
+     */
+    PageResponse<Item> listForViewers(UUID channelId, int page, int size);
+
+    /**
      * Searches the caller's active channel followers by display name and evaluates assignment eligibility.
      * Assignment revalidates eligibility when the caller submits a write.
      *

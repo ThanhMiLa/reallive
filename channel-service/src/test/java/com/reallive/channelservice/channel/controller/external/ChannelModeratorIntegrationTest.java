@@ -98,19 +98,49 @@ class ChannelModeratorIntegrationTest {
 
         mvc.perform(get(path).param("size", "1").with(streamer(owner))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].userId").value(first.toString()))
-                .andExpect(jsonPath("$.result.content[0].username").value("viewer01"))
+                .andExpect(jsonPath("$.result.content[0].displayName").value("Viewer"))
+                .andExpect(jsonPath("$.result.content[0].username").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.result.content[0].assignedAt").value("2026-11-18T13:00:00Z"))
                 .andExpect(jsonPath("$.result.totalElements").value(2))
                 .andExpect(jsonPath("$.result.totalPages").value(2));
         mvc.perform(get(path).param("size", "1").param("page", "1").with(streamer(owner))).andExpect(status().isOk())
                 .andExpect(jsonPath("$.result.content[0].userId").value(second.toString()))
-                .andExpect(jsonPath("$.result.content[0].username").doesNotExist());
+                .andExpect(jsonPath("$.result.content[0].displayName").doesNotExist());
         mvc.perform(get(path).param("size", "51").with(streamer(owner))).andExpect(status().isBadRequest());
         mvc.perform(get(path).with(streamer(UUID.randomUUID()))).andExpect(status().isForbidden());
         mvc.perform(get(path).with(jwt().jwt(token -> token.subject(owner.toString()))))
                 .andExpect(status().isForbidden());
         verify(profiles).profiles(List.of(first));
         verify(profiles).profiles(List.of(second));
+    }
+
+    @Test
+    void exposesOnlyTheActiveChannelsModeratorRosterToAuthenticatedViewers() throws Exception {
+        UUID channelId = channel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        UUID otherChannel = channel(UUID.randomUUID(), ChannelStatus.ACTIVE);
+        UUID moderator = UUID.randomUUID();
+        UUID viewer = UUID.randomUUID();
+        saveAssignment(channelId, moderator);
+        saveAssignment(otherChannel, UUID.randomUUID());
+        when(profiles.profiles(List.of(moderator)))
+                .thenReturn(List.of(new ChatProfile(moderator, "Moderator", "https://cdn.example/avatar.png", "mod01")));
+
+        String roster = moderatorsPath(channelId) + "/roster";
+        mvc.perform(get(roster)).andExpect(status().isUnauthorized());
+        mvc.perform(get(roster).with(jwt().jwt(token -> token.subject(viewer.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.totalElements").value(1))
+                .andExpect(jsonPath("$.result.content[0].userId").value(moderator.toString()))
+                .andExpect(jsonPath("$.result.content[0].displayName").value("Moderator"))
+                .andExpect(jsonPath("$.result.content[0].avatarUrl").value("https://cdn.example/avatar.png"))
+                .andExpect(jsonPath("$.result.content[0].assignedAt").isString())
+                .andExpect(jsonPath("$.result.content[0].username").doesNotHaveJsonPath());
+        mvc.perform(get(moderatorsPath(channelId)).with(jwt().jwt(token -> token.subject(viewer.toString()))))
+                .andExpect(status().isForbidden());
+        UUID inactiveChannel = channel(UUID.randomUUID(), ChannelStatus.BANNED);
+        mvc.perform(get(moderatorsPath(inactiveChannel) + "/roster")
+                        .with(jwt().jwt(token -> token.subject(viewer.toString()))))
+                .andExpect(status().isForbidden());
     }
 
     @Test

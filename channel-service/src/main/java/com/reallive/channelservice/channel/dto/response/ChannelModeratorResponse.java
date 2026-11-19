@@ -9,7 +9,6 @@ public final class ChannelModeratorResponse {
 
     public record Item(
             UUID userId,
-            String username,
             String displayName,
             String avatarUrl,
             Instant assignedAt
