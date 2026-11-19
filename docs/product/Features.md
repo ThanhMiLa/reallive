@@ -34,6 +34,7 @@
 - Handle Unexpected Disconnect  ✅
 - Notify Email Followers When Stream Starts
 - Set thumbnail  ✅
+- View user list watching livestream ✅
 
 ## V - Chat Realtime
 - Send Message ✅
