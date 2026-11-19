@@ -2,6 +2,7 @@ package com.reallive.streamservice.client;
 
 import com.reallive.streamservice.common.exception.AppException;
 import com.reallive.streamservice.client.channel.ChannelClient;
+import com.reallive.streamservice.client.user.UserClient;
 import com.reallive.streamservice.common.exception.ErrorCode;
 import com.reallive.streamservice.stream.MediaTestSupport;
 import com.reallive.streamservice.stream.service.StreamEligibilityService;
@@ -46,9 +47,11 @@ class StreamClientsHttpTest {
 
     @Autowired private StreamEligibilityService eligibility;
     @Autowired private ChannelClient channelClient;
+    @Autowired private UserClient userClient;
     private static volatile Map<String, Object> chatAccess;
     private static volatile String chatRequest;
     private static volatile String chatToken;
+    private static final List<List<String>> PROFILE_BATCHES = new CopyOnWriteArrayList<>();
 
 
     @DynamicPropertySource
@@ -65,6 +68,7 @@ class StreamClientsHttpTest {
     void reset() {
         chatAccess = Map.of("channelId", CHANNEL, "userId", USER, "canView", true, "canRead", true, "canSend", true);
         chatRequest = null; chatToken = null;
+        PROFILE_BATCHES.clear();
         CALLS.clear(); USER_STATUS.set(200); malformed = false; wrongOwner = false; invalidCategory = false; delayed = false;
     }
 
@@ -138,6 +142,17 @@ class StreamClientsHttpTest {
         assertEquals(1, CALLS.size());
     }
 
+    @Test
+    void fetchesViewerProfilesInFiftyIdChunksThroughInternalUserContract() {
+        List<UUID> ids = java.util.stream.IntStream.range(0, 65).mapToObj(i -> UUID.randomUUID()).toList();
+        var profiles = userClient.getViewerProfiles(ids);
+        assertEquals(65, profiles.size());
+        assertEquals(List.of("/user/internal/api/users/chat-profiles", "/user/internal/api/users/chat-profiles"), CALLS);
+        assertEquals(List.of(50, 15), PROFILE_BATCHES.stream().map(List::size).toList());
+        assertEquals("Display-" + ids.getFirst(), profiles.get(ids.getFirst()).displayName());
+        assertEquals("user-" + ids.getFirst(), profiles.get(ids.getFirst()).username());
+    }
+
     private static HttpServer server() {
         try {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -157,6 +172,15 @@ class StreamClientsHttpTest {
                     chatRequest = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                     chatToken = exchange.getRequestHeaders().getFirst("X-Internal-Token");
                     result = chatAccess;
+                } else if (path.endsWith("/chat-profiles")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> payload = JSON.readValue(exchange.getRequestBody().readAllBytes(), Map.class);
+                    @SuppressWarnings("unchecked")
+                    List<String> requested = (List<String>) payload.get("userIds");
+                    PROFILE_BATCHES.add(requested);
+                    result = requested.stream()
+                            .map(id -> Map.of("userId", id, "displayName", "Display-" + id, "username", "user-" + id))
+                            .toList();
                 } else if (path.endsWith("/categories/validate")) {
                     result = !invalidCategory;
                 } else {

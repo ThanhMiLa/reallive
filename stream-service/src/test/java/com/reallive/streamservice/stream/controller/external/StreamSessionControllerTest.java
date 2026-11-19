@@ -21,6 +21,7 @@ import com.reallive.streamservice.stream.dto.response.StreamKeyResponse;
 import com.reallive.streamservice.stream.dto.response.StreamMetadataResponse;
 import com.reallive.streamservice.stream.dto.response.StreamPlaybackAccessResponse;
 import com.reallive.streamservice.stream.dto.response.StreamSetupResponse;
+import com.reallive.streamservice.stream.dto.response.StreamViewerPageResponse;
 import com.reallive.streamservice.stream.entity.enums.ChannelStreamConfigStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamSessionStatus;
 import com.reallive.streamservice.stream.entity.enums.StreamVisibility;
@@ -28,6 +29,7 @@ import com.reallive.streamservice.stream.service.StreamDetailsService;
 import com.reallive.streamservice.stream.service.StreamPlaybackService;
 import com.reallive.streamservice.stream.service.StreamSessionService;
 import com.reallive.streamservice.stream.service.StreamSetupService;
+import com.reallive.streamservice.stream.service.StreamViewerListService;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -60,6 +62,7 @@ class StreamSessionControllerTest {
     @MockitoBean private StreamSessionService service;
     @MockitoBean private StreamPlaybackService playbackService;
     @MockitoBean private StreamDetailsService detailsService;
+    @MockitoBean private StreamViewerListService viewerListService;
     @MockitoBean private CustomJwtDecoder decoder;
     @MockitoBean private RedisAuthoritiesReader authorities;
 
@@ -83,9 +86,11 @@ class StreamSessionControllerTest {
         mvc.perform(get("/api/streams/" + session)).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/streams/" + session + "/details"))
                 .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/streams/" + session + "/viewers"))
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/streams/" + session + "/playback-access"))
                 .andExpect(status().isUnauthorized());
-        verifyNoInteractions(setupService, service, playbackService, detailsService);
+        verifyNoInteractions(setupService, service, playbackService, detailsService, viewerListService);
     }
 
     @ParameterizedTest
@@ -111,7 +116,10 @@ class StreamSessionControllerTest {
         mvc.perform(get("/api/streams/me/current").with(ownerWithPermissions(authority)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(1002));
-        verifyNoInteractions(setupService, service, playbackService);
+        mvc.perform(get("/api/streams/" + session + "/viewers").with(ownerWithPermissions(authority)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(1002));
+        verifyNoInteractions(setupService, service, playbackService, viewerListService);
     }
 
     @ParameterizedTest
@@ -177,7 +185,7 @@ class StreamSessionControllerTest {
                                 .getResponse()
                                 .getStatus()
                         >= 400);
-        verifyNoInteractions(setupService, service, playbackService, detailsService);
+        verifyNoInteractions(setupService, service, playbackService, detailsService, viewerListService);
     }
 
     @Test
@@ -331,6 +339,54 @@ class StreamSessionControllerTest {
                             post("/api/streams/me/stream-key")
                                     .with(ownerWithPermissions("STREAM_PUBLISH"))
                                     .header("Idempotency-Key", "k-err"))
+                    .andExpect(status().is(error.getHttpStatus().value()))
+                    .andExpect(jsonPath("$.code").value(error.getCode()));
+        }
+    }
+
+    @Test
+    void getStreamViewersSupportsCursorPaginationAndMapsErrors() throws Exception {
+        UUID viewerId = UUID.randomUUID();
+        var defaultPage = new StreamViewerPageResponse(
+                List.of(new StreamViewerPageResponse.ViewerItem(
+                        viewerId, "Alice", "alice", "https://cdn.example.com/a.jpg")),
+                "48",
+                true);
+        when(viewerListService.list(session, owner, "0", 50)).thenReturn(defaultPage);
+
+        mvc.perform(get("/api/streams/" + session + "/viewers").with(ownerWithPermissions("STREAM_VIEW_OWN")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.code").value(1000))
+                .andExpect(jsonPath("$.result.items[0].userId").value(viewerId.toString()))
+                .andExpect(jsonPath("$.result.items[0].displayName").value("Alice"))
+                .andExpect(jsonPath("$.result.items[0].username").value("alice"))
+                .andExpect(jsonPath("$.result.items[0].avatarUrl").value("https://cdn.example.com/a.jpg"))
+                .andExpect(jsonPath("$.result.nextCursor").value("48"))
+                .andExpect(jsonPath("$.result.hasMore").value(true));
+
+        var customPage = new StreamViewerPageResponse(List.of(), null, false);
+        when(viewerListService.list(session, owner, "48", 25)).thenReturn(customPage);
+        mvc.perform(get("/api/streams/" + session + "/viewers")
+                        .param("cursor", "48")
+                        .param("size", "25")
+                        .with(ownerWithPermissions("STREAM_VIEW_OWN")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.result.items").isEmpty())
+                .andExpect(jsonPath("$.result.nextCursor").isEmpty())
+                .andExpect(jsonPath("$.result.hasMore").value(false));
+
+        for (var error :
+                List.of(
+                        ErrorCode.STREAM_REQUEST_INVALID,
+                        ErrorCode.STREAM_SESSION_NOT_OWNED,
+                        ErrorCode.STREAM_SESSION_NOT_FOUND,
+                        ErrorCode.VIEWER_PRESENCE_UNAVAILABLE,
+                        ErrorCode.STREAM_DATA_UNAVAILABLE)) {
+            doThrow(new AppException(error)).when(viewerListService).list(session, owner, "0", 50);
+            mvc.perform(get("/api/streams/" + session + "/viewers")
+                            .with(ownerWithPermissions("STREAM_VIEW_OWN")))
                     .andExpect(status().is(error.getHttpStatus().value()))
                     .andExpect(jsonPath("$.code").value(error.getCode()));
         }

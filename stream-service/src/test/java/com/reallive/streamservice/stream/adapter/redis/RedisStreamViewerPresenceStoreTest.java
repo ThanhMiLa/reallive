@@ -21,8 +21,10 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -342,6 +344,60 @@ class RedisStreamViewerPresenceStoreTest {
         when(unavailable.opsForHash()).thenThrow(new RedisConnectionFailureException("offline"));
 
         assertThatThrownBy(() -> new RedisStreamViewerPresenceStore(unavailable, clock).readers(sessionId))
+                .isInstanceOfSatisfying(AppException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VIEWER_PRESENCE_UNAVAILABLE));
+    }
+
+    @Test
+    void scanViewersPaginatesAcrossCursorForLargeViewerSet() {
+        activate(sessionId);
+        ViewerScanPage emptyActive = store.scanViewers(sessionId, "0", 50);
+        assertThat(emptyActive.status()).isEqualTo(ViewerScanPage.Status.ACTIVE);
+        assertThat(emptyActive.nextCursor()).isEqualTo("0");
+        assertThat(emptyActive.viewerIds()).isEmpty();
+
+        Set<UUID> expected = new HashSet<>();
+        for (int index = 0; index < 160; index++) {
+            UUID viewer = UUID.randomUUID();
+            expected.add(viewer);
+            store.join(sessionId, viewer, UUID.randomUUID());
+        }
+
+        Set<UUID> scanned = new HashSet<>();
+        String cursor = "0";
+        int pages = 0;
+        do {
+            ViewerScanPage page = store.scanViewers(sessionId, cursor, 20);
+            assertThat(page.status()).isEqualTo(ViewerScanPage.Status.ACTIVE);
+            scanned.addAll(page.viewerIds());
+            cursor = page.nextCursor();
+            pages++;
+            assertThat(pages).isLessThan(100);
+        } while (!"0".equals(cursor));
+
+        assertThat(pages).isGreaterThan(1);
+        assertThat(scanned).containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    @Test
+    void scanViewersReflectsRecoveringClosedAndUnavailableStates() {
+        assertThat(store.scanViewers(sessionId, "0", 50)).isEqualTo(ViewerScanPage.unavailable());
+
+        store.join(sessionId, userId, UUID.randomUUID());
+        assertThat(store.scanViewers(sessionId, "0", 50)).isEqualTo(ViewerScanPage.unavailable());
+
+        store.close(sessionId);
+        assertThat(store.scanViewers(sessionId, "0", 50)).isEqualTo(ViewerScanPage.closed());
+
+        assertThatThrownBy(() -> store.scanViewers(sessionId, "0", 0))
+                .isInstanceOfSatisfying(AppException.class,
+                        exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.STREAM_REQUEST_INVALID));
+
+        StringRedisTemplate unavailable = mock(StringRedisTemplate.class);
+        when(unavailable.execute(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.<Object[]>any()))
+                .thenThrow(new RedisConnectionFailureException("offline"));
+        assertThatThrownBy(() -> new RedisStreamViewerPresenceStore(unavailable, clock).scanViewers(sessionId, "0", 50))
                 .isInstanceOfSatisfying(AppException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.VIEWER_PRESENCE_UNAVAILABLE));
     }
