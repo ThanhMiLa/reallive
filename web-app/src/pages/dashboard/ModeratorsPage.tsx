@@ -368,20 +368,33 @@ function ModeratorList({ actorId, channel }: { actorId: string; channel: OwnChan
       {content.length === 0 ? (
         <ModeratorPageState message="No moderators yet." />
       ) : (
-        <ul aria-label="Channel moderators" className="divide-y divide-brand-border rounded-xl border border-brand-border bg-brand-card">
-          {content.map((item) => (
-            <li key={item.userId} className="grid items-center gap-x-3 gap-y-2 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)_auto]">
-              <Profile profile={item} />
-              <p className="text-xs text-gray-400">Assigned <time dateTime={item.assignedAt}>
-                {new Date(item.assignedAt).toLocaleDateString()}
-              </time></p>
-              <Button variant="secondary" size="sm" className={`justify-self-start ${focusRing}`}
-                aria-label={`Remove ${profileName(item)}`} onClick={() => openDialog(item)}>
-                Remove
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-hidden rounded-xl border border-brand-border bg-brand-card">
+          <div
+            aria-hidden="true"
+            className="hidden border-b border-brand-border bg-[#0b0b0f] px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)] md:items-center md:gap-4"
+          >
+            <span>User</span>
+            <span>Assigned</span>
+            <span className="text-right">Action</span>
+          </div>
+          <ul aria-label="Channel moderators" className="divide-y divide-brand-border">
+            {content.map((item) => (
+              <li key={item.userId} className="grid min-w-0 grid-cols-1 gap-3 p-4 transition-colors hover:bg-[#101014]/60 md:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)] md:items-center md:gap-4">
+                <Profile profile={item} />
+                <div className="flex items-center justify-between gap-2 text-xs text-gray-300 md:block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 md:hidden">Assigned</span>
+                  <time dateTime={item.assignedAt}>{new Date(item.assignedAt).toLocaleDateString()}</time>
+                </div>
+                <div className="border-t border-brand-border pt-3 md:border-t-0 md:pt-0 md:text-right">
+                  <Button variant="secondary" size="sm" className={`w-full md:w-auto ${focusRing}`}
+                    aria-label={`Remove ${profileName(item)}`} onClick={() => openDialog(item)}>
+                    Remove
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {totalPages > 1 && (
         <nav aria-label="Moderators pagination" className="flex flex-wrap items-center justify-end gap-3">

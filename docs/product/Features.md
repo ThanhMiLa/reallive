@@ -34,12 +34,9 @@
 - Handle Unexpected Disconnect  ✅
 - Notify Email Followers When Stream Starts
 - Set thumbnail  ✅
-- Ban/Unban User Watch Livestream ✅
-- View user list watching livestream 
 
 ## V - Chat Realtime
 - Send Message ✅
-- Ban/Unban User From Chat ✅
 
 ## VI - Donate / Coin / Payment
 - Create Wallet ✅
@@ -60,7 +57,9 @@
 - Report Stream
 - Review Report
 - Suspend Streaming Permission
-- Ban Account
+- Ban Account all platform
+- Ban/Unban User From Chat ✅
+- Ban/Unban User Watch Livestream ✅
 
 ## VIII - VOD / Recorded Stream
 - Save Recording
@@ -70,7 +69,7 @@
 - Change VOD Visibility
 - Generate Thumbnail
 
-## IX - Discovery / Search
+## IX - Discovery / Search / Browse
 - Live Stream List ✅
 - Channel List ✅
 - Category List ✅
