@@ -181,6 +181,7 @@ vi.mock('@/api/channel-moderation.api', async (importOriginal) => {
     ...actual,
     channelModerationApi: {
       getModerationContext: mocks.getModerationContext,
+      getModeratorRoster: async () => ({ content: [], page: 0, size: 50, totalElements: 0, totalPages: 0 }),
       getTargetBanState: mocks.getTargetBanState,
       banUser: mocks.banUser,
       unbanUser: mocks.unbanUser,

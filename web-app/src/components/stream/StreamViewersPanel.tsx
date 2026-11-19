@@ -3,6 +3,7 @@ import { isAxiosError } from 'axios'
 import { Loader2, RefreshCw, Users } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
+import { useChannelModeratorIds } from '@/hooks/useChannelModeration'
 import { useStreamViewers } from '@/hooks/useStreamViewers'
 import { useAuthStore } from '@/stores/auth.store'
 import type { StreamStatus } from '@/types/stream.types'
@@ -10,13 +11,15 @@ import type { StreamStatus } from '@/types/stream.types'
 interface Props {
   userId: string
   sessionId?: string
+  channelId?: string
   status?: StreamStatus
   currentViewerCount: number | null
   lastEndedAt: string | null
 }
 
-export function StreamViewersPanel({ userId, sessionId, status, currentViewerCount, lastEndedAt }: Props) {
+export function StreamViewersPanel({ userId, sessionId, channelId, status, currentViewerCount, lastEndedAt }: Props) {
   const active = status === 'LIVE' || status === 'RECONNECTING'
+  const moderators = useChannelModeratorIds(userId, active && sessionId ? channelId : undefined)
   const {
     data, items, isPending, isError, error, isSyncing, isFetching,
     hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, refresh,
@@ -125,16 +128,18 @@ export function StreamViewersPanel({ userId, sessionId, status, currentViewerCou
           </div>
         ) : (
           <>
-            <ul aria-label="Viewers" className="divide-y divide-brand-border">
-              {items.map((viewer) => (
-                <li key={viewer.userId} className="flex min-w-0 items-center gap-2.5 px-3 py-2">
-                  <Avatar url={viewer.avatarUrl} name={viewer.displayName} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-gray-100">{viewer.displayName}</p>
-                    {viewer.username.trim() && <p className="truncate text-[11px] text-gray-400">@{viewer.username}</p>}
-                  </div>
-                </li>
-              ))}
+            <ul aria-label="Viewers">
+              {items.map((viewer) => {
+                const isModerator = moderators.isSuccess && moderators.data.has(viewer.userId)
+                const nameColor = isModerator ? 'text-purple-400 text-shadow-moderator' : 'text-gray-100'
+                return (
+                  <li key={viewer.userId} className="flex min-w-0 items-center gap-2.5 px-3 py-2">
+                    <Avatar url={viewer.avatarUrl} name={viewer.displayName} />
+                    <p className={`min-w-0 flex-1 truncate text-xs font-medium ${nameColor}`}>{viewer.displayName}</p>
+                    {isModerator && <span className="sr-only">Channel moderator</span>}
+                  </li>
+                )
+              })}
             </ul>
             {isFetchingNextPage ? (
               <div role="status" className="flex items-center justify-center gap-2 px-3 py-2 text-xs text-gray-400">

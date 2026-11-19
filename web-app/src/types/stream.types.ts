@@ -118,7 +118,6 @@ export interface StreamViewerDetails {
 export interface StreamViewerItem {
   userId: string
   displayName: string
-  username: string
   avatarUrl: string | null
 }
 

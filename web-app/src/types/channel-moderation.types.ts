@@ -1,6 +1,5 @@
 export interface ModeratorProfile {
   userId: string
-  username: string | null
   displayName: string | null
   avatarUrl: string | null
 }
@@ -16,7 +15,7 @@ export type ModeratorEligibility =
   | 'CHANNEL_BANNED'
   | 'ACCOUNT_INACTIVE'
 
-export interface ModeratorCandidate extends Omit<ModeratorProfile, 'username' | 'displayName'> {
+export interface ModeratorCandidate extends ModeratorProfile {
   displayName: string
   eligibility: ModeratorEligibility
 }

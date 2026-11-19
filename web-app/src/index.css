@@ -22,6 +22,10 @@
   --font-outfit: var(--font-sans);
 }
 
+@utility text-shadow-moderator {
+  text-shadow: 0 0 2px #e6bcff66, 0 0 8px #a020ff99;
+}
+
 :root {
   color-scheme: dark;
 }

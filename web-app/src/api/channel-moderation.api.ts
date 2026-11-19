@@ -213,6 +213,14 @@ export const channelModerationApi = {
     return unwrapEnvelope(data)
   },
 
+  async getModeratorRoster(channelId: string, page: number, size: number, signal?: AbortSignal) {
+    const { data } = await apiClient.get<ApiResponse<PageResponse<ModeratorAssignment>>>(
+      `${channelBase(channelId)}/moderators/roster`,
+      { params: { page, size }, signal },
+    )
+    return unwrapEnvelope(data)
+  },
+
   async searchModeratorCandidates(channelId: string, displayName: string, page: number, size: number, signal: AbortSignal) {
     const { data } = await apiClient.get<ApiResponse<PageResponse<ModeratorCandidate>>>(
       `${channelBase(channelId)}/moderators/candidate`,

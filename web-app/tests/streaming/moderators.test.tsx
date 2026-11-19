@@ -10,7 +10,6 @@ import { useAuthStore } from '@/stores/auth.store'
 const base = '/channel/api/channels/own-channel/moderators'
 const profile = {
   userId: 'target',
-  username: 'Exact+Name',
   displayName: 'Alex',
   avatarUrl: null,
 }
@@ -157,7 +156,7 @@ describe('Moderators dashboard', () => {
       if (config.url === `${base}/candidate`) {
         expect(config.params).toEqual({ displayName: 'Alex &', page: 0, size: 20 })
         return reply(config, page([
-          { ...profile, userId: 'another-user', username: 'OtherAlex', eligibility: 'ELIGIBLE' },
+          { ...profile, userId: 'another-user', eligibility: 'ELIGIBLE' },
           { ...profile, eligibility: 'ELIGIBLE' },
         ]))
       }
@@ -277,7 +276,7 @@ describe('Moderators dashboard', () => {
         expect(config.params.size).toBe(20)
         if (config.params.page === 1) {
           return reply(config, page(removed ? [] : [{
-            userId: 'missing-profile', username: null, displayName: null, avatarUrl: null, assignedAt,
+            userId: 'missing-profile', displayName: null, avatarUrl: null, assignedAt,
           }], 1, removed ? 1 : 2))
         }
         return reply(config, { ...page(rows, 0, removed ? 1 : 2), totalElements: removed ? 20 : 21 })

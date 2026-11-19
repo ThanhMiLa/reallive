@@ -54,14 +54,11 @@ function moderatorError(error: unknown, fallback: string) {
   return { status, code, eligibility, message }
 }
 
-function profileName({ displayName, username }: { displayName: string | null; username?: string | null }) {
-  return displayName || (username ? `@${username}` : 'Unknown user')
+function profileName({ displayName }: ModeratorProfile) {
+  return displayName || 'Unknown user'
 }
 
-function Profile({ profile, username }: {
-  profile: Omit<ModeratorProfile, 'username'>
-  username?: string | null
-}) {
+function Profile({ profile }: { profile: ModeratorProfile }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   return (
     <span className="flex min-w-0 items-center gap-3">
@@ -74,11 +71,8 @@ function Profile({ profile, username }: {
         )}
       </span>
       <span className="min-w-0 wrap-anywhere">
-        <span className="block font-semibold text-white">{profileName({ displayName: profile.displayName, username })}</span>
-        {profile.displayName && username && (
-          <span className="block text-xs text-gray-400">@{username}</span>
-        )}
-        {!profile.displayName && !username && (
+        <span className="block font-semibold text-white">{profileName(profile)}</span>
+        {!profile.displayName && (
           <span className="block text-xs text-gray-400">{profile.userId}</span>
         )}
       </span>
@@ -306,7 +300,7 @@ function ModeratorList({ actorId, channel }: { actorId: string; channel: OwnChan
   const [dialog, setDialog] = useState<'add' | ModeratorAssignment | null>(null)
   const [notice, setNotice] = useState('')
   const addButtonRef = useRef<HTMLButtonElement>(null)
-  const listKey = [...channelModerationKeys.all, 'moderators', actorId, channelId] as const
+  const listKey = channelModerationKeys.moderatorsByChannel(actorId, channelId)
   const list = useQuery({
     queryKey: [...listKey, page, PAGE_SIZE],
     queryFn: ({ signal }) => channelModerationApi.getModerators(channelId, page, PAGE_SIZE, signal),
@@ -377,7 +371,7 @@ function ModeratorList({ actorId, channel }: { actorId: string; channel: OwnChan
         <ul aria-label="Channel moderators" className="divide-y divide-brand-border rounded-xl border border-brand-border bg-brand-card">
           {content.map((item) => (
             <li key={item.userId} className="grid items-center gap-x-3 gap-y-2 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)_auto]">
-              <Profile profile={item} username={item.username} />
+              <Profile profile={item} />
               <p className="text-xs text-gray-400">Assigned <time dateTime={item.assignedAt}>
                 {new Date(item.assignedAt).toLocaleDateString()}
               </time></p>

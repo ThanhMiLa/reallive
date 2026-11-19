@@ -283,6 +283,7 @@ function Dashboard({ userId }: { userId: string }) {
               key={id ?? ''}
               userId={userId}
               sessionId={id}
+              channelId={channelId}
               status={status}
               currentViewerCount={session?.currentViewerCount ?? null}
               lastEndedAt={lastEndedAt}

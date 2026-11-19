@@ -11,13 +11,13 @@ vi.mock('@/api/stream.api', () => ({ streamApi: { viewers: vi.fn() } }))
 
 const viewers = vi.mocked(streamApi.viewers)
 const alice: StreamViewerItem = {
-  userId: 'alice-id', displayName: 'Alice', username: 'alice', avatarUrl: 'https://cdn.example.com/alice.jpg',
+  userId: 'alice-id', displayName: 'Alice', avatarUrl: 'https://cdn.example.com/alice.jpg',
 }
 const bob: StreamViewerItem = {
-  userId: 'bob-id', displayName: 'bob', username: '   ', avatarUrl: null,
+  userId: 'bob-id', displayName: 'bob', avatarUrl: null,
 }
 const carol: StreamViewerItem = {
-  userId: 'carol-id', displayName: 'Carol', username: 'carol', avatarUrl: null,
+  userId: 'carol-id', displayName: 'Carol', avatarUrl: null,
 }
 const sessionId = 'stream-session'
 const unavailable = (status: number, code: number) => ({ isAxiosError: true, response: { status, data: { code } } })
@@ -84,7 +84,7 @@ it('loads live viewers and uses initials for missing or broken avatars', async (
   const aliceRow = (await screen.findByText('Alice')).closest('li')!
   const bobRow = screen.getByText('bob').closest('li')!
   expect(viewers).toHaveBeenLastCalledWith(sessionId, { cursor: '0', size: 50 }, expect.any(AbortSignal))
-  expect(within(aliceRow).getByText('@alice')).toBeTruthy()
+  expect(within(aliceRow).queryByText(/^@/)).toBeNull()
   expect(within(bobRow).getByText('B').getAttribute('aria-hidden')).toBe('true')
   expect(within(bobRow).queryByText(/^@/)).toBeNull()
 

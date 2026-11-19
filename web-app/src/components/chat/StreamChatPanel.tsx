@@ -7,13 +7,13 @@ import {
   type ChannelModerationTarget,
 } from './ChannelUserBanMenu'
 import { isChatBannedError, useStreamChat } from './useStreamChat'
-import { useChannelModerationContext } from '@/hooks/useChannelModeration'
+import { useChannelModerationContext, useChannelModeratorIds } from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
 
 export function StreamChatPanel({ sessionId, channelId, status, streamerUserId, onAccessError, embedded = false }: {
   sessionId: string; channelId?: string; status?: string; streamerUserId?: string; onAccessError?: (error: unknown) => void; embedded?: boolean
 }) {
-  const viewerId = useAuthStore(state => state.user?.userId ?? '')
+  const viewerId = useAuthStore(state => state.isAuthenticated ? state.user?.userId ?? '' : '')
   const active = status === 'LIVE' || status === 'RECONNECTING'
   // A keyed child discards transient compose/connection state on room or lifecycle changes.
   return <ChatRoom key={`${viewerId}:${sessionId}:${active}`} sessionId={sessionId} channelId={channelId} viewerId={viewerId} streamerUserId={streamerUserId} status={status} active={active} onAccessError={onAccessError} embedded={embedded} />
@@ -30,6 +30,7 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
     (moderationContext.allowedBanTypes.length > 0 || moderationContext.allowedUnbanTypes.length > 0),
   )
   const ownerId = moderationContext?.ownerUserId || streamerUserId || ''
+  const moderators = useChannelModeratorIds(viewerId, active ? channelId : undefined)
   const menuScope = `${viewerId}:${sessionId}:${channelId ?? ''}:${canOpenBanMenu}`
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -195,20 +196,18 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map(item => {
               const message = chat.messages[item.index]
-              const isCurrentUser = Boolean(viewerId) && message.userId === viewerId
               const isStreamer = Boolean(ownerId) && message.userId === ownerId
+              const isModerator = !isStreamer && moderators.isSuccess && moderators.data.has(message.userId)
               const canModerateSender = canOpenBanMenu && message.userId !== ownerId
               const isMenuOpenForUser =
                 activeMenu?.target.userId === message.userId
-              const borderClass = isStreamer
-                ? 'border-[#ff2b42]'
-                : isCurrentUser
-                  ? 'border-[#0084ff]'
-                  : 'border-transparent'
-              const wrapperClass = `flex items-start gap-2 rounded-lg border px-2.5 py-2 ${borderClass}`
-              const nameColor = isStreamer ? 'text-green-400' : 'text-white'
+              const nameColor = isStreamer
+                ? 'text-red-400 text-shadow-[0_0_2px_#ff818b66,0_0_8px_#ff174499]'
+                : isModerator
+                  ? 'text-purple-400 text-shadow-moderator'
+                  : 'text-white'
               return <div key={message.id} data-index={item.index} ref={virtualizer.measureElement} className="absolute top-0 left-0 w-full px-3 py-1" style={{ transform: `translateY(${item.start}px)` }}>
-                <div className={wrapperClass}>
+                <div className="flex items-start gap-2 px-2.5 py-2">
                   {canModerateSender ? (
                     <button
                       type="button"
@@ -240,8 +239,17 @@ function ChatRoom({ sessionId, channelId, viewerId, streamerUserId, status, acti
                   ) : (
                     <Avatar url={message.sender.avatarUrl} name={message.sender.displayName} />
                   )}
-                  <div className="min-w-0 flex-1"><div className="flex items-baseline gap-2"><span className={`truncate text-xs font-semibold ${nameColor}`}>{message.sender.displayName}</span><time dateTime={message.createdAt} className="shrink-0 text-[10px] text-gray-500">{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>
-                    <p className="select-text text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-200">{message.content}</p></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className={`truncate text-xs font-semibold ${nameColor}`}>{message.sender.displayName}</span>
+                      {isStreamer && <span className="sr-only">Channel owner</span>}
+                      {isModerator && <span className="sr-only">Channel moderator</span>}
+                      <time dateTime={message.createdAt} className="shrink-0 text-[10px] text-gray-500">
+                        {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </time>
+                    </div>
+                    <p className="select-text text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-200">{message.content}</p>
+                  </div>
                 </div>
               </div>
             })}

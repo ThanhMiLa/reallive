@@ -19,6 +19,8 @@ export const channelModerationKeys = {
     ['channel-moderation', 'own-channel', actorId] as const,
   context: (actorId: string, channelId: string) =>
     ['channel-moderation', 'context', actorId, channelId] as const,
+  moderatorsByChannel: (actorId: string, channelId: string) =>
+    ['channel-moderation', 'moderators', actorId, channelId] as const,
   targetBan: (actorId: string, channelId: string, targetUserId: string) =>
     ['channel-moderation', 'target-ban', actorId, channelId, targetUserId] as const,
   bansByChannel: (actorId: string, channelId: string) =>
@@ -109,6 +111,27 @@ export function useChannelModerationContext(
     enabled: Boolean(actorId && safeChannelId),
     retry: false,
     refetchOnWindowFocus: false,
+  })
+}
+
+export function useChannelModeratorIds(actorId: string, channelId?: string) {
+  const safeChannelId = channelId?.trim() || ''
+  return useQuery({
+    queryKey: [...channelModerationKeys.moderatorsByChannel(actorId, safeChannelId), 'roster'],
+    enabled: Boolean(actorId && safeChannelId),
+    retry: false,
+    refetchOnWindowFocus: true,
+    queryFn: async ({ signal }) => {
+      const ids = new Set<string>()
+      const size = 50
+      let totalPages = 1
+      for (let page = 0; page < totalPages; page += 1) {
+        const result = await channelModerationApi.getModeratorRoster(safeChannelId, page, size, signal)
+        for (const moderator of result.content) ids.add(moderator.userId)
+        totalPages = result.totalPages
+      }
+      return ids
+    },
   })
 }
 

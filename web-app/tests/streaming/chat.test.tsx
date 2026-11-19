@@ -6,8 +6,9 @@ import { mergeChatMessage, type ChatWindow } from '@/components/chat/chat-cache'
 import type { ChatMessage, ChatPage } from '@/types/chat.types'
 
 const SESSION = '462c912c-ee66-4477-9852-bed13d377297'
+const CHANNEL = '10000000-0000-4000-8000-000000000010'
 const USER = '10000000-0000-4000-8000-000000000001'
-const mocks = vi.hoisted(() => ({ history: vi.fn(), refresh: vi.fn(), scrollToIndex: vi.fn(), sockets: [] as FakeSocket[], canSend: true, failSend: false }))
+const mocks = vi.hoisted(() => ({ history: vi.fn(), moderatorRoster: vi.fn(), refresh: vi.fn(), scrollToIndex: vi.fn(), sockets: [] as FakeSocket[], canSend: true, failSend: false }))
 class FakeSocket {
   connected = false
   handlers = new Map<string, ((...args: unknown[]) => void)[]>()
@@ -34,6 +35,12 @@ class FakeSocket {
   }
 }
 vi.mock('socket.io-client', () => ({ io: () => { const socket = new FakeSocket(); mocks.sockets.push(socket); return socket } }))
+vi.mock('@/api/channel-moderation.api', () => ({
+  channelModerationApi: {
+    getModerationContext: async () => ({ allowedBanTypes: [], allowedUnbanTypes: [] }),
+    getModeratorRoster: mocks.moderatorRoster,
+  },
+}))
 vi.mock('@/api/chat.api', () => ({ chatApi: { history: mocks.history } }))
 vi.mock('@/api/client', () => ({ refreshAccessToken: mocks.refresh }))
 vi.mock('@/stores/auth.store', () => ({ useAuthStore: (selector: (state: unknown) => unknown) => selector({ isAuthenticated: true, user: { userId: USER } }) }))
@@ -51,12 +58,12 @@ function page(items: ChatMessage[], hasOlder = false): ChatPage {
   return { items, hasOlder, hasNewer: false, olderCursor: items[0]?.cursor ?? null,
     newerCursor: items.at(-1)?.cursor ?? 'zero', watermark: items.at(-1)?.cursor ?? 'zero' }
 }
-function mount(status = 'LIVE', streamerUserId?: string) {
+function mount(status = 'LIVE', streamerUserId?: string, channelId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  const view = render(<QueryClientProvider client={client}><StreamChatPanel sessionId={SESSION} status={status} streamerUserId={streamerUserId} /></QueryClientProvider>)
+  const view = render(<QueryClientProvider client={client}><StreamChatPanel sessionId={SESSION} channelId={channelId} status={status} streamerUserId={streamerUserId} /></QueryClientProvider>)
   return { ...view, client }
 }
-beforeEach(() => { mocks.history.mockReset(); mocks.refresh.mockReset(); mocks.scrollToIndex.mockReset(); mocks.sockets = []; mocks.canSend = true; mocks.failSend = false; mocks.history.mockResolvedValue(page([])) })
+beforeEach(() => { mocks.moderatorRoster.mockReset(); mocks.history.mockReset(); mocks.refresh.mockReset(); mocks.scrollToIndex.mockReset(); mocks.sockets = []; mocks.canSend = true; mocks.failSend = false; mocks.history.mockResolvedValue(page([])) })
 afterEach(cleanup)
 
 describe('stream chat', () => {
@@ -120,7 +127,7 @@ describe('stream chat', () => {
     await act(async () => mocks.sockets[0].trigger('chat:message', message(3)))
     expect(screen.getAllByText('Message 3')).toHaveLength(1)
   })
-  it('adds a Messenger blue border for the current viewer while keeping names white', async () => {
+  it('shows regular viewer names in white, including the current account', async () => {
     const mine: ChatMessage = { ...message(1), sender: { displayName: 'Current User', avatarUrl: null } }
     const other: ChatMessage = {
       ...message(2),
@@ -131,40 +138,45 @@ describe('stream chat', () => {
     mount()
     const ownName = await screen.findByText('Current User')
     const otherName = screen.getByText('Other Viewer')
-    expect(ownName.className).toContain('text-white')
-    expect(ownName.closest('[data-index]')?.firstElementChild?.className).toContain('border-[#0084ff]')
-    expect(otherName.className).toContain('text-white')
-    expect(otherName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#0084ff]')
+    expect(ownName.classList.contains('text-white')).toBe(true)
+    expect(otherName.classList.contains('text-white')).toBe(true)
+    expect(ownName.closest('[data-index]')?.firstElementChild?.classList.contains('border')).toBe(false)
   })
-  it('adds a red border and green name when the stream owner comments', async () => {
-    const streamerId = '10000000-0000-4000-8000-000000000003'
-    const ownComment: ChatMessage = { ...message(1), sender: { displayName: 'Current User', avatarUrl: null } }
-    const otherViewer: ChatMessage = {
-      ...message(2),
-      userId: '10000000-0000-4000-8000-000000000002',
-      sender: { displayName: 'Other Viewer', avatarUrl: null },
-    }
+  it('shows the stream owner in neon red even for their own messages', async () => {
     const streamerComment: ChatMessage = {
-      ...message(3),
-      userId: streamerId,
+      ...message(1),
       sender: { displayName: 'Channel Owner', avatarUrl: null },
     }
-    mocks.history.mockResolvedValue(page([ownComment, otherViewer, streamerComment]))
-    mount('LIVE', streamerId)
+    mocks.history.mockResolvedValue(page([streamerComment]))
+    mount('LIVE', USER)
     const streamerName = await screen.findByText('Channel Owner')
-    const ownName = screen.getByText('Current User')
-    const otherName = screen.getByText('Other Viewer')
-    expect(streamerName.className).toContain('text-green-400')
-    expect(streamerName.closest('[data-index]')?.firstElementChild?.className).toContain('border-[#ff2b42]')
-    expect(streamerName.closest('[data-index]')?.firstElementChild?.className).not.toContain('bg-[#ff2b42]')
-    expect(ownName.className).toContain('text-white')
-    expect(ownName.closest('[data-index]')?.firstElementChild?.className).toContain('border-[#0084ff]')
-    expect(ownName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#ff2b42]')
-    expect(otherName.className).toContain('text-white')
-    expect(otherName.closest('[data-index]')?.firstElementChild?.className).toContain('border-transparent')
-    expect(otherName.closest('[data-index]')?.firstElementChild?.className).toContain('px-2.5 py-2')
-    expect(otherName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#ff2b42]')
-    expect(otherName.closest('[data-index]')?.firstElementChild?.className).not.toContain('border-[#0084ff]')
+    expect(streamerName.classList.contains('text-red-400')).toBe(true)
+    expect(streamerName.className).toContain('text-shadow-')
+    expect(streamerName.classList.contains('text-white')).toBe(false)
+    expect(streamerName.closest('[data-index]')?.firstElementChild?.classList.contains('border')).toBe(false)
+  })
+  it('shows moderator names in neon purple on the watch page, including the current account', async () => {
+    const moderatorId = '10000000-0000-4000-8000-000000000003'
+    const streamerId = '10000000-0000-4000-8000-000000000004'
+    mocks.moderatorRoster.mockResolvedValue({
+      content: [USER, moderatorId].map(userId => ({ userId })),
+      page: 0, size: 50, totalElements: 2, totalPages: 1,
+    })
+    mocks.history.mockResolvedValue(page([
+      { ...message(1), sender: { displayName: 'Current Moderator', avatarUrl: null } },
+      { ...message(2), userId: moderatorId, sender: { displayName: 'Other Moderator', avatarUrl: null } },
+    ]))
+
+    mount('LIVE', streamerId, CHANNEL)
+    await waitFor(() => {
+      for (const displayName of ['Current Moderator', 'Other Moderator']) {
+        const name = screen.getByText(displayName)
+        expect(name.classList.contains('text-purple-400')).toBe(true)
+        expect(name.className).toContain('text-shadow-')
+        expect(name.classList.contains('text-white')).toBe(false)
+      }
+    })
+    expect(mocks.moderatorRoster).toHaveBeenCalledWith(CHANNEL, 0, 50, expect.any(AbortSignal))
   })
   it('keeps focus in the chat input after sending a message', async () => {
     mount()

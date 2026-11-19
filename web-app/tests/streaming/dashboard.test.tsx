@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { StreamerDashboardLayout } from '@/components/layout/StreamerDashboardLayout'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { StreamUrlKeyPage } from '@/pages/dashboard/StreamUrlKeyPage'
+import { channelModerationKeys } from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ChatMessage, ChatPage } from '@/types/chat.types'
 import type {
@@ -34,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   viewers: vi.fn(),
   access: vi.fn(),
   categories: vi.fn(),
+  getModeratorRoster: vi.fn(),
   chatHistory: vi.fn(),
   toast: vi.fn(),
   hls: [] as HlsStub[],
@@ -102,6 +104,13 @@ class FakeSocket {
 
 vi.mock('@/api/stream.api', () => ({ streamApi: mocks }))
 vi.mock('@/api/channel.api', () => ({ channelApi: { getCategories: mocks.categories } }))
+vi.mock('@/api/channel-moderation.api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/channel-moderation.api')>()
+  return {
+    ...actual,
+    channelModerationApi: { ...actual.channelModerationApi, getModeratorRoster: mocks.getModeratorRoster },
+  }
+})
 vi.mock('@/api/chat.api', () => ({ chatApi: { history: mocks.chatHistory } }))
 vi.mock('socket.io-client', () => ({
   io: () => {
@@ -219,6 +228,7 @@ function mountDashboardRoutes(initialEntries = ['/dashboard']) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.getModeratorRoster.mockReset().mockResolvedValue({ content: [], page: 0, size: 50, totalElements: 0, totalPages: 0 })
   mocks.hls.length = 0
   mocks.sockets.length = 0
   mocks.chatHistory.mockResolvedValue({
@@ -454,10 +464,11 @@ describe('Stream Manager (persistent stream key)', () => {
     expect(screen.queryByLabelText('Stream preview')).toBeNull()
   })
 
-  it('shows offline chat guidance without a session and opens live chat for the streamer', async () => {
+  it('shares channel moderator colors between chat and the active viewer list', async () => {
     mocks.current.mockResolvedValue(null)
     mount()
     await screen.findByText('Chat opens automatically when you start streaming in OBS.')
+    expect(mocks.getModeratorRoster).not.toHaveBeenCalled()
     cleanup()
 
     const live: StreamMetadata = {
@@ -467,6 +478,23 @@ describe('Stream Manager (persistent stream key)', () => {
     }
     mocks.current.mockResolvedValue(live)
     mocks.metadata.mockResolvedValue(live)
+    mocks.viewers.mockResolvedValue({
+      items: [
+        { userId: 'viewer-1', displayName: 'Viewer One', avatarUrl: null },
+        { userId: 'viewer-2', displayName: 'Viewer Two', avatarUrl: null },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    })
+    const assignments = Array.from({ length: 51 }, (_, index) => ({
+      userId: index === 50 ? 'viewer-1' : `other-user-${index}`,
+      displayName: null,
+      avatarUrl: null,
+      assignedAt: '2026-10-30T00:00:00Z',
+    }))
+    mocks.getModeratorRoster
+      .mockResolvedValueOnce({ content: assignments.slice(0, 50), page: 0, size: 50, totalElements: 51, totalPages: 2 })
+      .mockResolvedValueOnce({ content: assignments.slice(50), page: 1, size: 50, totalElements: 51, totalPages: 2 })
     mocks.access.mockResolvedValue({
       sessionId,
       playbackUrl: 'https://cdn.example/live/playlist.m3u8',
@@ -499,7 +527,25 @@ describe('Stream Manager (persistent stream key)', () => {
     const chatAside = await screen.findByLabelText('Stream chat')
     expect(within(chatAside).getByText('Stream Chat')).toBeTruthy()
     expect(await within(chatAside).findByText('Hi streamer!')).toBeTruthy()
-    expect(within(chatAside).getByText('Viewer One').className).toContain('text-white')
+    await within(chatAside).findByText('Channel moderator')
+    const moderatorName = within(chatAside).getByText('Viewer One')
+    expect(moderatorName.classList.contains('text-purple-400')).toBe(true)
+    const viewersPanel = within(screen.getByRole('region', { name: 'Active viewers' }))
+    await viewersPanel.findByText('Channel moderator')
+    const moderatorViewer = viewersPanel.getByText('Viewer One')
+    expect(moderatorViewer.classList.contains('text-purple-400')).toBe(true)
+    expect(moderatorViewer.classList.contains('text-shadow-moderator')).toBe(true)
+    expect(viewersPanel.getByText('Viewer Two').classList.contains('text-gray-100')).toBe(true)
+    expect(mocks.getModeratorRoster).toHaveBeenCalledTimes(2)
+    expect(mocks.getModeratorRoster).toHaveBeenNthCalledWith(2, channelId, 1, 50, expect.any(AbortSignal))
+
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: channelModerationKeys.moderatorsByChannel('owner', channelId) })
+    })
+    await waitFor(() => {
+      expect(moderatorName.classList.contains('text-white')).toBe(true)
+      expect(moderatorViewer.classList.contains('text-gray-100')).toBe(true)
+    })
 
     const input = within(chatAside).getByLabelText('Send a message') as HTMLInputElement
     input.focus()
@@ -508,8 +554,8 @@ describe('Stream Manager (persistent stream key)', () => {
 
     await within(chatAside).findByText('Welcome everyone!')
     const ownerName = within(chatAside).getByText('Owner')
-    expect(ownerName.className).toContain('text-green-400')
-    expect(ownerName.closest('.border-\\[\\#ff2b42\\]')).toBeTruthy()
+    expect(ownerName.classList.contains('text-red-400')).toBe(true)
+    expect(ownerName.classList.contains('text-white')).toBe(false)
     expect(document.activeElement).toBe(input)
   })
 })
