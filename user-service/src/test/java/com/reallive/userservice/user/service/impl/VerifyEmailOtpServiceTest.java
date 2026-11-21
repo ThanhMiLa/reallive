@@ -5,7 +5,7 @@ import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
+import com.reallive.userservice.user.adapter.kafka.KafkaEmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.dto.request.VerifyEmailOtpRequest;
 import com.reallive.userservice.user.dto.response.EmailVerificationOtpCheckResult;
@@ -35,7 +35,7 @@ class VerifyEmailOtpServiceTest {
 
     private final UserRepository repository = mock(UserRepository.class);
     private final EmailVerificationOtpStore store = mock(EmailVerificationOtpStore.class);
-    private final EmailVerificationEmailPublisher publisher = mock(EmailVerificationEmailPublisher.class);
+    private final KafkaEmailVerificationEmailPublisher publisher = mock(KafkaEmailVerificationEmailPublisher.class);
     private final EmailVerificationOtpHasher hasher = new EmailVerificationOtpHasher("verify-test-key");
     private final VerifyEmailOtpRequest request = new VerifyEmailOtpRequest("012345");
     private EmailVerificationServiceImpl service;

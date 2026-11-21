@@ -6,7 +6,7 @@ import com.reallive.userservice.auth.entity.UserStatus;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
+import com.reallive.userservice.user.adapter.kafka.KafkaEmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.util.EmailVerificationOtpHasher;
@@ -98,7 +98,7 @@ class VerifyEmailOtpIntegrationTest {
     @MockitoBean
     private CustomJwtDecoder decoder;
     @MockitoBean
-    private EmailVerificationEmailPublisher publisher;
+    private KafkaEmailVerificationEmailPublisher publisher;
 
     private MockMvc mvc;
     private UserEntity user;

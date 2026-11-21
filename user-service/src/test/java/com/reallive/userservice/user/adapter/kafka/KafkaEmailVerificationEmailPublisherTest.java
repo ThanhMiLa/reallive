@@ -41,12 +41,12 @@ class KafkaEmailVerificationEmailPublisherTest {
 
     private final KafkaTemplate<String, String> template = mock(KafkaTemplate.class);
     private final ObjectMapper mapper = JsonMapper.builder().build();
-    private KafkaEmailVerificationEmailPublisher publisher;
+    private KafkaEmailVerificationEmailPublisherImpl publisher;
     private EmailVerificationRequestedMessage message;
 
     @BeforeEach
     void setUp() {
-        publisher = new KafkaEmailVerificationEmailPublisher(template, mapper);
+        publisher = new KafkaEmailVerificationEmailPublisherImpl(template, mapper);
         ReflectionTestUtils.setField(publisher, "topic", "test.email.requests");
         message = EmailVerificationRequestedMessage.builder().schemaVersion(1)
                 .userId(UUID.randomUUID()).otp("012345").recipientEmail("test@example.com").build();
@@ -86,7 +86,7 @@ class KafkaEmailVerificationEmailPublisherTest {
     void serializationFailureIsKnownNotToHavePublished() {
         ObjectMapper failingMapper = mock(ObjectMapper.class);
         when(failingMapper.writeValueAsString(any())).thenThrow(new IllegalArgumentException("test serialization"));
-        publisher = new KafkaEmailVerificationEmailPublisher(template, failingMapper);
+        publisher = new KafkaEmailVerificationEmailPublisherImpl(template, failingMapper);
         ReflectionTestUtils.setField(publisher, "topic", "test.email.requests");
         AppException exception = assertThrows(AppException.class, () -> publisher.publish(message));
         assertEquals(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED, exception.getErrorCode());

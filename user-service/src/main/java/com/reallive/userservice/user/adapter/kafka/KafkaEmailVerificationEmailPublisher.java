@@ -3,62 +3,19 @@ package com.reallive.userservice.user.adapter.kafka;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
-import jakarta.annotation.PostConstruct;
-import lombok.AccessLevel;
-import lombok.RequiredArgsConstructor;
-import lombok.experimental.FieldDefaults;
-import lombok.experimental.NonFinal;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.LoggingProducerListener;
-import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+public interface KafkaEmailVerificationEmailPublisher {
 
-@Component
-@RequiredArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class KafkaEmailVerificationEmailPublisher implements EmailVerificationEmailPublisher {
-
-    KafkaTemplate<String, String> kafkaTemplate;
-    ObjectMapper objectMapper;
-
-    @NonFinal
-    @Value("${email-verification.topic:notification.email-verification.requested.v1}")
-    String topic;
-
-    /** Prevents the default producer error listener from logging OTP message contents. */
-    @PostConstruct
-    void configureProducerLogging() {
-        LoggingProducerListener<String, String> listener = new LoggingProducerListener<>();
-        listener.setIncludeContents(false);
-        kafkaTemplate.setProducerListener(listener);
-    }
-
-    @Override
-    public void publish(EmailVerificationRequestedMessage message) {
-        String payload = serialize(message);
-        try {
-            kafkaTemplate.send(topic, message.getUserId().toString(), payload).get(20, TimeUnit.SECONDS);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN);
-        } catch (ExecutionException | TimeoutException | RuntimeException exception) {
-            throw new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_UNCERTAIN);
-        }
-    }
-
-    private String serialize(EmailVerificationRequestedMessage message) {
-        try {
-            if (topic == null || topic.isBlank() || message == null || message.getUserId() == null) {
-                throw new IllegalArgumentException("Email publication requires a topic and user identity");
-            }
-            return objectMapper.writeValueAsString(message);
-        } catch (RuntimeException exception) {
-            throw new AppException(ErrorCode.EMAIL_VERIFICATION_PUBLISH_FAILED);
-        }
-    }
+    /**
+     * Publishes an email verification message and returns after broker acknowledgement.
+     *
+     * <p>Email delivery is handled asynchronously by Notification Service.</p>
+     *
+     * @param message the Kafka message containing the OTP and recipient information
+     * @throws AppException with {@link ErrorCode#EMAIL_VERIFICATION_PUBLISH_FAILED} if
+     *         publication fails before submission, or
+     *         {@link ErrorCode#EMAIL_VERIFICATION_PUBLISH_UNCERTAIN} if the message may
+     *         already have reached Kafka
+     */
+    void publish(EmailVerificationRequestedMessage message);
 }

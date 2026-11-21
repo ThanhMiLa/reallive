@@ -35,8 +35,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class EmailVerificationDeliveryServiceImpl implements EmailVerificationDeliveryService {
 
-    EmailNotificationHistory history;
-    SendGridClient client;
+    EmailNotificationHistory emailNotificationHistory;
+    SendGridClient sendGridClient;
     EmailDeliveryProperties properties;
     Clock emailClock;
 
@@ -44,7 +44,7 @@ public class EmailVerificationDeliveryServiceImpl implements EmailVerificationDe
     public void deliver(EmailVerificationRequestedMessage message) {
         try {
             ensureHistory(message);
-            var notification = history.claim(message);
+            var notification = emailNotificationHistory.claim(message);
             if (notification.getStatus() != EmailNotificationStatus.PROCESSING) {
                 requireCompleted(notification);
                 return;
@@ -57,11 +57,11 @@ public class EmailVerificationDeliveryServiceImpl implements EmailVerificationDe
     }
 
     private void ensureHistory(EmailVerificationRequestedMessage message) {
-        if (history.find(message.getEventId()).isEmpty()) {
+        if (emailNotificationHistory.find(message.getEventId()).isEmpty()) {
             try {
-                history.create(message);
+                emailNotificationHistory.create(message);
             } catch (DataIntegrityViolationException race) {
-                if (history.find(message.getEventId()).isEmpty()) {
+                if (emailNotificationHistory.find(message.getEventId()).isEmpty()) {
                     throw race;
                 }
             }
@@ -71,7 +71,7 @@ public class EmailVerificationDeliveryServiceImpl implements EmailVerificationDe
     private EmailNotificationEntity persistSubmission(EmailNotificationEntity notification, SendGridSubmissionResult submission) {
         for (int retry = 0; retry < 3; retry++) {
             try {
-                return history.complete(notification.getEventId(), notification.getAttemptCount(), submission);
+                return emailNotificationHistory.complete(notification.getEventId(), notification.getAttemptCount(), submission);
             } catch (DataAccessException exception) {
                 if (retry == 2) {
                     throw exception;
@@ -101,7 +101,7 @@ public class EmailVerificationDeliveryServiceImpl implements EmailVerificationDe
         var request = SendGridMailRequestBuilder.build(message, notification.getTemplateId(), properties.getSendgrid());
         var observed = new AtomicReference<SendGridSubmissionResult>();
         try {
-            var result = client.send(request, response -> readResponse(response, observed)).block(timeout);
+            var result = sendGridClient.send(request, response -> readResponse(response, observed)).block(timeout);
             return result == null ? outcome(EmailNotificationStatus.UNKNOWN, "EMPTY_HTTP_OUTCOME") : result;
         } catch (RuntimeException exception) {
             if (observed.get() != null) {

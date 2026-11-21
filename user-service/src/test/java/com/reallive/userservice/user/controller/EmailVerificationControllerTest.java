@@ -8,7 +8,7 @@ import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
+import com.reallive.userservice.user.adapter.kafka.KafkaEmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
 import com.reallive.userservice.user.dto.response.EmailVerificationCooldownResult;
@@ -94,7 +94,7 @@ class EmailVerificationControllerTest {
     @MockitoBean
     private EmailVerificationOtpStore store;
     @MockitoBean
-    private EmailVerificationEmailPublisher publisher;
+    private KafkaEmailVerificationEmailPublisher publisher;
 
     private MockMvc mvc;
     private UserEntity user;

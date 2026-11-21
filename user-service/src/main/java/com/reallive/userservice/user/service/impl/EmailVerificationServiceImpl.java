@@ -5,7 +5,7 @@ import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.util.UserValidator;
-import com.reallive.userservice.user.adapter.kafka.EmailVerificationEmailPublisher;
+import com.reallive.userservice.user.adapter.kafka.KafkaEmailVerificationEmailPublisher;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
 import com.reallive.userservice.user.adapter.kafka.message.EmailVerificationRequestedMessage;
 import com.reallive.userservice.user.adapter.redis.EmailVerificationOtpStore;
@@ -37,7 +37,7 @@ import java.util.UUID;
 public class EmailVerificationServiceImpl implements EmailVerificationService {
     UserRepository userRepository;
     EmailVerificationOtpStore otpStore;
-    EmailVerificationEmailPublisher emailPublisher;
+    KafkaEmailVerificationEmailPublisher emailPublisher;
     EmailVerificationOtpHasher otpHasher;
     SecureRandom secureRandom = new SecureRandom();
 
