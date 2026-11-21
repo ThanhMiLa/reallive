@@ -32,7 +32,7 @@
 - Viewer Count ✅
 - End Stream  ✅
 - Handle Unexpected Disconnect  ✅
-- Notify Email Followers When Stream Starts
+- Notify Followers When a Stream Goes Live
 - Set thumbnail  ✅
 - View user list watching livestream ✅
 
