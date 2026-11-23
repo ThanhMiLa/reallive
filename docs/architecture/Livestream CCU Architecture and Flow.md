@@ -1,4 +1,4 @@
-# Livestream CCU — Kiến trúc và workflow
+# Livestream CCU — Architecture and Workflow
 
 ## 1. Mô tả
 

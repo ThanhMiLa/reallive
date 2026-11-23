@@ -1,4 +1,4 @@
-# Livestream Thumbnail — Kiến trúc và workflow
+# Livestream Thumbnail — Architecture and Workflow
 
 ## 1. Mô tả
 

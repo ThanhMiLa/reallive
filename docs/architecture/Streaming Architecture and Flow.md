@@ -1,9 +1,4 @@
-# Streaming — Kiến trúc và Workflow
-
-> [!NOTE]
-> Các sơ đồ **Mermaid** trong tài liệu này là nguồn chuẩn theo thiết kế **Stream Key cố định + tự động bắt đầu/kết thúc từ OBS** (`V5`). Các ảnh `.png` tham chiếu giữ nguyên cấu trúc thư mục hiện có; phần Mermaid bên dưới phản ánh đầy đủ kiến trúc hai đường dẫn (`ingest/{ingestKeyId}` và `live/{sessionId}`), callback nội bộ có xác thực và worker phục hồi PostgreSQL.
-
-> **Luồng hiện tại V6:** xem [Stream Service README](../../stream-service/README.md) và mục 6 bên dưới cho startup recovery. Các chi tiết worker/operation, credential mã hóa và callback token trong sơ đồ V5 là thiết kế lịch sử, không được triển khai trong V6. Phục hồi ingest hiện do Media Server gọi endpoint khi khởi động, không có scheduler phục hồi media trong Stream Service.
+# Streaming — Architecture and Workflow
 
 ## 1. Giới thiệu và Hướng dẫn sử dụng
 
@@ -18,24 +13,22 @@ Media <-> BE:  [MediaMTX ingest hook] -- POST /stream/internal/api/media-events 
 
 ### Hướng dẫn livestream từng bước
 
-1. **Mở Stream Manager**: Đăng nhập tài khoản đã là streamer và vào trang **Stream Manager**. Ở lần đầu tiên, `GET /stream/api/streams/me/setup` tự động khởi tạo `channel_stream_configs` ở trạng thái **`DRAFT`** (chưa cấp Stream Key và chưa mở ingest path trước khi thiết lập thông tin hợp lệ).
-2. **Thiết lập thông tin lần đầu & Nhận key**: Nhập **Title**, chọn **Category**, rồi bấm **Save** (`PUT /stream/api/streams/me/setup`). Hệ thống kiểm tra điều kiện phát, sinh `ingestKeyId` thế hệ 1, ký Publish JWT (không `exp`) và Relay Read JWT nội bộ (mã hóa AES-256-GCM trong DB), sau đó chạy tác vụ `PROVISION_INGEST` (`PROVISIONING` → `ACTIVE`). Khi hoàn tất, giao diện hiển thị **Server URL** (`rtmp://localhost:1935/ingest`) và **Stream Key** (`{ingestKeyId}?token={PublishJWT}`).
-3. **Cấu hình OBS (chỉ làm 1 lần)**: Copy **Server URL** (`.../ingest`) và **Stream Key** dán vào **OBS → Settings → Stream → Custom**. Key được giữ nguyên qua các lần Save thông tin sau và qua nhiều phiên `ENDED`.
-4. **Bắt đầu phát từ OBS**: Bấm **Start Streaming** trong OBS. MediaMTX xác thực Publish JWT qua JWKS tại `ingest/{ingestKeyId}`, chạy `media_hook.py` gửi sự kiện `ONLINE` về `POST /stream/internal/api/media-events`. Stream Service lưu event, hậu kiểm User/Channel, cấp `sessionId` cố định cho operation, mở playback path `live/{sessionId}` kéo RTMP nội bộ từ ingest và chỉ công khai phiên ở trạng thái **`LIVE`** sau khi xác nhận playback đã sẵn sàng. Stream Manager đang poll `GET /stream/api/streams/me/current` (mỗi 3 giây khi tab hiển thị) sẽ tự bật Preview, Chat và CCU.
-5. **Cập nhật khi đang phát**: Chỉnh sửa **Title** hoặc **Category** và bấm **Save** ngay trong lúc đang live (hoặc `RECONNECTING`); thông tin mới được lưu vào cấu hình kênh và đồng bộ vào phiên hiện tại mà không làm đổi Stream Key.
-6. **Ngắt kết nối & Kết thúc livestream**: Bấm **Stop Streaming** trên OBS (hoặc mất mạng). Phiên chuyển sang **`RECONNECTING`** trong **60 giây** và đóng playback path `live/{sessionId}` (ingest path vẫn giữ **`ACTIVE`**). Nếu OBS nối lại trong 60 giây bằng cùng key, phiên cũ tiếp tục **`LIVE`**; quá 60 giây, hệ thống chuyển phiên thành **`ENDED`** và dọn dẹp CCU/thumbnail.
-7. **Reset Stream Key khi bị lộ**: Nếu nghi ngờ lộ Stream Key, bấm **Reset Stream Key** và xác nhận trên Stream Manager (`POST /stream/api/streams/me/stream-key/reset` kèm `Idempotency-Key`). Hệ thống thu hồi key cũ (`REVOKED`), đóng buổi phát đang hoạt động về **`ENDED`**, ngắt kết nối OBS cũ và xóa ingest path cũ rồi mở `ingest/{newKey}`. Sau khi xong, dán key mới vào OBS.
+| Tên bước | Mô tả cách thực hiện |
+| --- | --- |
+| **1. Mở Stream Manager** | Đăng nhập bằng tài khoản streamer. Mở menu tài khoản, chọn **Streamer Dashboard**, rồi vào **Stream Manager**. |
+| **2. Đặt tiêu đề và danh mục** | Trong **Stream Information**, bấm **Set title & category** hoặc biểu tượng bút chì. Nhập **Stream title**, chọn **Category**, rồi bấm **Save**. |
+| **3. Tạo khóa phát lần đầu** | Mở **Stream URL & Key**, bấm **Reset** cạnh **Stream Key** để tạo khóa. Bấm biểu tượng con mắt ở từng ô để hiện **Stream URL** và **Stream Key**, rồi sao chép cả hai trước khi rời trang. |
+| **4. Cài đặt OBS** | Trong OBS, mở **Settings → Stream** và chọn **Custom**. Dán **Stream URL** vào ô **Server** và dán **Stream Key** vào ô **Stream Key**, rồi lưu cài đặt. OBS có thể dùng lại khóa này cho các buổi phát sau. |
+| **5. Bắt đầu livestream** | Chuẩn bị hình ảnh và âm thanh trong OBS, rồi bấm **Start Streaming**. Quay lại **Stream Manager** để kiểm tra trạng thái **LIVE**, xem **Stream Preview**, theo dõi **Stream Chat** và số người đang xem. |
+| **6. Sửa thông tin khi đang phát** | Bấm biểu tượng bút chì trong **Stream Information**, sửa tiêu đề hoặc danh mục, rồi bấm **Save**. Bạn có thể để OBS tiếp tục phát trong lúc chỉnh sửa. |
+| **7. Kết nối lại hoặc kết thúc buổi phát** | Bấm **Stop Streaming** trong OBS để dừng phát. Khi OBS ngắt kết nối, **Stream Manager** hiển thị **RECONNECTING**. Nếu muốn tiếp tục buổi phát, hãy kết nối lại từ OBS trong vòng **60 giây**. Hết thời gian này, buổi phát tự kết thúc. |
+| **8. Đổi khóa khi nghi ngờ bị lộ** | Vào **Stream URL & Key**, bấm **Reset**, rồi xác nhận bằng **Reset stream key**. Thao tác này kết thúc ngay buổi phát đang diễn ra. Sao chép **Stream URL** và **Stream Key** mới vào OBS trước khi phát lại. |
 
 ---
 
 ## 2. Workflow Start Livestream
 
 ### 2.1. Chuẩn bị tại Stream Manager (Lazy `DRAFT`, Save để Provision & Reset Key)
-
-![Chuẩn bị tại Stream Manager](./image/Setup%20Stream%20Manager.png)
-
-<details>
-<summary>Mã nguồn Mermaid</summary>
 
 ```mermaid
 sequenceDiagram
@@ -61,7 +54,7 @@ sequenceDiagram
     UI->>GW: PUT /stream/api/streams/me/setup (title, categoryId)
     GW->>SS: Forward request
     SS->>UC: Validate category, streamer & channel ACTIVE
-    SS->>DB: Lock config row; nếu lần đầu/cần cấp -> tạo credential gen N (AES-256-GCM) + PROVISIONING + op PROVISION_INGEST
+    SS->>DB: Lock config row#59; nếu lần đầu/cần cấp -> tạo credential gen N (AES-256-GCM) + PROVISIONING + op PROVISION_INGEST
     SS-->>UI: Trả setup (status=PROVISIONING, operationId)
 
     W->>DB: Claim op PROVISION_INGEST (lease 60s)
@@ -82,14 +75,7 @@ sequenceDiagram
     end
 ```
 
-</details>
-
 ### 2.2. Bấm Start Streaming trên OBS (Tự tạo session & lên LIVE)
-
-![Bấm Start Streaming trên OBS](./image/Start%20Streaming%20Workflow.png)
-
-<details>
-<summary>Mã nguồn Mermaid</summary>
 
 ```mermaid
 sequenceDiagram
@@ -130,16 +116,9 @@ sequenceDiagram
     end
 ```
 
-</details>
-
 ---
 
 ## 3. Workflow Xem Stream
-
-![Workflow Xem Stream](./image/Watch%20Stream%20Workflow.png)
-
-<details>
-<summary>Mã nguồn Mermaid</summary>
 
 ```mermaid
 sequenceDiagram
@@ -162,11 +141,11 @@ sequenceDiagram
         GW->>SS: Forward request (viewerUserId)
         SS->>UC: Kiểm tra quyền xem kênh (không bị ban)
         SS->>DB: Lock/recheck session PUBLIC + LIVE
-        SS->>SS: Ký Read JWT (quyền read duy nhất path live/{sessionId}, TTL 5m; không đọc được ingest/*)
+        SS->>SS: Ký Read JWT (quyền read duy nhất path live/{sessionId}, TTL 5m#59; không đọc được ingest/*)
         SS-->>V: Trả playbackUrl (/live/{sessionId}/index.m3u8) + Read JWT (Cache-Control: no-store)
 
         P->>MTX: GET /live/{sessionId}/index.m3u8 + Authorization: Bearer {ReadJWT}
-        MTX->>MTX: Verify Read JWT qua JWKS & phục vụ HLS từ nguồn pull nội bộ; kích hoạt runOnRead/runOnUnread (viewer_hook)
+        MTX->>MTX: Verify Read JWT qua JWKS & phục vụ HLS từ nguồn pull nội bộ#59; kích hoạt runOnRead/runOnUnread (viewer_hook)
         MTX-->>P: Trả playlist .m3u8
 
         par Luồng phát video HLS
@@ -181,20 +160,13 @@ sequenceDiagram
             end
         end
     else Status là RECONNECTING / ENDED
-        Note over V: Đóng player hiện tại, hiển thị trạng thái chờ nối lại hoặc đã kết thúc; không xin Read JWT
+        Note over V: Đóng player hiện tại, hiển thị trạng thái chờ nối lại hoặc đã kết thúc#59; không xin Read JWT
     end
 ```
-
-</details>
 
 ---
 
 ## 4. Workflow Reconnecting, End Stream và Phục hồi (Reconciliation)
-
-![Workflow Reconnecting và End Stream](./image/Workflow%20Reconnecting%20and%20End%20Stream.png)
-
-<details>
-<summary>Mã nguồn Mermaid</summary>
 
 ```mermaid
 sequenceDiagram
@@ -231,12 +203,10 @@ sequenceDiagram
     else Quá 60s không nối lại (kết thúc stream)
         Sched->>DB: Quét session quá reconnectDeadlineAt (mỗi 1s), tạo/xử lý op END_SESSION (end_requested=true)
         W->>MTX: Xác nhận đóng playback live/{sessionId} & kick nguồn cũ (nếu còn thuộc session cũ)
-        W->>DB: Chuyển RECONNECTING -> ENDED & ghi history; dọn CCU & thumbnail job đang chờ
+        W->>DB: Chuyển RECONNECTING -> ENDED & ghi history#59; dọn CCU & thumbnail job đang chờ
         Note over V: Polling GET /{sessionId} nhận ENDED -> dừng phát & đóng chat
     end
 ```
-
-</details>
 
 - **Phục hồi ingest hiện tại (V6)**: entrypoint của Media Server gọi endpoint nội bộ sau khi MediaMTX Control API sẵn sàng, như mục 6. Không chạy `StreamMediaReconciler`, hàng đợi operation hoặc scheduler phục hồi media trong Stream Service.
 
