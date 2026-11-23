@@ -517,23 +517,6 @@ Constraints:
 - `unit_coin_price > 0`
 - `streamer_revenue_amount >= 0`
 
-#### 5.1.6 donation_refunds
-
-| Column | Type | Constraints | Index | Description |
-|---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Donation refund ID |
-| donation_id | UUID | FK, UNIQUE, NOT NULL | UNIQUE | Refunded donation |
-| refunded_by | UUID | NOT NULL | INDEX | User or admin who performed the refund |
-| coin_amount | BIGINT | NOT NULL | - | Coin amount returned to the donor and deducted from the streamer |
-| status | VARCHAR(30) | NOT NULL | INDEX | `PENDING, COMPLETED, REJECTED, FAILED` |
-| reason | VARCHAR(500) | - | - | Refund reason |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Refund creation time |
-| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
-
-Constraints:
-- `coin_amount > 0`
-
-
 #### 5.1.7 streamer_wallets
 
 | Column | Type | Constraints | Index | Description |
@@ -547,41 +530,6 @@ Constraints:
 Constraints:
 - `available_balance >= 0`
 
-
-#### 5.1.8 streamer_revenue_transactions
-
-| Column | Type | Constraints | Index | Description |
-|---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Streamer revenue transaction ID |
-| streamer_wallet_id | UUID | FK, NOT NULL | INDEX | Streamer wallet associated with the transaction |
-| type | VARCHAR(30) | NOT NULL | INDEX | `DONATION, REFUND, WITHDRAWAL` |
-| amount | BIGINT | NOT NULL | - | Revenue amount involved in the transaction |
-| reference_id | UUID | - | INDEX | Related donation, refund or withdrawal ID |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Transaction time |
-
-Constraints:
-- `amount > 0`
-
-
-#### 5.1.9 withdrawal_requests
-
-| Column | Type | Constraints | Index | Description |
-|---|---|---|---|---|
-| id | UUID | PK, NOT NULL | Primary | Withdrawal request ID |
-| streamer_id | UUID | NOT NULL | INDEX | Streamer requesting the withdrawal |
-| amount | BIGINT | NOT NULL | - | Requested withdrawal amount |
-| status | VARCHAR(30) | NOT NULL | INDEX | `PENDING, APPROVED, PAID, REJECTED, FAILED` |
-| payout_method | VARCHAR(30) | NOT NULL | - | Withdrawal payout method |
-| payout_details | JSONB | NOT NULL | - | Snapshot of payout destination information |
-| reviewed_by | UUID | - | INDEX | Admin who reviewed the request |
-| rejection_reason | VARCHAR(500) | - | - | Reason for rejecting the withdrawal request |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Requested time |
-| processed_at | TIMESTAMP | - | - | Time when the withdrawal was completed or rejected |
-| updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
-
-Constraints:
-- `amount > 0`
-
 ### 5.2 Relationships
 
 - `users (User Service)` 1 — 1 `user_wallets`
@@ -592,10 +540,7 @@ Constraints:
 - `channels (Channel Service)` 1 — N `donations`
 - `stream_sessions (Stream Service)` 1 — N `donations`
 - `virtual_gifts` 1 — N `donations`
-- `donations` 1 — 0...1 `donation_refunds`
 - `streamers (User Service)` 1 — 1 `streamer_wallets`
-- `streamer_wallets` 1 — N `streamer_revenue_transactions`
-- `streamers (User Service)` 1 — N `withdrawal_requests`
 
 ---
 
