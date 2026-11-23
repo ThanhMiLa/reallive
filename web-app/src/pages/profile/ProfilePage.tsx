@@ -3,13 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { isAxiosError } from 'axios'
-import { Camera, Eye, EyeOff, LockKeyhole, LogIn, UserRound } from 'lucide-react'
+import { Camera, Coins, Eye, EyeOff, LockKeyhole, LogIn, RefreshCw, UserRound } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { z } from 'zod'
 import { authApi } from '@/api/auth.api'
 import { profileStaleTime } from '@/lib/query-client'
+import { formatCoins, getPaymentErrorMessage } from '@/lib/payment'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { useWalletBalance } from '@/hooks/useWalletBalance'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ApiResponse, UserProfile } from '@/types/auth.types'
 import { EmailVerification } from './EmailVerification'
@@ -180,6 +183,7 @@ export function ProfilePage() {
     staleTime: profileStaleTime,
     refetchOnReconnect: false,
   })
+  const walletQuery = useWalletBalance()
 
   return (
     <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -196,6 +200,48 @@ export function ProfilePage() {
           <div className="space-y-4"><FormError message={errorMessage(error)} /><Button variant="secondary" onClick={() => refetch()}>Try again</Button></div>
         ) : data && (
           <>
+            <section aria-labelledby="wallet-balance-heading" className="rounded-xl border border-[#1f1f26] bg-[#08080a] p-5 sm:p-7">
+              <div className="mb-5 flex items-center gap-3 border-b border-[#1f1f26] pb-4">
+                <Coins className="h-5 w-5 text-[#ff2b42]" aria-hidden="true" />
+                <h2 id="wallet-balance-heading" className="text-lg font-bold text-white font-outfit">Wallet &amp; Coins</h2>
+              </div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Wallet Balance</p>
+                  {walletQuery.isPending ? (
+                    <p role="status" className="text-sm text-gray-400">Loading wallet balance…</p>
+                  ) : walletQuery.isError ? (
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <p role="alert" className="text-sm text-red-400">
+                        {getPaymentErrorMessage(walletQuery.error, 'Wallet balance is currently unavailable.')}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        isLoading={walletQuery.isFetching}
+                        leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+                        onClick={() => { void walletQuery.refetch() }}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-2xl font-extrabold text-white font-outfit tabular-nums">
+                      {formatCoins(walletQuery.data.balance)}{' '}
+                      <span className="text-sm font-semibold text-amber-400">Coins</span>
+                    </p>
+                  )}
+                </div>
+                <Link
+                  to="/wallet"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#ff2b42] px-4 py-2.5 text-sm font-extrabold text-white shadow-lg transition hover:bg-[#e02237] hover:shadow-red-500/25 motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42]"
+                >
+                  <Coins className="h-4 w-4" aria-hidden="true" />
+                  Buy Coins
+                </Link>
+              </div>
+            </section>
             <section aria-labelledby="personal-info" className="rounded-xl border border-[#1f1f26] bg-[#08080a] p-5 sm:p-7">
               <div className="mb-6 flex items-center gap-3 border-b border-[#1f1f26] pb-5">
                 <UserRound className="h-5 w-5 text-[#ff2b42]" />

@@ -28,7 +28,7 @@ test('account sidebar defaults to expanded with accessible navigation and collap
   assert.match(html, /md:w-64/)
   assert.match(html, /aria-label="Collapse sidebar"/)
   assert.match(html, /aria-expanded="true"/)
-  for (const label of ['Profile', 'Category Interests', 'Become a streamer', 'Back to home']) {
+  for (const label of ['Profile', 'Wallet &amp; Coins', 'Category Interests', 'Become a streamer', 'RealLive - Home']) {
     assert.ok(html.includes(`aria-label="${label}"`))
   }
 })
