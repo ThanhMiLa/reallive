@@ -73,7 +73,7 @@ class UserWalletRepositoryTest {
     @Test
     void migrationIsValidAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("1", flyway.info().current().getVersion().toString());
+        assertEquals("2", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }
 

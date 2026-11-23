@@ -15,6 +15,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
@@ -28,12 +29,15 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -47,7 +51,10 @@ class PaymentInternalRouteTest {
 
     private static final String SIGNING_KEY = "payment-route-test-secret-".repeat(4);
     private static final AtomicInteger CALLS = new AtomicInteger();
+    private static final AtomicReference<String> LAST_REQUEST_TARGET = new AtomicReference<>();
     private static final HttpServer PAYMENT = startPayment();
+    @LocalServerPort
+    private int gatewayPort;
     @Autowired
     private WebTestClient client;
     @MockitoBean
@@ -72,6 +79,7 @@ class PaymentInternalRouteTest {
     @BeforeEach
     void reset() {
         CALLS.set(0);
+        LAST_REQUEST_TARGET.set(null);
         ReactiveValueOperations<String, String> values = Mockito.mock(ReactiveValueOperations.class);
         when(redis.opsForValue()).thenReturn(values);
         when(values.get(anyString())).thenReturn(Mono.just("ACTIVE"));
@@ -141,6 +149,35 @@ class PaymentInternalRouteTest {
         assertEquals(0, CALLS.get());
     }
 
+    @Test
+    void vnpayIpnGetRoutesWithoutAccessCookie() {
+        String target = "/payment/api/webhooks/vnpay/ipn?vnp_TxnRef=123&vnp_OrderInfo=Nap+coin%2B";
+        client.get().uri(URI.create("http://localhost:" + gatewayPort + target)).exchange()
+                .expectStatus().isOk();
+        assertEquals(1, CALLS.get());
+        assertEquals(target, LAST_REQUEST_TARGET.get());
+    }
+
+    @Test
+    void vnpayIpnPostRequiresAccessCookie() {
+        client.post().uri("/payment/api/webhooks/vnpay/ipn").exchange()
+                .expectStatus().isUnauthorized();
+        assertEquals(0, CALLS.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/wallets/me", "/deposits/packages", "/deposits/123"})
+    void userPaymentReadsRequireAccessCookie(String endpoint) {
+        client.get().uri("/payment/api" + endpoint).exchange().expectStatus().isUnauthorized();
+        assertEquals(0, CALLS.get());
+    }
+
+    @Test
+    void depositCreationRequiresAccessCookie() {
+        client.post().uri("/payment/api/deposits/vnpay").exchange().expectStatus().isUnauthorized();
+        assertEquals(0, CALLS.get());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"/payment/wallets/create/", "/payment/api-internal/wallets/create/"})
     void legacyAndSimilarPrefixesDoNotAccidentallyExposeWalletCreation(String prefix) throws Exception {
@@ -165,6 +202,7 @@ class PaymentInternalRouteTest {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
                 CALLS.incrementAndGet();
+                LAST_REQUEST_TARGET.set(exchange.getRequestURI().toString());
                 exchange.sendResponseHeaders(200, -1);
                 exchange.close();
             });
