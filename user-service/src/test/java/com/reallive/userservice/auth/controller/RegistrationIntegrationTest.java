@@ -5,19 +5,12 @@ import com.reallive.userservice.auth.adapter.redis.AuthStateStore;
 import com.reallive.userservice.auth.entity.RoleEntity;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
-import com.reallive.userservice.client.wallet.PaymentHttpTestServer;
 import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.repository.ProfileRepository;
-import feign.FeignException;
-import feign.RetryableException;
-import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,12 +40,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.jpa.open-in-view=false",
-        "spring.cloud.openfeign.client.config.payment-service.connectTimeout=300",
-        "spring.cloud.openfeign.client.config.payment-service.readTimeout=300"
+        "spring.jpa.open-in-view=false"
 })
 @ActiveProfiles("test")
-class RegistrationWalletIntegrationTest {
+class RegistrationIntegrationTest {
     @MockitoBean
     private RedisAuthoritiesReader authAuthoritiesReader;
 
@@ -65,8 +56,7 @@ class RegistrationWalletIntegrationTest {
     @MockitoBean
     private AuthStateStore authStateStore;
 
-    private static final String SCHEMA = "register_wallet_" + UUID.randomUUID().toString().replace("-", "");
-    private static final PaymentHttpTestServer PAYMENT = new PaymentHttpTestServer();
+    private static final String SCHEMA = "registration_" + UUID.randomUUID().toString().replace("-", "");
     @Autowired
     private WebApplicationContext context;
     @Autowired
@@ -83,9 +73,8 @@ class RegistrationWalletIntegrationTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
-        registry.add("app.service.payment", PAYMENT::baseUrl);
         registry.add("spring.datasource.url", () -> System.getProperty("registration.test.database-url",
-                "jdbc:h2:mem:register_wallet;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"));
+                "jdbc:h2:mem:registration;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"));
         registry.add("spring.datasource.username", () -> System.getProperty("registration.test.database-username", "sa"));
         registry.add("spring.datasource.password", () -> System.getProperty("registration.test.database-password", ""));
         registry.add("spring.flyway.schemas", () -> SCHEMA);
@@ -95,39 +84,26 @@ class RegistrationWalletIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        PAYMENT.reset();
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         roles.findByName("USER").orElseGet(() -> roles.saveAndFlush(RoleEntity.builder().name("USER").build()));
-        username = "wallet-" + UUID.randomUUID();
+        username = "register-" + UUID.randomUUID();
         email = UUID.randomUUID() + "@example.com";
-    }
-
-    @AfterEach
-    void releaseDelayedResponse() {
-        PAYMENT.releaseResponse();
     }
 
     @AfterAll
     static void cleanUp(@Autowired JdbcTemplate jdbc) {
-        PAYMENT.close();
         jdbc.execute("DROP SCHEMA \"" + SCHEMA + "\" CASCADE");
     }
 
     @Test
-    void registrationWithoutCookiePersistsUserAndProfileAndCallsPaymentBeforeIssuingAuthCookies() throws Exception {
+    void registrationPersistsUserAndProfileAndIssuesAuthCookies() throws Exception {
         MvcResult result = register("password123").andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1000))
                 .andExpect(cookie().exists("access_token"))
                 .andExpect(cookie().exists("refresh_token"))
                 .andExpect(cookie().httpOnly("access_token", true)).andReturn();
         var user = users.findByUsername(username).orElseThrow();
-        var request = PAYMENT.takeRequest();
 
-        assertTrue(PAYMENT.hasWallet(user.getId()));
-        assertEquals("/payment/internal/api/wallets/create/" + user.getId(), request.path());
-        assertNull(request.header("Cookie"));
-        assertNull(request.header("Authorization"));
-        assertEquals(1, PAYMENT.callCount());
         assertEquals(email, user.getEmail());
         assertNotEquals("password123", user.getPasswordHash());
         assertEquals(username, profiles.findByUserId(user.getId()).orElseThrow().getDisplayName());
@@ -138,107 +114,38 @@ class RegistrationWalletIntegrationTest {
                 .getJWTClaimsSet().getSubject());
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {401, 409, 500, 503})
-    void paymentHttpFailureRollsBackUserAndProfile(int status) {
-        PAYMENT.setErrorStatus(status);
-        long usersBefore = users.count();
-        long profilesBefore = profiles.count();
-
-        ServletException failure = assertThrows(ServletException.class, () -> register("password123"));
-
-        assertInstanceOf(FeignException.class, failure.getCause());
-        assertEquals(status, ((FeignException) failure.getCause()).status());
-        assertFalse(users.existsByUsername(username));
-        assertEquals(usersBefore, users.count());
-        assertEquals(profilesBefore, profiles.count());
-        assertEquals(1, PAYMENT.callCount());
-    }
-
     @Test
-    void lostResponseRollsBackUserButLeavesRemoteWalletAndAllowsImmediateRegistrationRetry() throws Exception {
-        PAYMENT.setMode(PaymentHttpTestServer.Mode.LOST_RESPONSE);
-        long profilesBefore = profiles.count();
-
-        ServletException failure = assertThrows(ServletException.class, () -> register("password123"));
-
-        assertInstanceOf(RetryableException.class, failure.getCause());
-        String path = PAYMENT.takeRequest().path();
-        UUID rolledBackUserId = UUID.fromString(path.substring(path.lastIndexOf('/') + 1));
-        assertTrue(PAYMENT.hasWallet(rolledBackUserId));
-        assertFalse(users.existsById(rolledBackUserId));
-        assertFalse(users.existsByUsername(username));
-        assertEquals(profilesBefore, profiles.count());
-
-        PAYMENT.releaseResponse();
-        PAYMENT.setMode(PaymentHttpTestServer.Mode.SUCCESS);
-        register("password123").andExpect(status().isOk());
-        UUID retriedUserId = users.findByUsername(username).orElseThrow().getId();
-        assertNotEquals(rolledBackUserId, retriedUserId);
-        assertTrue(PAYMENT.hasWallet(retriedUserId));
-        assertTrue(PAYMENT.hasWallet(rolledBackUserId));
-        assertEquals(2, PAYMENT.callCount());
-    }
-
-    @Test
-    void malformedPaymentReplyRollsBackBothLocalRecords() {
-        PAYMENT.setMode(PaymentHttpTestServer.Mode.INVALID_JSON);
-        long profilesBefore = profiles.count();
-
-        ServletException failure = assertThrows(ServletException.class, () -> register("password123"));
-
-        assertInstanceOf(FeignException.class, failure.getCause());
-        assertFalse(users.existsByUsername(username));
-        assertEquals(profilesBefore, profiles.count());
-    }
-
-    @Test
-    void emptyPaymentReplyCurrentlyFailsAndRollsBackBothLocalRecords() {
-        PAYMENT.setMode(PaymentHttpTestServer.Mode.EMPTY_BODY);
-        long profilesBefore = profiles.count();
-
-        ServletException failure = assertThrows(ServletException.class, () -> register("password123"));
-
-        assertInstanceOf(NullPointerException.class, failure.getCause());
-        assertFalse(users.existsByUsername(username));
-        assertEquals(profilesBefore, profiles.count());
-    }
-
-    @Test
-    void duplicateUsernameDoesNotCallPaymentAgain() throws Exception {
+    void duplicateUsernameReturnsConflict() throws Exception {
         register("password123").andExpect(status().isOk());
         email = UUID.randomUUID() + "@example.com";
 
         register("password123").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(ErrorCode.USERNAME_ALREADY_EXISTS.getCode()));
 
-        assertEquals(1, PAYMENT.callCount());
     }
 
     @Test
-    void duplicateEmailDoesNotCallPaymentAgain() throws Exception {
+    void duplicateEmailReturnsConflict() throws Exception {
         register("password123").andExpect(status().isOk());
-        username = "wallet-" + UUID.randomUUID();
+        username = "register-" + UUID.randomUUID();
 
         register("password123").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_ALREADY_EXISTS.getCode()));
 
-        assertEquals(1, PAYMENT.callCount());
     }
 
     @Test
-    void passwordMismatchDoesNotSaveUserOrCallPayment() throws Exception {
+    void passwordMismatchDoesNotSaveUser() throws Exception {
         register("different-password").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.PASSWORD_NOT_MATCH.getCode()));
         assertFalse(users.existsByUsername(username));
-        assertEquals(0, PAYMENT.callCount());
     }
 
     @Test
-    void invalidInputDoesNotReachPayment() throws Exception {
+    void invalidInputDoesNotSaveUser() throws Exception {
         username = "a";
         register("password123").andExpect(status().isBadRequest());
-        assertEquals(0, PAYMENT.callCount());
+        assertFalse(users.existsByUsername(username));
     }
 
     private ResultActions register(String confirmation) throws Exception {

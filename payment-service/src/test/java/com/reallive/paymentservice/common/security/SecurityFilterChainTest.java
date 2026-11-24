@@ -22,8 +22,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
@@ -183,40 +181,6 @@ class SecurityFilterChainTest {
     }
 
 
-    @Test
-    void internalEndpointWithoutCookieRemainsAnonymous() throws Exception {
-        mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment"))
-                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
-        Mockito.verifyNoInteractions(authAuthoritiesReader);
-    }
-
-    @Test
-    void internalEndpointIgnoresAccessCookie() throws Exception {
-        mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
-                        .cookie(new Cookie("payment_access", token("ROLE_USER"))))
-                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
-        Mockito.verifyNoInteractions(authAuthoritiesReader);
-    }
-
-    @Test
-    void internalEndpointIgnoresMalformedAccessCookie() throws Exception {
-        mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
-                        .cookie(new Cookie("payment_access", "malformed-token")))
-                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
-        Mockito.verifyNoInteractions(authAuthoritiesReader);
-    }
-
-    @Test
-    void internalEndpointDoesNotLoadAuthorities() throws Exception {
-        String access = token("ROLE_USER");
-        Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
-                .thenThrow(new AppException(ErrorCode.AUTH_STATE_UNAVAILABLE));
-        mvc.perform(post("/payment/internal/api/wallets/create/test").contextPath("/payment")
-                        .cookie(new Cookie("payment_access", access)))
-                .andExpect(status().isOk()).andExpect(content().string("anonymous"));
-        Mockito.verifyNoInteractions(authAuthoritiesReader);
-    }
-
     private String token(String scope) throws Exception {
         Mockito.when(authAuthoritiesReader.read(ArgumentMatchers.any()))
                 .thenReturn(Arrays.stream(scope.split(" ")).filter(value -> !value.isBlank())
@@ -235,11 +199,6 @@ class SecurityFilterChainTest {
     @TestComponent
     @RestController
     public static class TestController {
-
-        @PostMapping("/internal/api/wallets/create/test")
-        public String publicIdentity(@AuthenticationPrincipal Jwt jwt) {
-            return jwt == null ? "anonymous" : jwt.getSubject();
-        }
 
         @GetMapping("/test/identity")
         public String identity(Authentication authentication) {

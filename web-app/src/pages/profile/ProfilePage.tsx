@@ -184,6 +184,7 @@ export function ProfilePage() {
     refetchOnReconnect: false,
   })
   const walletQuery = useWalletBalance()
+  const walletMissing = isAxiosError<ApiResponse>(walletQuery.error) && walletQuery.error.response?.data?.code === 1006
 
   return (
     <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
@@ -210,6 +211,8 @@ export function ProfilePage() {
                   <p className="text-xs font-medium uppercase tracking-wider text-gray-400">Wallet Balance</p>
                   {walletQuery.isPending ? (
                     <p role="status" className="text-sm text-gray-400">Loading wallet balance…</p>
+                  ) : walletMissing ? (
+                    <p className="text-sm text-gray-400">Open Wallet &amp; Coins to create your wallet.</p>
                   ) : walletQuery.isError ? (
                     <div className="flex flex-wrap items-center gap-3 pt-1">
                       <p role="alert" className="text-sm text-red-400">

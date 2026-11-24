@@ -92,7 +92,7 @@ export function WalletCreditsPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [isCreatingOrder, setIsCreatingOrder] = useState(false)
 
-  const walletQuery = useWalletBalance()
+  const walletQuery = useWalletBalance({ createIfMissing: true })
   const packagesQuery = useQuery({
     queryKey: ['deposit-packages'],
     queryFn: () => paymentApi.getDepositPackages(),
@@ -105,7 +105,7 @@ export function WalletCreditsPage() {
     packages.find((pkg) => pkg.packageCode === selectedPackageCode) ?? packages[0] ?? null
 
   const handleCheckout = async () => {
-    if (!effectivePackage || isCreatingOrder) return
+    if (!walletQuery.isSuccess || !effectivePackage || isCreatingOrder) return
     setCheckoutError(null)
     setIsCreatingOrder(true)
     try {
@@ -345,7 +345,7 @@ export function WalletCreditsPage() {
                     type="button"
                     size="lg"
                     isLoading={isCreatingOrder}
-                    disabled={!effectivePackage || packagesQuery.isPending || packagesQuery.isError}
+                    disabled={!walletQuery.isSuccess || !effectivePackage || packagesQuery.isPending || packagesQuery.isError}
                     onClick={handleCheckout}
                   >
                     Pay with VNPAY

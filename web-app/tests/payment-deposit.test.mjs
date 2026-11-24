@@ -213,7 +213,7 @@ test('paymentApi calls backend endpoints with credentials and unwraps ApiRespons
   }
 })
 
-test('ProfilePage renders wallet balance section with Coins unit, loading fallback, and Buy Coins link', () => {
+test('ProfilePage reads the balance and directs users without a wallet to Buy Coins', () => {
   setAuth(sampleUser)
   const client = makeClient()
   client.setQueryData(['profile', sampleUser.userId], sampleUser)
@@ -243,12 +243,13 @@ test('ProfilePage renders wallet balance section with Coins unit, loading fallba
     client.clear()
   }
 
-  // Error/retry state in DOM
   const errorClient = makeClient()
   errorClient.setQueryData(['profile', sampleUser.userId], sampleUser)
   const original = apiClient.defaults.adapter
+  const walletMethods = []
   apiClient.defaults.adapter = async (config) => {
     if (config.url === '/payment/api/wallets/me') {
+      walletMethods.push(config.method)
       const error = new Error('Not found')
       error.isAxiosError = true
       error.response = { status: 404, data: { code: 1006, message: 'Wallet not found' } }
@@ -267,9 +268,10 @@ test('ProfilePage renders wallet balance section with Coins unit, loading fallba
         ),
       )
       await testingLibrary.waitFor(() => {
-        assert.ok(testingLibrary.screen.getByText(/Wallet not found/))
+        assert.ok(testingLibrary.screen.getByText(/Open Wallet & Coins to create your wallet/))
       })
-      assert.ok(testingLibrary.screen.getByRole('button', { name: 'Retry' }))
+      assert.deepEqual(walletMethods, ['get'])
+      assert.equal(testingLibrary.screen.getByRole('link', { name: 'Buy Coins' }).getAttribute('href'), '/wallet')
     } finally {
       apiClient.defaults.adapter = original
       errorClient.clear()
@@ -316,10 +318,13 @@ test('WalletCreditsPage selects package, creates VNPAY deposit, and redirects vi
   const original = apiClient.defaults.adapter
   const requests = []
   const paymentUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_TxnRef=999000111'
+  let finishWalletCreation
+  const walletCreation = new Promise((resolve) => { finishWalletCreation = resolve })
 
   apiClient.defaults.adapter = async (config) => {
     requests.push(config)
     if (config.url === '/payment/api/wallets/me') {
+      await walletCreation
       return {
         data: { result: { walletId: 'w-1', userId: sampleUser.userId, balance: 750 } },
         status: 200, statusText: 'OK', headers: {}, config,
@@ -361,6 +366,14 @@ test('WalletCreditsPage selects package, creates VNPAY deposit, and redirects vi
     )
 
     await testingLibrary.waitFor(() => {
+      const walletRequest = requests.find((request) => request.url === '/payment/api/wallets/me')
+      assert.equal(walletRequest?.method, 'post')
+      assert.equal(walletRequest.data, undefined)
+      assert.ok(testingLibrary.screen.getByRole('button', { name: 'Pay with VNPAY' }).disabled)
+    })
+    finishWalletCreation()
+
+    await testingLibrary.waitFor(() => {
       assert.ok(testingLibrary.screen.getByText('750'))
       assert.equal(testingLibrary.screen.getAllByRole('radio').length, 5)
     })
@@ -392,6 +405,7 @@ test('WalletCreditsPage selects package, creates VNPAY deposit, and redirects vi
     assert.equal(requests.some((r) => String(r.url).includes('sandbox.vnpayment.vn')), false)
     assert.deepEqual(assignedUrls, [paymentUrl])
   } finally {
+    finishWalletCreation()
     apiClient.defaults.adapter = original
     client.clear()
   }

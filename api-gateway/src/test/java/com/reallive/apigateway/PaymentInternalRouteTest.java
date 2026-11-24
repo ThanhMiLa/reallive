@@ -135,16 +135,17 @@ class PaymentInternalRouteTest {
     }
 
     @Test
-    void configuredPublicPaymentPrefixStillRoutesAuthenticatedRequests() throws Exception {
-        client.post().uri("/payment/api/balance").cookie("access_token", accessToken())
+    void authenticatedWalletCreationRoutesToPaymentService() throws Exception {
+        client.post().uri("/payment/api/wallets/me").cookie("access_token", accessToken())
                 .exchange().expectStatus().isOk()
                 .expectBody().returnResult();
         assertEquals(1, CALLS.get());
+        assertEquals("/payment/api/wallets/me", LAST_REQUEST_TARGET.get());
     }
 
     @Test
-    void publicPaymentPrefixStillRequiresAccessCookie() {
-        client.post().uri("/payment/api/balance").exchange().expectStatus().isUnauthorized()
+    void walletCreationRequiresAccessCookie() {
+        client.post().uri("/payment/api/wallets/me").exchange().expectStatus().isUnauthorized()
                 .expectBody().returnResult();
         assertEquals(0, CALLS.get());
     }

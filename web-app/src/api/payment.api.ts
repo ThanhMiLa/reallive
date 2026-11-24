@@ -9,6 +9,13 @@ import type {
 } from '@/types/payment.types'
 
 export const paymentApi = {
+  createWallet: async (): Promise<WalletBalance> => {
+    const response = await apiClient.post<ApiResponse<WalletBalance>>(
+      '/payment/api/wallets/me',
+    )
+    return response.data.result
+  },
+
   getWalletBalance: async (): Promise<WalletBalance> => {
     const response = await apiClient.get<ApiResponse<WalletBalance>>(
       '/payment/api/wallets/me',

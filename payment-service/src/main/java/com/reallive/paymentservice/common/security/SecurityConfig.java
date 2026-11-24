@@ -8,8 +8,6 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -35,22 +33,7 @@ public class SecurityConfig {
 
     };
 
-    private static final String[] INTERNAL_ENDPOINTS_POST = {
-            "/internal/api/wallets/create/*"
-    };
-
     RedisAuthoritiesReader authoritiesReader;
-
-    @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE)
-    SecurityFilterChain internalEndpointFilterChain(HttpSecurity http) throws Exception {
-        http.securityMatchers(matchers -> matchers
-                        .requestMatchers(HttpMethod.POST, INTERNAL_ENDPOINTS_POST))
-                .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
-        return http.build();
-    }
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, BearerTokenResolver bearerTokenResolver) throws Exception {

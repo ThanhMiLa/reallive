@@ -24,8 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = InternalEndpointSecurityTest.TestController.class,
         properties = {"auth.cookie.access-token.name=access_token",
                 "app.service.user=http://127.0.0.1:1/user",
-                "app.service.channel=http://127.0.0.1:1/channel",
-                "app.service.payment=http://127.0.0.1:1/payment"})
+                "app.service.channel=http://127.0.0.1:1/channel"})
 @Import({SecurityConfig.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class,
         InternalEndpointSecurityTest.TestController.class})
 class InternalEndpointSecurityTest {

@@ -9,7 +9,7 @@ Java 21 / Spring Boot service owning wallets and payment data.
 - `wallet.repository.UserWalletRepository` provides persistence and lookup by user ID.
 - Flyway migration `V1__create_user_wallets_table.sql` creates the wallet table with generated UUIDs, a zero initial balance, unique user IDs and a non-negative balance constraint.
 
-`user_id` is an external UUID from User Service, without a cross-service foreign key or a Java entity relationship. The unique constraint creates its own index. Creating the wallet through an idempotent internal API and calling that API during registration are the next implementation steps.
+`user_id` is the account UUID from User Service. Through the gateway, `POST /payment/api/wallets/me` uses the authenticated account to create a wallet on the first visit to the wallet page. Later requests return the existing wallet and current balance. `GET /payment/api/wallets/me` reads the balance and returns HTTP 404 if the user has no wallet yet.
 
 ## Development
 
