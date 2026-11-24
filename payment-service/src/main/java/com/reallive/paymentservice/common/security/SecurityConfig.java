@@ -30,7 +30,7 @@ public class SecurityConfig {
     JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
     private static final String[] PUBLIC_ENDPOINTS_GET = {
-
+            "/api/webhooks/vnpay/ipn"
     };
 
     RedisAuthoritiesReader authoritiesReader;
