@@ -18,8 +18,6 @@ import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.service.AuthService;
 import com.reallive.userservice.auth.service.AuthTokenService;
 import com.reallive.userservice.auth.util.PasswordResetOtpHasher;
-import com.reallive.userservice.client.wallet.WalletClient;
-import com.reallive.userservice.client.wallet.WalletCreationResponse;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.adapter.kafka.message.EmailType;
@@ -65,7 +63,6 @@ public class AuthServiceImpl implements AuthService {
     PasswordResetOtpStore passwordResetOtpStore;
     PasswordResetEmailPublisher passwordResetEmailPublisher;
     PasswordResetOtpHasher passwordResetOtpHasher;
-    WalletClient walletClient;
     SecureRandom secureRandom = new SecureRandom();
 
     @NonFinal
@@ -164,9 +161,6 @@ public class AuthServiceImpl implements AuthService {
         ProfileEntity profile = buildProfileEntity(userEntity);
         profileRepository.save(profile);
 
-        //Build Wallet
-        createWallet(userEntity.getId());
-
         AuthRequest authenticationRequest = AuthRequest.builder()
                 .username(registerRequest.getUsername())
                 .password(registerRequest.getPassword())
@@ -261,19 +255,6 @@ public class AuthServiceImpl implements AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
-    }
-
-    private WalletCreationResponse createWallet(UUID userId) {
-        try {
-            var walletResponse = walletClient.createWallet(userId).getBody().getResult();
-            return WalletCreationResponse.builder()
-                    .id(walletResponse.getId())
-                    .userId(walletResponse.getUserId())
-                    .balance(walletResponse.getBalance())
-                    .build();
-        } catch (AppException exception) {
-            throw new AppException(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE);
-        }
     }
 
     private void checkResetCooldown(UUID userId) {

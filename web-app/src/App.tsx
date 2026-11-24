@@ -17,6 +17,8 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { CategoryPreferencesPage } from '@/pages/category-preferences/CategoryPreferencesPage'
 import { BecomeStreamerPage } from '@/pages/become-streamer/BecomeStreamerPage'
 import { ProfilePage } from '@/pages/profile/ProfilePage'
+import { WalletCreditsPage } from '@/pages/wallet/WalletCreditsPage'
+import { VnpayReturnPage } from '@/pages/payment/VnpayReturnPage'
 import { StreamerDashboardPage } from '@/pages/dashboard/StreamerDashboardPage'
 import { StreamUrlKeyPage } from '@/pages/dashboard/StreamUrlKeyPage'
 import { ModeratorsPage } from '@/pages/dashboard/ModeratorsPage'
@@ -50,6 +52,8 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AccountLayout />}>
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/wallet" element={<WalletCreditsPage />} />
+        <Route path="/payment/vnpay-return" element={<VnpayReturnPage />} />
         <Route path="/become-streamer" element={<BecomeStreamerPage />} />
         <Route path="/category-preferences" element={<CategoryPreferencesPage />} />
       </Route>

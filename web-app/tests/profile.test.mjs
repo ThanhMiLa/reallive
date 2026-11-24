@@ -116,7 +116,7 @@ function renderProfile(user, checking = false, component = ProfilePage) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
   if (user) client.setQueryData(['profile', user.userId], user)
   const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(MemoryRouter, null, createElement(component))))
-  const query = client.getQueryCache().getAll()[0]
+  const query = client.getQueryCache().getAll().find((q) => q.queryKey[0] === 'profile')
   return { html, query, client }
 }
 
@@ -157,10 +157,11 @@ test('profile uses its own account navigation without the browsing header or sid
   const html = renderRoute('/profile')
   assert.match(html, /aria-label="Account navigation"/)
   assert.match(html, /aria-current="page"[^>]*href="\/profile"/)
-  assert.match(html, /Back to home/)
+  assert.match(html, /aria-label="RealLive - Home"/)
   assert.doesNotMatch(html, /Toggle navigation|Search streams|>Browse<|FOLLOWING/)
   const nav = html.match(/<nav[^>]*>(.*?)<\/nav>/s)?.[1]
-  assert.equal((nav?.match(/<a /g) || []).length, 3)
+  assert.equal((nav?.match(/<a /g) || []).length, 4)
+  assert.match(nav, /href="\/wallet"/)
   assert.match(nav, /href="\/category-preferences"/)
 })
 

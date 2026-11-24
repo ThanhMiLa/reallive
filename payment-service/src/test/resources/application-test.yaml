@@ -17,3 +17,23 @@ auth:
   cookie:
     access-token:
       name: access_token
+
+vnpay:
+  tmn-code: TESTTMNC
+  hash-secret: vnpay-test-signature-secret
+  pay-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  api-url: https://sandbox.vnpayment.vn/merchant_webapi/api/transaction
+  return-url: http://localhost:5173/payment/vnpay-return
+  version: "2.1.0"
+  curr-code: VND
+  locale: vn
+  order-type: other
+  expire-minutes: 15
+  reconcile:
+    enabled: false
+    fixed-delay-ms: 300000
+    min-age-minutes: 3
+    expire-buffer-minutes: 10
+    batch-size: 50
+    http-timeout-ms: 5000
+    ip-address: 127.0.0.1

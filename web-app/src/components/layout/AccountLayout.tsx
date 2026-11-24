@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, Gamepad2, Radio, UserRound } from 'lucide-react'
+import { ChevronLeft, Coins, Gamepad2, Radio, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import realLiveLogo from '@/assets/RealLive-logo.svg'
@@ -7,6 +7,7 @@ import realLiveCompactLogo from '@/assets/RealLive-RL-transparent.svg'
 
 const navigationItems = [
   { to: '/profile', label: 'Profile', icon: UserRound, end: true },
+  { to: '/wallet', label: 'Wallet & Coins', icon: Coins },
   { to: '/category-preferences', label: 'Category Interests', icon: Gamepad2 },
   { to: '/become-streamer', label: 'Become a streamer', icon: Radio },
 ]

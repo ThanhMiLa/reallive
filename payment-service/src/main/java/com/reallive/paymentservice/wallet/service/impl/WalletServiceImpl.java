@@ -2,9 +2,8 @@ package com.reallive.paymentservice.wallet.service.impl;
 
 import com.reallive.paymentservice.common.exception.AppException;
 import com.reallive.paymentservice.common.exception.ErrorCode;
-import com.reallive.paymentservice.wallet.dto.response.WalletCreationResponse;
+import com.reallive.paymentservice.wallet.dto.response.WalletBalanceResponse;
 import com.reallive.paymentservice.wallet.entity.UserWalletEntity;
-import com.reallive.paymentservice.wallet.mapper.WalletMapper;
 import com.reallive.paymentservice.wallet.repository.UserWalletRepository;
 import com.reallive.paymentservice.wallet.service.WalletService;
 import lombok.AccessLevel;
@@ -20,21 +19,23 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class WalletServiceImpl implements WalletService {
     UserWalletRepository userWalletRepository;
-    WalletMapper walletMapper;
 
     @Override
     @Transactional
-    public WalletCreationResponse createWallet(UUID userId) {
-        if (userWalletRepository.existsByUserId(userId)) {
-            throw new AppException(ErrorCode.WALLET_ALREADY_EXISTS);
-        }
+    public WalletBalanceResponse createWallet(UUID userId) {
+        userWalletRepository.insertIfAbsent(userId);
+        return readBalance(userId, ErrorCode.PAYMENT_DATA_UNAVAILABLE);
+    }
 
-        UserWalletEntity walletEntity = UserWalletEntity.builder()
-                .userId(userId)
-                .balance(0L)
-                .build();
-        userWalletRepository.save(walletEntity);
+    @Override
+    @Transactional(readOnly = true)
+    public WalletBalanceResponse getBalance(UUID userId) {
+        return readBalance(userId, ErrorCode.WALLET_NOT_FOUND);
+    }
 
-        return walletMapper.toWalletCreationResponse(walletEntity);
+    private WalletBalanceResponse readBalance(UUID userId, ErrorCode missingWallet) {
+        UserWalletEntity wallet = userWalletRepository.findByUserId(userId)
+                .orElseThrow(() -> new AppException(missingWallet));
+        return new WalletBalanceResponse(wallet.getId(), wallet.getUserId(), wallet.getBalance());
     }
 }

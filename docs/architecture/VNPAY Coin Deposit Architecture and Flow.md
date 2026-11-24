@@ -340,3 +340,42 @@ flowchart TB
 
 > [!NOTE]
 > Các trường hợp ngoại lệ liên quan đến **giao dịch nghi ngờ gian lận (`07`)** và **giao dịch đảo (`04`)** được loại trừ có chủ đích khỏi phạm vi đặc tả này theo quyết định thiết kế hiện tại.
+
+---
+
+## 6. Thông tin thẻ thử nghiệm VNPAY Sandbox
+
+Các thông tin dưới đây được trích từ [trang demo VNPAY](https://sandbox.vnpayment.vn/apis/vnpay-demo/). Tên chủ thẻ cho tất cả các trường hợp là `NGUYEN VAN A`.
+
+### 6.1. Thẻ NCB
+
+| Số thẻ | Ngày phát hành | OTP | Kết quả thử nghiệm |
+|---|---|---|---|
+| `9704198526191432198` | `07/15` | `123456` | Thành công |
+| `9704195798459170488` | `07/15` | — | Thẻ không đủ số dư |
+| `9704192181368742` | `07/15` | — | Thẻ chưa kích hoạt |
+| `9704193370791314` | `07/15` | — | Thẻ bị khóa |
+| `9704194841945513` | `07/15` | — | Thẻ hết hạn |
+
+### 6.2. Thẻ quốc tế
+
+Các thẻ quốc tế dùng chung CVC/CVV `123`, email `test@gmail.com`, địa chỉ `22 Lang Ha` và thành phố `Ha Noi`.
+
+| Loại thẻ | Số thẻ | Ngày hết hạn | Kết quả thử nghiệm |
+|---|---|---|---|
+| VISA (No 3DS) | `4456530000001005` | `12/26` | Thành công |
+| VISA (3DS) | `4456530000001096` | `12/26` | Thành công |
+| MasterCard (No 3DS) | `5200000000001005` | `12/26` | Thành công |
+| MasterCard (3DS) | `5200000000001096` | `12/26` | Thành công |
+| JCB (No 3DS) | `3337000000000008` | `12/26` | Thành công |
+| JCB (3DS) | `3337000000200004` | `12/24` | Thành công |
+
+### 6.3. Thẻ ATM nội địa
+
+| Loại thẻ | Số thẻ | Ngày phát hành / hết hạn | OTP | Kết quả thử nghiệm |
+|---|---|---|---|---|
+| Nhóm ngân hàng qua NAPAS | `9704000000000018` | Phát hành `03/07` | `otp` | Thành công |
+| Nhóm ngân hàng qua NAPAS | `9704020000000016` | Phát hành `03/07` | `otp` | Thành công |
+| EXIMBANK | `9704310005819191` | Hết hạn `10/26` | — | Thành công |
+
+Theo trang demo, môi trường thử nghiệm chỉ sử dụng được thông tin thẻ trong danh sách này; kết nối thử nghiệm của các ngân hàng khác đã tạm đóng. Một số ngày hết hạn ở trên đã qua; thông tin được giữ theo tài liệu nguồn.

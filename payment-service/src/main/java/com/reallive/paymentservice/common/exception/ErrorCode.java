@@ -11,7 +11,10 @@ public enum ErrorCode {
     UNAUTHENTICATED(1001, "Unauthorized", HttpStatus.UNAUTHORIZED),
     ACCESS_DENIED(1002, "Access Denied", HttpStatus.FORBIDDEN),
     PAYMENT_DATA_UNAVAILABLE(1003, "Payment data is unavailable", HttpStatus.SERVICE_UNAVAILABLE),
-    WALLET_ALREADY_EXISTS(1004, "Wallet already exists", HttpStatus.CONFLICT);
+    WALLET_NOT_FOUND(1006, "Wallet not found", HttpStatus.NOT_FOUND),
+    INVALID_DEPOSIT_PACKAGE(1007, "Invalid deposit package", HttpStatus.BAD_REQUEST),
+    PAYMENT_TRANSACTION_NOT_FOUND(1008, "Payment transaction not found", HttpStatus.NOT_FOUND),
+    INVALID_REQUEST(1009, "Invalid request", HttpStatus.BAD_REQUEST);
 
     private final int code;
     private final String message;

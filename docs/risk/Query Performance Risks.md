@@ -8,13 +8,13 @@ Kết quả rà soát mã nguồn và migration của 10 thành phần backend. 
 | [`channel-service`](#channel-service) | 1: C01 | 7 | 8 |
 | [`stream-service`](#stream-service) | 3: S01, S03, S04 (đọc khóa có chủ đích) | 5, gồm Redis/HTTP | 8 |
 | [`chat-service`](#chat-service) | 0 | 5, MongoDB/HTTP | 5 |
-| [`user-service`](#user-service) | 2: U02, U06 | 6 | 8 |
-| [`payment-service`](#payment-service) | 0 | 1 | 1 |
+| [`user-service`](#user-service) | 2: U02, U06 | 5 | 7 |
+| [`payment-service`](#payment-service) | 0 | 0 | 0 |
 | [`notification-service`](#notification-service) | 0 | 4 | 4 |
 | [`vod-service`](#vod-service) | 0 | 0 (chưa có luồng nghiệp vụ) | 0 |
 | [`media-server`](#media-server) | 0 | 2, Control API | 2 |
 | [`media-worker`](#media-worker) | 0 | 3, Redis/HTTP | 3 |
-| **Tổng** | **6** | **35** | **41** |
+| **Tổng** | **6** | **33** | **39** |
 
 **P1:** ưu tiên xử lý. **P2:** tối ưu tiếp theo hoặc cần đo trước khi sửa. **P3:** tối ưu nhỏ.
 
@@ -75,10 +75,9 @@ Không thấy lazy N+1 trên các API trả nhiều kết quả: batch profile d
 
 | Mã / Ưu tiên | Query / Luồng hiện tại | Vì sao chưa tối ưu | Cách khắc phục |
 | --- | --- | --- | --- |
-| **U01 · P2**<br>Đăng ký gọi Payment trong transaction | [`POST /user/api/auth/register`](../../user-service/src/main/java/com/reallive/userservice/auth/service/impl/AuthServiceImpl.java#L141-L175) kiểm tra trùng, lưu user/profile rồi gọi Payment đồng bộ một lần trước khi phát hành token. | Không phải N+1; HTTP kéo dài transaction và thời gian giữ kết nối PostgreSQL. Payment có thể đã commit trong khi User timeout; xem [rủi ro nhất quán](Data%20Consistency%20Risks.md#L5). | Đặt timeout connect/read cụ thể cho [client Payment](../../user-service/src/main/java/com/reallive/userservice/client/wallet/WalletClient.java#L12-L19), đo thời gian giữ kết nối và không thêm retry mù. Chỉ chuyển sang outbox hoặc gọi sau commit khi đã chốt hợp đồng tạo ví, trạng thái chờ và đối soát. |
 | **U02 · P1**<br>Retry đồng bộ auth | [Worker](../../user-service/src/main/java/com/reallive/userservice/auth/adapter/redis/AuthStateSyncWorker.java#L16-L35) lấy tối đa 100 task rồi [khóa từng task, đọc user cùng quyền, ghi Redis và xóa/cập nhật task](../../user-service/src/main/java/com/reallive/userservice/auth/service/impl/AuthStateSyncProcessor.java#L61-L78). | **SQL N+1 tường minh:** `1 + 2N` `SELECT`, `N` lượt ghi SQL và `N` script Redis khi `N` task đều còn và đến bước publish. Mỗi task có transaction riêng. | Chỉ lấy ID ứng viên. Nếu backlog lớn, gom bước nhận task và tải quyền theo batch giới hạn; chỉ hoàn tất đúng revision. Không bỏ bước xác nhận task, cơ chế retry và chống snapshot cũ ghi đè Redis. |
 | **U03 · P1**<br>Profile cho Chat | [`GET /user/internal/api/users/{id}/chat-profile`](../../user-service/src/main/java/com/reallive/userservice/user/controller/internal/InternalChatProfileController.java#L31-L37) gọi luồng profile đầy đủ, [mapper truy cập roles](../../user-service/src/main/java/com/reallive/userservice/user/mapper/ProfileMapper.java#L17-L25), dù snapshot chỉ trả ID, tên, avatar. | Hai `SELECT` cho một profile thành công: profile cùng user, rồi lazy-load roles. Tăng tải trên luồng gửi chat, nhưng không phải N+1 trong một request User. | Dùng projection ba cột theo `profiles.user_id`; giữ `PROFILE_NOT_FOUND` và avatar nullable. Không thay bằng cache dễ làm snapshot lỗi thời. |
-| **U04 · P2**<br>Đọc lại khi đăng ký | [Register](../../user-service/src/main/java/com/reallive/userservice/auth/service/impl/AuthServiceImpl.java#L141-L176) chạy hai tra cứu trùng, một tra role, rồi đọc lại user cùng quyền qua luồng login. | Bốn `SELECT` khi thành công và xác minh lại mật khẩu vừa tạo hash; không phải N+1. | Fetch default role cùng permissions và phát hành token từ đối tượng vừa lưu sau khi tạo ví thành công. Giữ lỗi username/email tách biệt, thứ tự ưu tiên lỗi và publish sau commit. |
+| **U04 · P2**<br>Đọc lại khi đăng ký | [Register](../../user-service/src/main/java/com/reallive/userservice/auth/service/impl/AuthServiceImpl.java#L141-L176) chạy hai tra cứu trùng, một tra role, rồi đọc lại user cùng quyền qua luồng login. | Bốn `SELECT` khi thành công và xác minh lại mật khẩu vừa tạo hash; không phải N+1. | Fetch default role cùng permissions và phát hành token từ đối tượng vừa lưu. Giữ lỗi username/email tách biệt, thứ tự ưu tiên lỗi và publish sau commit. |
 | **U05 · P2**<br>Đọc user rồi đọc dữ liệu liên quan | [Streamer active/eligibility](../../user-service/src/main/java/com/reallive/userservice/streamer/service/impl/StreamerServiceImpl.java#L28-L53) và [GET category preferences](../../user-service/src/main/java/com/reallive/userservice/user/service/impl/CategoryPreferenceServiceImpl.java#L37-L62) đọc user trước, rồi streamer hoặc preference. | Hai `SELECT` trên đường thành công; lần đọc đầu có thể gộp mà không mất phân biệt user không tồn tại. | Dùng projection với `LEFT JOIN` từ user. Giữ thứ tự lỗi eligibility và phân biệt `404` với `[]`; giữ thứ tự preference theo thời điểm tạo. |
 | **U06 · P3**<br>Thay category preferences | [PUT category preferences](../../user-service/src/main/java/com/reallive/userservice/user/service/impl/CategoryPreferenceServiceImpl.java#L47-L77) đọc user, gọi Channel validate theo batch, xóa toàn bộ cũ rồi [`INSERT` từng preference](../../user-service/src/main/java/com/reallive/userservice/user/repository/UserCategoryPreferenceInsertRepositoryImpl.java#L18-L22). | `K + 2` câu SQL với tối đa 20 giá trị khác nhau. Ghi từng dòng, **không có N+1 đọc**. | Thử JDBC batch hoặc multi-row `INSERT`. Giữ validate trước ghi, thay thế nguyên tử, timestamp và thứ tự response. |
 | **U07 · P2**<br>Backfill auth | [Backfill khi bật](../../user-service/src/main/java/com/reallive/userservice/auth/adapter/redis/AuthStateBackfill.java#L18-L35) đọc ID theo `Slice` 100 rồi tải quyền theo lô: hai `SELECT` mỗi lô có dữ liệu, không `COUNT`. | Không phải SQL N+1; `OFFSET` sâu phải duyệt qua prefix và có thể bỏ sót khi xóa đồng thời. Redis publish từng user có chủ đích để dừng ngay khi lỗi. | Dùng keyset `id > lastSeen`; ghi rõ cách xử lý bản ghi mới phát sinh giữa các trang. Không pipeline Redis nếu cần giữ đúng hành vi dừng ở lỗi đầu tiên. |
@@ -86,11 +85,7 @@ Không thấy lazy N+1 trên các API trả nhiều kết quả: batch profile d
 
 ## Payment Service
 
-Chỉ có luồng tạo ví trong phạm vi nghiệp vụ đã triển khai; không thấy N+1. `user_id` đã có [unique constraint](../../payment-service/src/main/resources/db/migration/V1__create_user_wallets_table.sql#L1-L10). Chi phí gọi Payment trong transaction đăng ký được tính ở phía User Service, không tính hai lần.
-
-| Mã / Ưu tiên | Query / Luồng hiện tại | Vì sao chưa tối ưu | Cách khắc phục |
-| --- | --- | --- | --- |
-| **P01 · P2**<br>Tạo ví | `POST /payment/internal/api/wallets/create/{userId}` chạy [`existsByUserId` rồi `INSERT`](../../payment-service/src/main/java/com/reallive/paymentservice/wallet/service/impl/WalletServiceImpl.java#L25-L39). Ví mới tốn hai câu SQL; ví đã tồn tại tốn một `SELECT`. | Lượt đọc không tránh được cạnh tranh: hai request vẫn có thể cùng không thấy ví, rồi một `INSERT` thua do unique constraint và có thể trả `503` thay vì `409`. | Thử một `INSERT ... ON CONFLICT (user_id) DO NOTHING RETURNING ...`. Có dòng thì trả `200`; không có dòng thì trả `409`, không sửa ví cũ. Giữ khởi tạo UUID, thời điểm và số dư 0; giữ `503` cho lỗi DB khác, bổ sung [test cạnh tranh](../../payment-service/src/test/java/com/reallive/paymentservice/wallet/controller/internal/WalletCreationIntegrationTest.java#L133-L154). |
+Luồng tạo ví dùng `POST /payment/api/wallets/me` khi người dùng đã đăng nhập mở trang ví. Payment Service thêm ví theo [ràng buộc duy nhất trên `user_id`](../../payment-service/src/main/resources/db/migration/V1__create_user_wallets_table.sql#L1-L10), rồi đọc số dư hiện tại. Các request đồng thời trả về cùng một ví.
 
 ## Notification Service
 

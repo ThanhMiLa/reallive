@@ -157,7 +157,7 @@ COMMIT;
         start("user-service", user_port, database + storage + [
             f"--spring.datasource.url=jdbc:postgresql://127.0.0.1:{postgres_port}/auth_user",
             f"--jwt.signer-key={signer_key}", "--jwt.ttl_accessToken=120", "--jwt.ttl_refreshToken=600",
-            f"--app.service.channel=http://127.0.0.1:{channel_port}/channel", "--app.service.payment=http://127.0.0.1:9",
+            f"--app.service.channel=http://127.0.0.1:{channel_port}/channel",
             "--spring.kafka.bootstrap-servers=127.0.0.1:9", "--auth.state.retry-enabled=true",
             "--auth.state.retry-delay=1s", "--auth.state.backfill-enabled=false",
             "--auth.cookie.access-token.name=access_token", "--auth.cookie.refresh-token.name=refresh_token",

@@ -14,7 +14,6 @@ import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.service.AuthTokenService;
 import com.reallive.userservice.auth.util.PasswordResetOtpHasher;
 import com.reallive.userservice.auth.util.UserAuthoritiesMapper;
-import com.reallive.userservice.client.wallet.WalletClient;
 import com.reallive.userservice.user.repository.ProfileRepository;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
@@ -78,7 +77,7 @@ class AuthServiceQueryIntegrationTest {
         passwordEncoder = mock(PasswordEncoder.class);
         authService = new AuthServiceImpl(userRepository, mock(UserMapper.class), passwordEncoder, roleRepository,
                 authTokenService, mock(ProfileRepository.class), mock(PasswordResetOtpStore.class),
-                mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class), mock(WalletClient.class));
+                mock(PasswordResetEmailPublisher.class), mock(PasswordResetOtpHasher.class));
         statistics = entityManager.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
         when(authTokenService.issue(any(), anyList())).thenAnswer(invocation -> {
             UserEntity user = invocation.getArgument(0);

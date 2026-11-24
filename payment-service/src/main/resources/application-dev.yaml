@@ -36,3 +36,23 @@ auth:
   cookie:
     access-token:
       name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
+
+vnpay:
+  tmn-code: ${VNPAY_TMN_CODE:}
+  hash-secret: ${VNPAY_HASH_SECRET:}
+  pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+  return-url: ${VNPAY_RETURN_URL:http://localhost:5173/payment/vnpay-return}
+  version: "2.1.0"
+  curr-code: VND
+  locale: vn
+  order-type: other
+  expire-minutes: ${VNPAY_EXPIRE_MINUTES:15}
+  reconcile:
+    enabled: ${VNPAY_RECONCILE_ENABLED:true}
+    fixed-delay-ms: ${VNPAY_RECONCILE_FIXED_DELAY_MS:300000}
+    min-age-minutes: ${VNPAY_RECONCILE_MIN_AGE_MINUTES:3}
+    expire-buffer-minutes: ${VNPAY_RECONCILE_EXPIRE_BUFFER_MINUTES:10}
+    batch-size: ${VNPAY_RECONCILE_BATCH_SIZE:50}
+    http-timeout-ms: ${VNPAY_RECONCILE_HTTP_TIMEOUT_MS:5000}
+    ip-address: ${VNPAY_QUERY_IP_ADDRESS:127.0.0.1}
