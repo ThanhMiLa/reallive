@@ -73,7 +73,7 @@ class VnpayQueryDrAdapterTest {
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort() + API_PATH),
                 null, "2.1.0", "VND", "vn", "other", 15,
                 new VnpayProperties.Reconcile(false, 300_000, 3, 10, 50, 5_000, "192.0.2.10"));
-        adapter = new VnpayQueryDrAdapter(properties, new VnpayRequestSigner(properties), CLOCK, WebClient.builder());
+        adapter = new VnpayQueryDrAdapter(properties, new VnpayRequestSigner(properties), CLOCK, WebClient.builder().build());
     }
 
     @AfterEach
