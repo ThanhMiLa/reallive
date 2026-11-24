@@ -9,8 +9,8 @@ import com.reallive.paymentservice.deposit.dto.response.CoinPackageResponse;
 import com.reallive.paymentservice.deposit.dto.response.CreateVnpayDepositResponse;
 import com.reallive.paymentservice.deposit.dto.response.DepositStatusResponse;
 import com.reallive.paymentservice.deposit.entity.CoinDepositPackage;
-import com.reallive.paymentservice.deposit.entity.DepositStatus;
 import com.reallive.paymentservice.deposit.entity.PaymentTransactionEntity;
+import com.reallive.paymentservice.deposit.entity.TransactionStatus;
 import com.reallive.paymentservice.deposit.repository.PaymentTransactionRepository;
 import com.reallive.paymentservice.deposit.service.DepositService;
 import com.reallive.paymentservice.wallet.entity.UserWalletEntity;
@@ -69,7 +69,7 @@ public class DepositServiceImpl implements DepositService {
                 .packageCode(coinPackage)
                 .amount(coinPackage.getAmountVnd())
                 .coinAmount(coinPackage.getCoinAmount())
-                .status(DepositStatus.PENDING)
+                .status(TransactionStatus.PENDING)
                 .providerCreateDate(VnpayRequestSigner.formatDate(now))
                 .expiresAt(LocalDateTime.ofInstant(expiresAt, paymentClock.getZone()))
                 .build();

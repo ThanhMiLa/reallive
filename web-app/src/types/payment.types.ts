@@ -1,4 +1,4 @@
-export type DepositStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED'
+export type TransactionStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED'
 
 export interface WalletBalance {
   walletId: string
@@ -23,7 +23,7 @@ export interface CreateVnpayDepositResponse {
   packageCode: string
   amountVnd: number
   coinAmount: number
-  status: DepositStatus
+  status: TransactionStatus
   expiresAt: string
   paymentUrl: string
 }
@@ -34,7 +34,7 @@ export interface DepositStatusResponse {
   packageCode: string
   amountVnd: number
   coinAmount: number
-  status: DepositStatus
+  status: TransactionStatus
   providerTransactionNo: string | null
   providerResponseCode: string | null
   walletBalance: number

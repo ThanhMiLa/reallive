@@ -59,7 +59,7 @@ public class PaymentTransactionEntity extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    DepositStatus status;
+    TransactionStatus status;
 
     @Column(nullable = false, updatable = false, length = 14)
     String providerCreateDate;
@@ -78,13 +78,13 @@ public class PaymentTransactionEntity extends BaseEntity {
 
     LocalDateTime paidAt;
 
-    public void settle(DepositStatus status, String transactionNo, String responseCode,
+    public void settle(TransactionStatus status, String transactionNo, String responseCode,
                        String transactionStatus, LocalDateTime settledAt) {
         this.status = status;
         this.providerTransactionNo = transactionNo;
         this.providerResponseCode = responseCode;
         this.providerTransactionStatus = transactionStatus;
-        if (status == DepositStatus.PAID) {
+        if (status == TransactionStatus.PAID) {
             this.paidAt = settledAt;
         }
     }

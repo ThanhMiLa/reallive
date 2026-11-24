@@ -4,8 +4,8 @@ import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPaymentResult;
 import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayQueryDrAdapter;
 import com.reallive.paymentservice.deposit.configuration.VnpayProperties;
 import com.reallive.paymentservice.deposit.configuration.VnpaySchedulingConfiguration;
-import com.reallive.paymentservice.deposit.entity.DepositStatus;
 import com.reallive.paymentservice.deposit.entity.PaymentTransactionEntity;
+import com.reallive.paymentservice.deposit.entity.TransactionStatus;
 import com.reallive.paymentservice.deposit.repository.PaymentTransactionRepository;
 import com.reallive.paymentservice.deposit.service.PaymentSettlementService;
 import org.junit.jupiter.api.Test;
@@ -61,9 +61,9 @@ class VnpayReconciliationSchedulerTest {
         var second = payment(2, createdAt);
         var third = payment(3, CUTOFF);
         var result = new VnpayPaymentResult("00", "00", "123");
-        when(repository.findForReconciliation(DepositStatus.PENDING, CUTOFF, START, 0, PageRequest.ofSize(2)))
+        when(repository.findForReconciliation(TransactionStatus.PENDING, CUTOFF, START, 0, PageRequest.ofSize(2)))
                 .thenReturn(List.of(first, second));
-        when(repository.findForReconciliation(DepositStatus.PENDING, CUTOFF, createdAt, 2, PageRequest.ofSize(2)))
+        when(repository.findForReconciliation(TransactionStatus.PENDING, CUTOFF, createdAt, 2, PageRequest.ofSize(2)))
                 .thenReturn(List.of(third));
         when(adapter.query(first)).thenReturn(Optional.empty());
         when(adapter.query(second)).thenThrow(new IllegalStateException("simulated network outage"));
@@ -81,7 +81,7 @@ class VnpayReconciliationSchedulerTest {
 
     @Test
     void skipsProviderWhenNoPendingOrdersMatchAgeCutoff() {
-        when(repository.findForReconciliation(DepositStatus.PENDING, CUTOFF, START, 0, PageRequest.ofSize(2)))
+        when(repository.findForReconciliation(TransactionStatus.PENDING, CUTOFF, START, 0, PageRequest.ofSize(2)))
                 .thenReturn(List.of());
         scheduler.reconcile();
         verifyNoInteractions(adapter, settlement);

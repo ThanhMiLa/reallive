@@ -7,7 +7,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.paymentservice.common.adapter.redis.RedisAuthoritiesReader;
 import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPaymentResult;
-import com.reallive.paymentservice.deposit.entity.DepositStatus;
+import com.reallive.paymentservice.deposit.entity.TransactionStatus;
 import com.reallive.paymentservice.deposit.repository.PaymentTransactionRepository;
 import com.reallive.paymentservice.deposit.scheduler.VnpayReconciliationScheduler;
 import com.reallive.paymentservice.deposit.service.DepositService;
@@ -198,7 +198,7 @@ class DepositIntegrationTest {
         Instant expiresAt = Instant.parse(result.get("expiresAt").asString());
         var payment = paymentRepository.findById(paymentId).orElseThrow();
         assertThat(payment.getOrderCode()).isEqualTo(orderCode);
-        assertThat(payment.getStatus()).isEqualTo(DepositStatus.PENDING);
+        assertThat(payment.getStatus()).isEqualTo(TransactionStatus.PENDING);
         assertThat(payment.getAmount()).isEqualTo(50_000);
         assertThat(payment.getCoinAmount()).isEqualTo(500);
         assertThat(payment.getProviderCreateDate()).isEqualTo(PROVIDER_DATE.format(expiresAt.minusSeconds(900)));
@@ -280,7 +280,7 @@ class DepositIntegrationTest {
         callback.put("vnp_Amount", "5000000");
         assertThat(ipn(signedQuery(callback))).isEqualTo("04");
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.PENDING);
+                .isEqualTo(TransactionStatus.PENDING);
         assertThat(balance(wallet)).isEqualTo(75);
         assertThat(ledgerCount(payment.paymentId())).isZero();
     }
@@ -295,7 +295,7 @@ class DepositIntegrationTest {
         assertThat(balance(wallet)).isEqualTo(175);
         assertThat(ledgerCount(payment.paymentId())).isOne();
         var settled = paymentRepository.findById(payment.paymentId()).orElseThrow();
-        assertThat(settled.getStatus()).isEqualTo(DepositStatus.PAID);
+        assertThat(settled.getStatus()).isEqualTo(TransactionStatus.PAID);
         assertThat(settled.getProviderTransactionNo()).isEqualTo("102");
         assertThat(settled.getProviderTransactionStatus()).isEqualTo("00");
         assertThat(settled.getPaidAt()).isNotNull();
@@ -324,7 +324,7 @@ class DepositIntegrationTest {
 
     @ParameterizedTest
     @CsvSource({"24,02,CANCELLED", "51,00,FAILED", "00,02,FAILED"})
-    void unsuccessfulIpnFinalizesWithoutCredit(String responseCode, String transactionStatus, DepositStatus expected)
+    void unsuccessfulIpnFinalizesWithoutCredit(String responseCode, String transactionStatus, TransactionStatus expected)
             throws Exception {
         UserWalletEntity wallet = wallet(75);
         var payment = depositService.createVnpayDeposit(wallet.getUserId(), "COIN_100", "192.0.2.1");
@@ -349,7 +349,7 @@ class DepositIntegrationTest {
         assertThat(ledgerCount(second.paymentId())).isZero();
         assertThat(balance(wallet)).isEqualTo(175);
         assertThat(paymentRepository.findById(second.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.PENDING);
+                .isEqualTo(TransactionStatus.PENDING);
         assertThat(ipn(signedQuery(callback(second.orderCode(), "00", "00", "106")))).isEqualTo("00");
         assertThat(balance(wallet)).isEqualTo(275);
     }
@@ -362,7 +362,7 @@ class DepositIntegrationTest {
         assertThat(ledgerCount(payment.paymentId())).isZero();
         assertThat(balance(wallet)).isEqualTo(Long.MAX_VALUE);
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.PENDING);
+                .isEqualTo(TransactionStatus.PENDING);
     }
 
     @ParameterizedTest
@@ -375,12 +375,12 @@ class DepositIntegrationTest {
                 LocalDateTime.now(paymentClock).minusMinutes(9), payment.paymentId());
         settlement.settleFromQueryDr(payment.orderCode(), result);
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.PENDING);
+                .isEqualTo(TransactionStatus.PENDING);
         jdbc.update("UPDATE payment_transactions SET expires_at = ? WHERE id = ?",
                 LocalDateTime.now(paymentClock).minusMinutes(11), payment.paymentId());
         settlement.settleFromQueryDr(payment.orderCode(), result);
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.CANCELLED);
+                .isEqualTo(TransactionStatus.CANCELLED);
         assertThat(balance(wallet)).isEqualTo(75);
         assertThat(ledgerCount(payment.paymentId())).isZero();
     }
@@ -395,7 +395,7 @@ class DepositIntegrationTest {
             return "QueryDR";
         }).getFirst()).isIn("00", "02");
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.PAID);
+                .isEqualTo(TransactionStatus.PAID);
         assertThat(balance(wallet)).isEqualTo(175);
         assertThat(ledgerCount(payment.paymentId())).isOne();
     }
@@ -406,11 +406,11 @@ class DepositIntegrationTest {
         var payment = depositService.createVnpayDeposit(wallet.getUserId(), "COIN_100", "192.0.2.1");
         settlement.settleFromQueryDr(payment.orderCode(), new VnpayPaymentResult("99", null, null));
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.PENDING);
+                .isEqualTo(TransactionStatus.PENDING);
         settlement.settleFromQueryDr(payment.orderCode(), new VnpayPaymentResult("00", "02", " "));
         settlement.settleFromQueryDr(payment.orderCode(), new VnpayPaymentResult("00", "00", "109"));
         assertThat(paymentRepository.findById(payment.paymentId()).orElseThrow().getStatus())
-                .isEqualTo(DepositStatus.FAILED);
+                .isEqualTo(TransactionStatus.FAILED);
         assertThat(balance(wallet)).isEqualTo(75);
         assertThat(ledgerCount(payment.paymentId())).isZero();
     }
@@ -429,9 +429,9 @@ class DepositIntegrationTest {
 
         long earlierCode = Math.min(first.orderCode(), second.orderCode());
         long laterCode = Math.max(first.orderCode(), second.orderCode());
-        var firstBatch = paymentRepository.findForReconciliation(DepositStatus.PENDING, cutoff,
+        var firstBatch = paymentRepository.findForReconciliation(TransactionStatus.PENDING, cutoff,
                 cutoff.minusSeconds(1), 0, PageRequest.ofSize(1));
-        var remaining = paymentRepository.findForReconciliation(DepositStatus.PENDING, cutoff,
+        var remaining = paymentRepository.findForReconciliation(TransactionStatus.PENDING, cutoff,
                 cutoff, earlierCode, PageRequest.ofSize(2));
         assertThat(firstBatch).extracting(payment -> payment.getOrderCode()).containsExactly(earlierCode);
         assertThat(remaining).extracting(payment -> payment.getOrderCode()).containsExactly(laterCode);

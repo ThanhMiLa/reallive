@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,4 +23,12 @@ public interface UserWalletRepository extends JpaRepository<UserWalletEntity, UU
             """, nativeQuery = true)
     void insertIfAbsent(UUID userId);
 
+    @Modifying
+    @Query("""
+            UPDATE UserWalletEntity w
+            SET w.balance = w.balance + :coinAmount,
+                w.updatedAt = :updatedAt
+            WHERE w.id = :walletId
+            """)
+    int creditBalance(UUID walletId, long coinAmount, LocalDateTime updatedAt);
 }
