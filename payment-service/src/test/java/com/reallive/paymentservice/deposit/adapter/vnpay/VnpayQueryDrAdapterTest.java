@@ -150,6 +150,12 @@ class VnpayQueryDrAdapterTest {
     }
 
     @Test
+    void rejectsUnsignedErrorResponsesWithoutSettling() {
+        response.set(Map.of("vnp_ResponseCode", "99", "vnp_Message", "Unexpected error"));
+        assertThat(adapter.query(ORDER)).isEmpty();
+    }
+
+    @Test
     void providerHttpFailureIsReportedToScheduler() {
         assertThatThrownBy(() -> adapter.query(ORDER)).isInstanceOf(WebClientResponseException.ServiceUnavailable.class);
     }
