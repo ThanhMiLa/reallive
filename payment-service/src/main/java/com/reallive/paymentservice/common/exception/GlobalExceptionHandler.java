@@ -2,14 +2,26 @@ package com.reallive.paymentservice.common.exception;
 
 
 import com.reallive.paymentservice.common.dto.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import java.time.Instant;
 
 @ControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler({MethodArgumentNotValidException.class, HandlerMethodValidationException.class,
+            ConstraintViolationException.class, HttpMessageNotReadableException.class,
+            MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<ApiResponse<Object>> invalidRequest() {
+        return appException(new AppException(ErrorCode.INVALID_REQUEST));
+    }
 
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<ApiResponse<Object>> dataAccessException(DataAccessException exception) {
