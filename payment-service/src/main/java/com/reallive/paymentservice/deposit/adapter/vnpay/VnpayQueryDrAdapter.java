@@ -5,6 +5,7 @@ import com.reallive.paymentservice.deposit.entity.PaymentTransactionEntity;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class VnpayQueryDrAdapter {
@@ -66,15 +68,52 @@ public class VnpayQueryDrAdapter {
                 .bodyToMono(RESPONSE_TYPE)
                 .block(Duration.ofMillis(properties.reconcile().httpTimeoutMs()));
 
-        if (response == null || !signer.verifies(pipeDelimited(response, RESPONSE_FIELDS), response.get("vnp_SecureHash"))
-                || !matchesCommand(response.get("vnp_Command"))
-                || !properties.tmnCode().equals(response.get("vnp_TmnCode"))
-                || !orderCode.equals(response.get("vnp_TxnRef"))
-                || !matchesAmount(payment, response)) {
+        String rejectionReason = rejectionReason(payment, orderCode, response);
+        if (rejectionReason != null) {
+            log.warn("VNPAY QueryDR rejected for order {}: reason={}, responseCode={}, transactionStatus={}, message={}",
+                    orderCode,
+                    rejectionReason,
+                    response == null ? null : sanitizeLogValue(response.get("vnp_ResponseCode")),
+                    response == null ? null : sanitizeLogValue(response.get("vnp_TransactionStatus")),
+                    response == null ? null : sanitizeLogValue(response.get("vnp_Message")));
             return Optional.empty();
         }
         return Optional.of(new VnpayPaymentResult(response.get("vnp_ResponseCode"),
                 response.get("vnp_TransactionStatus"), response.get("vnp_TransactionNo")));
+    }
+
+    private String rejectionReason(PaymentTransactionEntity payment, String orderCode, Map<String, String> response) {
+        if (response == null) {
+            return "empty response body";
+        }
+        String signature = response.get("vnp_SecureHash");
+        if (!StringUtils.hasText(signature)) {
+            return "missing signature";
+        }
+        if (!signer.verifies(pipeDelimited(response, RESPONSE_FIELDS), signature)) {
+            return "invalid signature";
+        }
+        if (!matchesCommand(response.get("vnp_Command"))) {
+            return "command mismatch";
+        }
+        if (!properties.tmnCode().equals(response.get("vnp_TmnCode"))) {
+            return "merchant code mismatch";
+        }
+        if (!orderCode.equals(response.get("vnp_TxnRef"))) {
+            return "order reference mismatch";
+        }
+        if (!matchesAmount(payment, response)) {
+            return "amount mismatch";
+        }
+        return null;
+    }
+
+    private static String sanitizeLogValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String sanitized = value.replaceAll("[\\r\\n\\t]+", " ").strip();
+        return sanitized.length() > 160 ? sanitized.substring(0, 160) + "..." : sanitized;
     }
 
     private static boolean matchesCommand(String command) {
