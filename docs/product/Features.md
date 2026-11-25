@@ -45,8 +45,7 @@
 - Integrate Payment Gateway ✅
 - Buy Coin ✅
 - View Coin Balance ✅
-- Buy Virtual Gift
-- Donate Gift
+- Buy Virtual and Donate Gift
 - Donation History
 - Transaction Payment History
 - Refund Gift
