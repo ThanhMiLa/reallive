@@ -31,4 +31,14 @@ public interface UserWalletRepository extends JpaRepository<UserWalletEntity, UU
             WHERE w.id = :walletId
             """)
     int creditBalance(UUID walletId, long coinAmount, LocalDateTime updatedAt);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE UserWalletEntity w
+            SET w.balance = w.balance - :coinAmount,
+                w.updatedAt = :updatedAt
+            WHERE w.userId = :userId
+              AND w.balance >= :coinAmount
+            """)
+    int debitBalanceByUserId(UUID userId, long coinAmount, LocalDateTime updatedAt);
 }

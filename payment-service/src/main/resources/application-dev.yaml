@@ -19,6 +19,12 @@ spring:
     openfeign:
       client:
         config:
+          stream-service:
+            connectTimeout: 2000
+            readTimeout: 5000
+          streamDonationContext:
+            connectTimeout: 2000
+            readTimeout: 5000
           user-service:
             connectTimeout: 2000
             readTimeout: 5000
@@ -50,6 +56,7 @@ auth:
 
 app:
   service:
+    stream: ${STREAM_SERVICE_BASE_URL:http://localhost:8082/stream}
     user: ${USER_SERVICE_BASE_URL:http://localhost:8080/user}
 
 vnpay:

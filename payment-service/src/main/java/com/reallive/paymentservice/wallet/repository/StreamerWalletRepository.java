@@ -29,4 +29,13 @@ public interface StreamerWalletRepository extends JpaRepository<StreamerWalletEn
             WHERE w.id = :walletId
             """)
     int creditAvailableBalance(UUID walletId, long amount, LocalDateTime updatedAt);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE StreamerWalletEntity w
+            SET w.availableBalance = w.availableBalance + :amount,
+                w.updatedAt = :updatedAt
+            WHERE w.streamerId = :streamerId
+            """)
+    int creditAvailableBalanceByStreamerId(UUID streamerId, long amount, LocalDateTime updatedAt);
 }
