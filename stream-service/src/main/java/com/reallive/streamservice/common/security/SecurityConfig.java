@@ -33,7 +33,8 @@ public class SecurityConfig {
 
     private static final String[] INTERNAL_ENDPOINTS_GET = {
             "/internal/api/media/jwks",
-            "/internal/api/streams/*/chat-context"
+            "/internal/api/streams/*/chat-context",
+            "/internal/api/streams/*/donation-context"
     };
 
     private static final String[] INTERNAL_ENDPOINTS_POST = {
