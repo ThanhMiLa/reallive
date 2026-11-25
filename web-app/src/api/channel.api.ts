@@ -85,6 +85,19 @@ export const channelApi = {
   },
 
   /**
+   * Idempotently create or return current streamer's own channel.
+   * Endpoint: POST /channel/api/channels/me
+   */
+  ensureOwnChannel: async (signal?: AbortSignal): Promise<OwnChannel> => {
+    const response = await apiClient.post<ApiResponse<OwnChannel>>(
+      '/channel/api/channels/me',
+      undefined,
+      { signal },
+    )
+    return response.data.result
+  },
+
+  /**
    * Fetch current streamer's own channel details.
    * Endpoint: GET /channel/api/channels/me
    */

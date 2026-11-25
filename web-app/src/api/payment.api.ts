@@ -5,6 +5,7 @@ import type {
   CreateVnpayDepositResponse,
   DepositPackage,
   DepositStatusResponse,
+  StreamerWallet,
   WalletBalance,
 } from '@/types/payment.types'
 
@@ -19,6 +20,20 @@ export const paymentApi = {
   getWalletBalance: async (): Promise<WalletBalance> => {
     const response = await apiClient.get<ApiResponse<WalletBalance>>(
       '/payment/api/wallets/me',
+    )
+    return response.data.result
+  },
+
+  createStreamerWallet: async (): Promise<StreamerWallet> => {
+    const response = await apiClient.post<ApiResponse<StreamerWallet>>(
+      '/payment/api/streamer-wallets/me',
+    )
+    return response.data.result
+  },
+
+  getStreamerWallet: async (): Promise<StreamerWallet> => {
+    const response = await apiClient.get<ApiResponse<StreamerWallet>>(
+      '/payment/api/streamer-wallets/me',
     )
     return response.data.result
   },

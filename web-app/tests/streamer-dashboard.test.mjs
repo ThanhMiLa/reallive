@@ -184,7 +184,7 @@ test('dashboard route renders dedicated streamer layout with sidebar navbar and 
     assert.match(html, /Stream URL &amp; Key/)
     assert.match(html, /href="\/dashboard\/stream-key"/)
     assert.match(html, /My Channel/)
-    assert.match(html, /Back to home/)
+    assert.match(html, /aria-label="RealLive - Home"/)
     // OBS connection / Stream URL & Key panel is no longer rendered inside Stream Manager
     assert.doesNotMatch(html, /OBS connection/)
     assert.doesNotMatch(html, />Stream URL</)

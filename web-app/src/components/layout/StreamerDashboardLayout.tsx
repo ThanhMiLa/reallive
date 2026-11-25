@@ -1,9 +1,22 @@
 import { useState } from 'react'
-import { ChevronLeft, KeyRound, LayoutDashboard, Shield, ShieldBan, Tv, UserRound } from 'lucide-react'
+import {
+  AlertCircle,
+  ChevronLeft,
+  CircleDollarSign,
+  KeyRound,
+  LayoutDashboard,
+  Loader2,
+  RefreshCw,
+  Shield,
+  ShieldBan,
+  Tv,
+  UserRound,
+} from 'lucide-react'
 import { Link, NavLink, Outlet, useMatch, useSearchParams } from 'react-router-dom'
+import { Button } from '@/components/ui/Button'
 import {
   useChannelModerationContext,
-  useOwnChannelForModeration,
+  useEnsureOwnChannel,
 } from '@/hooks/useChannelModeration'
 import { useAuthStore } from '@/stores/auth.store'
 import { hasStreamerRole } from '@/lib/utils'
@@ -17,13 +30,14 @@ const navigationItems = [
 ]
 
 export function StreamerDashboardLayout() {
-  const { user, isAuthenticated } = useAuthStore()
+  const { user, isAuthenticated, isCheckingAuth } = useAuthStore()
   const [searchParams] = useSearchParams()
   const isBannedUsersPage = useMatch('/dashboard/chat-bans')
   const queryChannelId = isBannedUsersPage ? searchParams.get('channelId')?.trim() || '' : ''
-  const userId = isAuthenticated && user?.userId ? user.userId : ''
+  const userId = isAuthenticated && !isCheckingAuth && user?.userId ? user.userId : ''
   const isStreamer = hasStreamerRole(user)
-  const ownChannelQuery = useOwnChannelForModeration(userId, !queryChannelId || isStreamer)
+  const shouldBootstrapChannel = Boolean(isAuthenticated && !isCheckingAuth && userId && isStreamer)
+  const ownChannelQuery = useEnsureOwnChannel(userId, shouldBootstrapChannel)
   const canManageModerators = Boolean(isStreamer && ownChannelQuery.data?.status === 'ACTIVE')
   const moderationChannelId = queryChannelId || ownChannelQuery.data?.id || ''
   const moderationContextQuery = useChannelModerationContext(
@@ -38,6 +52,7 @@ export function StreamerDashboardLayout() {
     : '/dashboard/chat-bans'
   const visibleNavigationItems = [
     ...navigationItems,
+    ...(isStreamer ? [{ to: '/dashboard/revenue', label: 'Revenue', icon: CircleDollarSign }] : []),
     ...(canManageModerators
       ? [{ to: '/dashboard/channel/moderators', label: 'Moderators', icon: Shield }]
       : []),
@@ -191,7 +206,53 @@ export function StreamerDashboardLayout() {
         )}
       </aside>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-        <Outlet />
+        {isCheckingAuth ? (
+          <div className="flex min-h-full items-center justify-center p-6">
+            <div
+              role="status"
+              className="flex items-center gap-3 rounded-xl border border-[#1f1f26] bg-[#08080a] px-5 py-4 text-sm text-gray-300"
+            >
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none text-[#ff2b42]" aria-hidden="true" />
+              <span>Checking your session...</span>
+            </div>
+          </div>
+        ) : shouldBootstrapChannel && ownChannelQuery.isPending ? (
+          <div className="flex min-h-full items-center justify-center p-6">
+            <div
+              role="status"
+              className="flex items-center gap-3 rounded-xl border border-[#1f1f26] bg-[#08080a] px-5 py-4 text-sm text-gray-300"
+            >
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none text-[#ff2b42]" aria-hidden="true" />
+              <span>Setting up your channel...</span>
+            </div>
+          </div>
+        ) : shouldBootstrapChannel && ownChannelQuery.isError ? (
+          <div className="flex min-h-full items-center justify-center p-6">
+            <div className="max-w-md space-y-4 rounded-xl border border-red-500/30 bg-[#08080a] p-6">
+              <div className="flex items-start gap-2.5 text-sm text-red-400">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <p role="alert">
+                  Unable to set up your channel right now. Please try again.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                isLoading={ownChannelQuery.isFetching}
+                onClick={() => {
+                  void ownChannelQuery.refetch()
+                }}
+                leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+                className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42]"
+              >
+                Try again
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </div>
     </div>
   )

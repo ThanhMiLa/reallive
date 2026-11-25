@@ -68,6 +68,24 @@ function refreshModerationState(
   return Promise.all(invalidations)
 }
 
+export function useEnsureOwnChannel(
+  actorId: string,
+  enabled: boolean = true,
+) {
+  const queryClient = useQueryClient()
+  return useQuery({
+    queryKey: channelModerationKeys.ownChannel(actorId),
+    queryFn: async ({ signal }) => {
+      const channel = await channelApi.ensureOwnChannel(signal)
+      queryClient.setQueryData(['own-channel'], channel)
+      return channel
+    },
+    enabled: Boolean(actorId && enabled),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+}
+
 export function useOwnChannelForModeration(
   actorId: string,
   enabled: boolean = true,

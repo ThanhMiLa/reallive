@@ -46,7 +46,7 @@ export function StreamerRegistration({ profile }: { profile: UserProfile }) {
         current ? { ...current, roles: result.roles } : current,
       )
       void client.invalidateQueries({ queryKey: ['channels'] })
-      toast.success('Streamer registration complete. Your channel has been created.')
+      toast.success('Streamer registration complete. Open Streamer Dashboard to set up your channel.')
     } catch (cause) {
       if (!isCurrentUser()) return
       if (isAxiosError<ApiResponse>(cause)) {
@@ -85,7 +85,18 @@ export function StreamerRegistration({ profile }: { profile: UserProfile }) {
     <section aria-labelledby="streamer-registration-heading" className="space-y-3 rounded-xl border border-[#1f1f26] bg-[#08080a] p-4 sm:px-5">
       <h2 id="streamer-registration-heading" className="sr-only">Streamer registration</h2>
       {registered ? (
-        <p role="status" className="flex items-center gap-2 text-sm text-emerald-400"><CheckCircle2 className="h-5 w-5 shrink-0" />Your streamer registration is complete.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p role="status" className="flex items-center gap-2 text-sm text-emerald-400">
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            Your streamer registration is complete.
+          </p>
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center justify-center rounded-lg bg-[#ff2b42] px-3 py-1.5 text-xs font-extrabold text-white shadow-lg transition hover:bg-[#e02237] hover:shadow-red-500/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42] self-start sm:self-auto"
+          >
+            Go to Streamer Dashboard
+          </Link>
+        </div>
       ) : (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -6,6 +6,12 @@ export interface WalletBalance {
   balance: number
 }
 
+export interface StreamerWallet {
+  walletId: string
+  streamerId: string
+  availableBalance: number
+}
+
 export interface DepositPackage {
   packageCode: string
   displayName: string

@@ -162,6 +162,7 @@ vi.mock('socket.io-client', () => ({
 vi.mock('@/api/chat.api', () => ({ chatApi: { history: mocks.history } }))
 vi.mock('@/api/channel.api', () => ({
   channelApi: {
+    ensureOwnChannel: mocks.getOwnChannel,
     getOwnChannel: mocks.getOwnChannel,
     getCategories: mocks.getCategories,
   },

@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   access: vi.fn(),
   categories: vi.fn(),
   getModeratorRoster: vi.fn(),
+  ensureOwnChannel: vi.fn(),
   chatHistory: vi.fn(),
   toast: vi.fn(),
   hls: [] as HlsStub[],
@@ -103,7 +104,12 @@ class FakeSocket {
 }
 
 vi.mock('@/api/stream.api', () => ({ streamApi: mocks }))
-vi.mock('@/api/channel.api', () => ({ channelApi: { getCategories: mocks.categories } }))
+vi.mock('@/api/channel.api', () => ({
+  channelApi: {
+    ensureOwnChannel: mocks.ensureOwnChannel,
+    getCategories: mocks.categories,
+  },
+}))
 vi.mock('@/api/channel-moderation.api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/channel-moderation.api')>()
   return {
@@ -229,6 +235,18 @@ function mountDashboardRoutes(initialEntries = ['/dashboard']) {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getModeratorRoster.mockReset().mockResolvedValue({ content: [], page: 0, size: 50, totalElements: 0, totalPages: 0 })
+  mocks.ensureOwnChannel.mockReset().mockResolvedValue({
+    id: channelId,
+    streamerId: 'streamer-1',
+    name: 'RealLive Studio',
+    slug: 'reallive',
+    description: null,
+    avatarUrl: null,
+    bannerUrl: null,
+    status: 'ACTIVE',
+    categories: [],
+    numberOfFollower: 0,
+  })
   mocks.hls.length = 0
   mocks.sockets.length = 0
   mocks.chatHistory.mockResolvedValue({

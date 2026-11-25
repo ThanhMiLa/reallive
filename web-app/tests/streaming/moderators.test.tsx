@@ -124,7 +124,7 @@ describe('Moderators dashboard', () => {
   })
 
   it.each([
-    ['missing', 'No channel available.'],
+    ['missing', 'Unable to set up your channel right now. Please try again.'],
     ['inactive', 'Your channel must be active to manage moderators.'],
     ['forbidden', 'You do not have permission to manage moderators for this channel.'],
   ])('handles a %s channel or permission on direct entry', async (condition, message) => {
@@ -251,7 +251,7 @@ describe('Moderators dashboard', () => {
     let assigned = false
     api = (config) => {
       if (config.url === base) return reply(config, page(assigned ? [{ ...profile, assignedAt }] : []))
-      if (config.method === 'post') {
+      if (config.url?.startsWith(`${base}/`) && config.method === 'post') {
         assigned = true
         return fail(config, 409, 1028)
       }
@@ -307,7 +307,7 @@ describe('Moderators dashboard', () => {
   ])('reports write error %s / %s', async (status, code, message) => {
     const fallback = api
     api = (config) => {
-      if (config.method === 'post') return fail(config, status, code)
+      if (config.url?.startsWith(`${base}/`) && config.method === 'post') return fail(config, status, code)
       if (config.url === `${base}/candidate`) return reply(config, page([{ ...profile, eligibility: 'ELIGIBLE' }]))
       return fallback(config)
     }
