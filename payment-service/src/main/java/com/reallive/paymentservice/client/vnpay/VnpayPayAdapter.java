@@ -1,4 +1,4 @@
-package com.reallive.paymentservice.deposit.adapter.vnpay;
+package com.reallive.paymentservice.client.vnpay;
 
 import com.reallive.paymentservice.deposit.configuration.VnpayProperties;
 import com.reallive.paymentservice.deposit.entity.PaymentTransactionEntity;

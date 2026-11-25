@@ -1,6 +1,6 @@
 package com.reallive.paymentservice.deposit.service;
 
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPaymentResult;
+import com.reallive.paymentservice.client.vnpay.VnpayPaymentResult;
 import com.reallive.paymentservice.deposit.dto.response.VnpayIpnResponse;
 
 public interface PaymentSettlementService {

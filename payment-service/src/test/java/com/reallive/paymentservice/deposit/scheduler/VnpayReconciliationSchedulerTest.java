@@ -1,7 +1,7 @@
 package com.reallive.paymentservice.deposit.scheduler;
 
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPaymentResult;
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayQueryDrAdapter;
+import com.reallive.paymentservice.client.vnpay.VnpayPaymentResult;
+import com.reallive.paymentservice.client.vnpay.VnpayQueryDrAdapter;
 import com.reallive.paymentservice.deposit.configuration.VnpayProperties;
 import com.reallive.paymentservice.deposit.configuration.VnpaySchedulingConfiguration;
 import com.reallive.paymentservice.deposit.entity.PaymentTransactionEntity;

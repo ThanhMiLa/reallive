@@ -2,8 +2,8 @@ package com.reallive.paymentservice.deposit.service.impl;
 
 import com.reallive.paymentservice.common.exception.AppException;
 import com.reallive.paymentservice.common.exception.ErrorCode;
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPayAdapter;
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayRequestSigner;
+import com.reallive.paymentservice.client.vnpay.VnpayPayAdapter;
+import com.reallive.paymentservice.client.vnpay.VnpayRequestSigner;
 import com.reallive.paymentservice.deposit.configuration.VnpayProperties;
 import com.reallive.paymentservice.deposit.dto.response.CoinPackageResponse;
 import com.reallive.paymentservice.deposit.dto.response.CreateVnpayDepositResponse;

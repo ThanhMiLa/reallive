@@ -1,4 +1,4 @@
-package com.reallive.paymentservice.deposit.adapter.vnpay;
+package com.reallive.paymentservice.client.vnpay;
 
 import com.reallive.paymentservice.common.exception.AppException;
 import com.reallive.paymentservice.common.exception.ErrorCode;

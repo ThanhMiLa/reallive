@@ -1,4 +1,4 @@
-package com.reallive.paymentservice.deposit.adapter.vnpay;
+package com.reallive.paymentservice.client.vnpay;
 
 public record VnpayPaymentResult(
         String responseCode,

@@ -1,7 +1,7 @@
 package com.reallive.paymentservice.deposit.service.impl;
 
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPayAdapter;
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPaymentResult;
+import com.reallive.paymentservice.client.vnpay.VnpayPayAdapter;
+import com.reallive.paymentservice.client.vnpay.VnpayPaymentResult;
 import com.reallive.paymentservice.deposit.dto.response.VnpayIpnResponse;
 import com.reallive.paymentservice.deposit.service.PaymentSettlementService;
 import com.reallive.paymentservice.deposit.service.VnpayIpnService;

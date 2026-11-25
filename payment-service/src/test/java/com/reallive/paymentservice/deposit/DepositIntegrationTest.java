@@ -6,7 +6,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.paymentservice.common.adapter.redis.RedisAuthoritiesReader;
-import com.reallive.paymentservice.deposit.adapter.vnpay.VnpayPaymentResult;
+import com.reallive.paymentservice.client.vnpay.VnpayPaymentResult;
 import com.reallive.paymentservice.deposit.entity.TransactionStatus;
 import com.reallive.paymentservice.deposit.repository.PaymentTransactionRepository;
 import com.reallive.paymentservice.deposit.scheduler.VnpayReconciliationScheduler;
