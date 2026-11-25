@@ -83,9 +83,9 @@ class GatewayAuthenticationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("gateway.security.signer-key", () -> SIGNING_KEY);
         registry.add("gateway.security.blacklist-timeout", () -> "50ms");
-        for (int index = 0; index < 3; index++) {
+        for (int index = 0; index < 4; index++) {
             String prefix = "spring.cloud.gateway.server.webflux.routes[" + index + "]";
-            String service = List.of("user", "channel", "notification").get(index);
+            String service = List.of("user", "channel", "notification", "payment").get(index);
             registry.add(prefix + ".id", () -> service + "-test");
             registry.add(prefix + ".uri", () -> "http://127.0.0.1:" + BACKEND.getAddress().getPort());
             registry.add(prefix + ".predicates[0]", () -> "Path=/" + service + "/**");
@@ -121,6 +121,32 @@ class GatewayAuthenticationTest {
                 .expectBody().returnResult();
         assertEquals(1, BACKEND_CALLS.get());
         verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void giftCatalogWithoutCookiesReachesBackendWithoutRedisLookup() {
+        client.get().uri("/payment/api/gifts").exchange().expectStatus().isOk()
+                .expectBody().returnResult();
+        assertEquals(1, BACKEND_CALLS.get());
+        verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    void giftCatalogRejectsInvalidAccessCookie() {
+        client.get().uri("/payment/api/gifts").cookie("access_token", "malformed-token")
+                .exchange().expectStatus().isUnauthorized().expectBody().returnResult();
+        assertEquals(0, BACKEND_CALLS.get());
+    }
+
+    @Test
+    void giftCatalogDoesNotMakeOtherMethodsChildrenOrDonationsPublic() {
+        request(HttpMethod.POST, "/payment/api/gifts").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        client.get().uri("/payment/api/gifts/extra").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        request(HttpMethod.POST, "/payment/api/donations").exchange().expectStatus().isUnauthorized()
+                .expectBody().returnResult();
+        assertEquals(0, BACKEND_CALLS.get());
     }
 
     @Test
