@@ -48,3 +48,29 @@ export interface DepositStatusResponse {
   createdAt: string
   expiresAt: string
 }
+
+export interface VirtualGift {
+  id: string
+  name: string
+  imageUrl: string
+  coinPrice: number
+}
+
+export interface DonateGiftRequest {
+  streamId: string
+  giftId: string
+  idempotencyKey: string
+}
+
+export interface DonateGiftResponse {
+  donationId: string
+  streamId: string
+  channelId: string
+  streamerId: string
+  giftId: string
+  giftName: string
+  giftImageUrl: string
+  coinPrice: number
+  remainingBalance: number
+  createdAt: string
+}

@@ -40,6 +40,9 @@ const mocks = vi.hoisted(() => ({
   details: vi.fn(),
   access: vi.fn(),
   getCategories: vi.fn(),
+  getVirtualGifts: vi.fn(),
+  getWalletBalance: vi.fn(),
+  donateGift: vi.fn(),
   hls: [] as HlsStub[],
 }))
 
@@ -55,6 +58,14 @@ vi.mock('@/api/stream.api', () => ({
 vi.mock('@/api/channel.api', () => ({
   channelApi: {
     getCategories: mocks.getCategories,
+  },
+}))
+
+vi.mock('@/api/payment.api', () => ({
+  paymentApi: {
+    getVirtualGifts: mocks.getVirtualGifts,
+    getWalletBalance: mocks.getWalletBalance,
+    donateGift: mocks.donateGift,
   },
 }))
 
@@ -194,6 +205,14 @@ beforeEach(() => {
   mocks.getCategories.mockResolvedValue([
     { id: CATEGORY_ID, name: 'IRL', slug: 'irl', thumbnailUrl: null },
   ])
+  mocks.getVirtualGifts.mockResolvedValue([
+    { id: 'gift-rose', name: 'Rose', imageUrl: '/gifts/rose.svg', coinPrice: 1 },
+  ])
+  mocks.getWalletBalance.mockResolvedValue({
+    walletId: 'wallet-1',
+    userId: 'viewer-1',
+    balance: 500,
+  })
   Object.defineProperty(HTMLMediaElement.prototype, 'load', {
     configurable: true,
     value: vi.fn(),

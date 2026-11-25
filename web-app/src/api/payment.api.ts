@@ -5,7 +5,10 @@ import type {
   CreateVnpayDepositResponse,
   DepositPackage,
   DepositStatusResponse,
+  DonateGiftRequest,
+  DonateGiftResponse,
   StreamerWallet,
+  VirtualGift,
   WalletBalance,
 } from '@/types/payment.types'
 
@@ -61,6 +64,24 @@ export const paymentApi = {
   ): Promise<DepositStatusResponse> => {
     const response = await apiClient.get<ApiResponse<DepositStatusResponse>>(
       `/payment/api/deposits/${encodeURIComponent(String(orderCode))}`,
+    )
+    return response.data.result
+  },
+
+  getVirtualGifts: async (signal?: AbortSignal): Promise<VirtualGift[]> => {
+    const response = await apiClient.get<ApiResponse<VirtualGift[]>>(
+      '/payment/api/gifts',
+      { signal },
+    )
+    return response.data.result
+  },
+
+  donateGift: async (
+    payload: DonateGiftRequest,
+  ): Promise<DonateGiftResponse> => {
+    const response = await apiClient.post<ApiResponse<DonateGiftResponse>>(
+      '/payment/api/donations',
+      payload,
     )
     return response.data.result
   },

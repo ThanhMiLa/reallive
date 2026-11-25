@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
+import { StreamGiftBar } from '@/components/stream/StreamGiftBar'
 import { useWatchStream } from '@/hooks/useWatchStream'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 
@@ -336,6 +337,14 @@ export function WatchStreamPage() {
               </div>
             )}
           </section>
+
+          {/* In-Stream Virtual Gift Bar */}
+          <StreamGiftBar
+            sessionId={sessionId}
+            status={status}
+            ownerUserId={session?.ownerUserId}
+            onStreamNotLive={refreshMetadata}
+          />
 
           {/* Below Video: Channel Avatar, Channel Name, Stream Title, Category */}
           <section

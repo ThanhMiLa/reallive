@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="rose-petal-outer" x1="16" y1="8" x2="48" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff4d6d"/>
+      <stop offset="100%" stop-color="#c9184a"/>
+    </linearGradient>
+    <linearGradient id="rose-petal-inner" x1="22" y1="12" x2="42" y2="34" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff758f"/>
+      <stop offset="100%" stop-color="#e01e37"/>
+    </linearGradient>
+    <linearGradient id="rose-leaf" x1="14" y1="36" x2="50" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 37v21" stroke="#10b981" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 47c-6-5-14-4-17 1 4 4 11 4 17-1Z" fill="url(#rose-leaf)"/>
+  <path d="M32 43c6-5 14-4 17 1-4 4-11 4-17-1Z" fill="url(#rose-leaf)"/>
+  <path d="M18 22c0-7.5 6.3-13 14-13s14 5.5 14 13c0 9-6.3 17-14 17s-14-8-14-17Z" fill="url(#rose-petal-outer)"/>
+  <path d="M22 20c0-5 4.5-9 10-9s10 4 10 9c0 6.5-4.5 12-10 12s-10-5.5-10-12Z" fill="url(#rose-petal-inner)"/>
+  <path d="M26 19.5c0-3 2.7-5.5 6-5.5s6 2.5 6 5.5c0 3.5-2.7 6.5-6 6.5-2.2 0-4-1.5-4-3.5 0-1.6 1.3-2.8 2.8-2.8 1.2 0 2.2.9 2.2 2" stroke="#ffe5ec" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M25 36l7 4 7-4-3.5 5h-7L25 36Z" fill="#059669"/>
+</svg>

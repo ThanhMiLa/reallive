@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="diamond-main" x1="12" y1="12" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a5f3fc"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <polygon points="18,12 46,12 56,26 32,54 8,26" fill="url(#diamond-main)"/>
+  <polygon points="18,12 32,26 46,12" fill="#e0f2fe" opacity="0.7"/>
+  <polygon points="8,26 32,26 32,54" fill="#0284c7" opacity="0.55"/>
+  <polygon points="56,26 32,26 32,54" fill="#1d4ed8" opacity="0.65"/>
+  <polygon points="23,26 32,12 41,26 32,54" fill="#bae6fd" opacity="0.35"/>
+  <path d="M18 12h28l10 14-24 28L8 26l10-14Z" stroke="#cffafe" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

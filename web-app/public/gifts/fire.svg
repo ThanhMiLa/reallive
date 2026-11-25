@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="fire-outer" x1="32" y1="6" x2="32" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fde047"/>
+      <stop offset="45%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#ef4444"/>
+    </linearGradient>
+    <linearGradient id="fire-inner" x1="32" y1="24" x2="32" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+  </defs>
+  <path d="M34.2 7c.8 7.5-3.2 12.6-7.7 17.1-4.8 4.8-9.5 9.7-9.5 17.4C17 50.6 23.7 57 32 57s15-6.4 15-15.5c0-6.7-3.4-12.5-7.2-16.8-.9 3-2.9 4.9-5.2 5.4 1.9-5.9 2.2-14.2-.4-23.1Z" fill="url(#fire-outer)"/>
+  <path d="M32 28c2.6 4.4 7 8 7 14 0 4.5-3.1 8-7 8s-7-3.5-7-8c0-4.4 2.7-8.2 7-14Z" fill="url(#fire-inner)"/>
+  <ellipse cx="32" cy="44.5" rx="3.4" ry="4.5" fill="#fef9c3"/>
+</svg>

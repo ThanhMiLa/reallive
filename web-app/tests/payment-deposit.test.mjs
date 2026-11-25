@@ -184,6 +184,42 @@ test('paymentApi calls backend endpoints with credentials and unwraps ApiRespons
         status: 200, statusText: 'OK', headers: {}, config,
       }
     }
+    if (config.url === '/payment/api/gifts') {
+      return {
+        data: {
+          status: 200,
+          code: 0,
+          message: 'OK',
+          result: [
+            { id: 'gift-rose', name: 'Rose', imageUrl: '/gifts/rose.svg', coinPrice: 1 },
+            { id: 'gift-heart', name: 'Heart', imageUrl: '/gifts/heart.svg', coinPrice: 5 },
+          ],
+        },
+        status: 200, statusText: 'OK', headers: {}, config,
+      }
+    }
+    if (config.url === '/payment/api/donations') {
+      return {
+        data: {
+          status: 200,
+          code: 0,
+          message: 'OK',
+          result: {
+            donationId: 'don-1',
+            streamId: 'stream-1',
+            channelId: 'chan-1',
+            streamerId: 'streamer-1',
+            giftId: 'gift-rose',
+            giftName: 'Rose',
+            giftImageUrl: '/gifts/rose.svg',
+            coinPrice: 1,
+            remainingBalance: 1499,
+            createdAt: '2026-11-25T10:00:00Z',
+          },
+        },
+        status: 200, statusText: 'OK', headers: {}, config,
+      }
+    }
     throw new Error(`Unexpected URL: ${config.url}`)
   }
 
@@ -192,11 +228,21 @@ test('paymentApi calls backend endpoints with credentials and unwraps ApiRespons
     const packages = await paymentApi.getDepositPackages()
     const deposit = await paymentApi.createVnpayDeposit('COIN_500')
     const status = await paymentApi.getDepositStatus(1763951000123)
+    const gifts = await paymentApi.getVirtualGifts()
+    const donation = await paymentApi.donateGift({
+      streamId: 'stream-1',
+      giftId: 'gift-rose',
+      idempotencyKey: 'idem-1',
+    })
 
     assert.deepEqual(wallet, { walletId: 'w-1', userId: 'u-1', balance: 1500 })
     assert.equal(packages.length, 5)
     assert.equal(deposit.orderCode, 1763951000123)
     assert.equal(status.status, 'PAID')
+    assert.equal(gifts.length, 2)
+    assert.equal(gifts[0].name, 'Rose')
+    assert.equal(donation.donationId, 'don-1')
+    assert.equal(donation.remainingBalance, 1499)
 
     assert.equal(requests[0].method, 'get')
     assert.equal(requests[0].url, '/payment/api/wallets/me')
@@ -207,6 +253,15 @@ test('paymentApi calls backend endpoints with credentials and unwraps ApiRespons
     assert.deepEqual(JSON.parse(requests[2].data), { packageCode: 'COIN_500' })
     assert.equal(requests[3].method, 'get')
     assert.equal(requests[3].url, '/payment/api/deposits/1763951000123')
+    assert.equal(requests[4].method, 'get')
+    assert.equal(requests[4].url, '/payment/api/gifts')
+    assert.equal(requests[5].method, 'post')
+    assert.equal(requests[5].url, '/payment/api/donations')
+    assert.deepEqual(JSON.parse(requests[5].data), {
+      streamId: 'stream-1',
+      giftId: 'gift-rose',
+      idempotencyKey: 'idem-1',
+    })
     assert.ok(requests.every((req) => req.withCredentials === true))
   } finally {
     apiClient.defaults.adapter = original
