@@ -387,7 +387,8 @@ test('WalletCreditsPage selects package, creates VNPAY deposit, and redirects vi
     })
 
     assert.equal(radios[2].getAttribute('aria-checked'), 'true')
-    assert.equal(testingLibrary.screen.getAllByText(/Creator 1,000/).length, 2)
+    assert.equal(testingLibrary.screen.getAllByText(/100\.000 VND/).length, 2)
+    assert.ok(testingLibrary.screen.getByText('1,000 Coins'))
 
     const payButton = testingLibrary.screen.getByRole('button', { name: 'Pay with VNPAY' })
     await testingLibrary.act(async () => {

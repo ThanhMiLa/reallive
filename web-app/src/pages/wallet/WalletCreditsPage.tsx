@@ -4,7 +4,6 @@ import {
   AlertCircle,
   Check,
   Coins,
-  CreditCard,
   LogIn,
   RefreshCw,
   ShieldCheck,
@@ -40,48 +39,31 @@ function PackageCard({
       aria-checked={isSelected}
       disabled={disabled}
       onClick={onSelect}
-      className={`group relative flex flex-col justify-between rounded-xl border p-5 text-left transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`group relative flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff2b42] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
         isSelected
-          ? 'border-[#ff2b42] bg-[#141016] shadow-[0_0_20px_rgba(255,43,66,0.2)]'
+          ? 'border-[#ff2b42] bg-[#141016] shadow-[0_0_16px_rgba(255,43,66,0.18)]'
           : 'border-[#1f1f26] bg-[#101014] hover:border-[#343442] hover:bg-[#14141a]'
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${
-              isSelected
-                ? 'border-[#ff2b42]/40 bg-[#ff2b42]/15 text-[#ff2b42]'
-                : 'border-[#1f1f26] bg-[#18181f] text-amber-400'
-            }`}
-          >
-            <Coins className="h-5 w-5" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xl font-extrabold text-white font-outfit tabular-nums">
-              {formatCoins(pkg.coinAmount)}
-            </p>
-            <p className="text-xs font-medium text-gray-400">Coins</p>
-          </div>
-        </div>
-        <span
-          aria-hidden="true"
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none ${
-            isSelected
-              ? 'border-[#ff2b42] bg-[#ff2b42] text-white'
-              : 'border-[#2f2f3b] bg-[#08080a] text-transparent'
-          }`}
-        >
-          <Check className="h-3 w-3 stroke-[3]" />
-        </span>
-      </div>
-
-      <div className="mt-5 flex items-baseline justify-between gap-2 border-t border-[#1f1f26] pt-3.5">
-        <span className="truncate text-xs text-gray-400">{pkg.displayName}</span>
-        <span className="shrink-0 text-sm font-bold text-gray-100 tabular-nums">
+      <div className="min-w-0">
+        <p className="text-base font-extrabold text-white font-outfit tabular-nums">
+          {formatCoins(pkg.coinAmount)}{' '}
+          <span className="text-xs font-semibold text-amber-400">Coins</span>
+        </p>
+        <p className="mt-0.5 text-xs font-medium text-gray-300 tabular-nums">
           {formatVnd(pkg.amountVnd)}
-        </span>
+        </p>
       </div>
+      <span
+        aria-hidden="true"
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none ${
+          isSelected
+            ? 'border-[#ff2b42] bg-[#ff2b42] text-white'
+            : 'border-[#2f2f3b] bg-[#08080a] text-transparent'
+        }`}
+      >
+        <Check className="h-2.5 w-2.5 stroke-[3]" />
+      </span>
     </button>
   )
 }
@@ -237,12 +219,12 @@ export function WalletCreditsPage() {
                 <div
                   role="status"
                   aria-label="Loading coin packages"
-                  className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                  className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
                 >
                   {Array.from({ length: 5 }).map((_, index) => (
                     <div
                       key={index}
-                      className="h-36 rounded-xl border border-[#1f1f26] bg-[#101014] animate-pulse motion-reduce:animate-none"
+                      className="h-16 rounded-xl border border-[#1f1f26] bg-[#101014] animate-pulse motion-reduce:animate-none"
                     />
                   ))}
                 </div>
@@ -279,7 +261,7 @@ export function WalletCreditsPage() {
                 <div
                   role="radiogroup"
                   aria-label="Coin packages"
-                  className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                  className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
                 >
                   {packages.map((pkg) => (
                     <PackageCard
@@ -305,45 +287,31 @@ export function WalletCreditsPage() {
                 </p>
               )}
 
-              <div className="flex flex-col gap-4 rounded-xl border border-[#1f1f26] bg-[#101014] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-                <div className="min-w-0 space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#2a2a35] bg-[#18181f] px-2 py-0.5 font-semibold text-gray-200">
-                      <CreditCard className="h-3.5 w-3.5 text-[#ff2b42]" aria-hidden="true" />
-                      VNPAY
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-gray-400">
-                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
-                      ATM / QR / International Card
-                    </span>
-                  </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#1f1f26] bg-[#101014] px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2.5 text-sm">
                   {effectivePackage ? (
-                    <p className="text-sm text-gray-300">
-                      Selected:{' '}
-                      <span className="font-bold text-white">
-                        {effectivePackage.displayName}
-                      </span>{' '}
-                      <span className="text-gray-400">
-                        ({formatCoins(effectivePackage.coinAmount)} Coins)
+                    <>
+                      <span className="font-semibold text-gray-300 tabular-nums">
+                        {formatCoins(effectivePackage.coinAmount)} Coins
                       </span>
-                    </p>
+                      <span className="text-gray-600" aria-hidden="true">•</span>
+                      <span className="text-base font-extrabold text-white font-outfit tabular-nums">
+                        {formatVnd(effectivePackage.amountVnd)}
+                      </span>
+                    </>
                   ) : (
-                    <p className="text-sm text-gray-400">
-                      Select a coin package to continue.
-                    </p>
+                    <span className="text-gray-400">Select a coin package</span>
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-end">
-                  <div className="text-left sm:text-right">
-                    <p className="text-xs text-gray-400">Total payment</p>
-                    <p className="text-xl font-extrabold text-white font-outfit tabular-nums">
-                      {effectivePackage ? formatVnd(effectivePackage.amountVnd) : '—'}
-                    </p>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+                    VNPAY
+                  </span>
                   <Button
                     type="button"
-                    size="lg"
+                    size="md"
                     isLoading={isCreatingOrder}
                     disabled={!walletQuery.isSuccess || !effectivePackage || packagesQuery.isPending || packagesQuery.isError}
                     onClick={handleCheckout}
