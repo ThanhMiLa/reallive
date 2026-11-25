@@ -1,4 +1,4 @@
-package com.reallive.paymentservice.donation.client.stream;
+package com.reallive.paymentservice.client.stream;
 
 import com.reallive.paymentservice.common.dto.ApiResponse;
 import com.reallive.paymentservice.common.exception.AppException;

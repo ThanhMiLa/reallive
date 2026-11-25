@@ -2,8 +2,8 @@ package com.reallive.paymentservice.donation.service.impl;
 
 import com.reallive.paymentservice.common.exception.AppException;
 import com.reallive.paymentservice.common.exception.ErrorCode;
-import com.reallive.paymentservice.donation.client.stream.StreamDonationContextApiClient;
-import com.reallive.paymentservice.donation.client.stream.StreamDonationContextResponse;
+import com.reallive.paymentservice.client.stream.StreamDonationContextApiClient;
+import com.reallive.paymentservice.client.stream.StreamDonationContextResponse;
 import com.reallive.paymentservice.donation.dto.request.DonateGiftRequest;
 import com.reallive.paymentservice.donation.entity.DonationEntity;
 import com.reallive.paymentservice.donation.entity.VirtualGiftEntity;

@@ -2,7 +2,7 @@ package com.reallive.paymentservice.wallet.service.impl;
 
 import com.reallive.paymentservice.common.exception.AppException;
 import com.reallive.paymentservice.common.exception.ErrorCode;
-import com.reallive.paymentservice.wallet.client.streamer.StreamerApiClient;
+import com.reallive.paymentservice.client.streamer.StreamerApiClient;
 import com.reallive.paymentservice.wallet.dto.response.StreamerWalletResponse;
 import com.reallive.paymentservice.wallet.entity.StreamerWalletEntity;
 import com.reallive.paymentservice.wallet.repository.StreamerWalletRepository;

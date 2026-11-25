@@ -6,7 +6,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.reallive.paymentservice.common.adapter.redis.RedisAuthoritiesReader;
-import com.reallive.paymentservice.wallet.client.streamer.StreamerApiClient;
+import com.reallive.paymentservice.client.streamer.StreamerApiClient;
 import com.reallive.paymentservice.wallet.dto.response.StreamerWalletResponse;
 import com.reallive.paymentservice.wallet.entity.StreamerWalletEntity;
 import com.reallive.paymentservice.wallet.repository.StreamerWalletRepository;

@@ -1,4 +1,4 @@
-package com.reallive.paymentservice.wallet.client.streamer;
+package com.reallive.paymentservice.client.streamer;
 
 import com.reallive.paymentservice.common.dto.ApiResponse;
 import com.reallive.paymentservice.common.exception.AppException;

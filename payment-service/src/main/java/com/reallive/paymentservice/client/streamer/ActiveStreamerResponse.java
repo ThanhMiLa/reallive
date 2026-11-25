@@ -1,4 +1,4 @@
-package com.reallive.paymentservice.wallet.client.streamer;
+package com.reallive.paymentservice.client.streamer;
 
 import java.util.UUID;
 
