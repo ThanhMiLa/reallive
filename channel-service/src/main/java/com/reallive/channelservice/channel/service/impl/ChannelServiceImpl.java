@@ -2,7 +2,6 @@ package com.reallive.channelservice.channel.service.impl;
 
 import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.UnfollowedChannelListRequest;
-import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
@@ -16,6 +15,7 @@ import com.reallive.channelservice.channel.entity.ChannelEntity;
 import com.reallive.channelservice.channel.entity.enums.CategoryStatus;
 import com.reallive.channelservice.channel.entity.enums.ChannelStatus;
 import com.reallive.channelservice.channel.mapper.ChannelMapper;
+import com.reallive.channelservice.channel.client.user.UserChatProfileApiClient;
 import com.reallive.channelservice.channel.client.user.UserProfileClient;
 import com.reallive.channelservice.channel.client.user.UserProfileResponse;
 import com.reallive.channelservice.channel.repository.CategoryRepository;
@@ -37,11 +37,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -69,6 +69,7 @@ public class ChannelServiceImpl implements ChannelService {
     UserCategoryPreferenceResolver userCategoryPreferenceResolver;
     R2StorageService r2StorageService;
     UserProfileClient userProfileClient;
+    UserChatProfileApiClient userChatProfileApiClient;
     PlatformTransactionManager transactionManager;
 
     @Override
@@ -126,28 +127,41 @@ public class ChannelServiceImpl implements ChannelService {
     }
 
     @Override
-    @Transactional
-    public boolean createChannel(CreateChannelRequest request) {
-        if (request.getUserId() == null) {
-            throw new AppException(ErrorCode.CHANNEL_REQUEST_INVALID);
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public OwnChannelResponse createOwnChannel(UUID userId) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-        if (channelRepository.existsByStreamerIdIncludingDeleted(request.getStreamerId())) {
-            throw new AppException(ErrorCode.CHANNEL_ALREADY_EXISTED);
+        ChannelEntity existing = channelRepository.findByUserId(userId).orElse(null);
+        if (existing != null) {
+            return toOwnChannelResponse(existing);
         }
-        ChannelEntity channelEntity = ChannelEntity.builder()
-                .name(request.getName())
-                .streamerId(request.getStreamerId())
-                .userId(request.getUserId())
-                .slug("channel-" + request.getStreamerId())
-                .avatarUrl(request.getAvatarUrl() != null ? request.getAvatarUrl() : "")
-                .status(ChannelStatus.ACTIVE)
-                .build();
-        try {
-            ChannelEntity channel = channelRepository.saveAndFlush(channelEntity);
-            return channel.getId() != null;
-        } catch (DataIntegrityViolationException e) {
-            throw new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE);
+        UUID streamerId = activeStreamerResolver.getActiveStreamerIdByUserId(userId);
+        existing = channelRepository.findByStreamerId(streamerId).orElse(null);
+        if (existing != null) {
+            return toOwnChannelResponse(existing);
         }
+        if (channelRepository.existsByStreamerIdIncludingDeleted(streamerId)) {
+            throw new AppException(ErrorCode.CHANNEL_NOT_ACTIVE);
+        }
+        var profile = userChatProfileApiClient.profile(userId);
+        String name = profile.displayName() == null || profile.displayName().isBlank()
+                ? "Streamer" : profile.displayName();
+        String avatarUrl = profile.avatarUrl() == null ? "" : profile.avatarUrl();
+        return new TransactionTemplate(transactionManager).execute(status -> {
+            channelRepository.insertIfAbsent(streamerId, userId, name, "channel-" + streamerId,
+                    avatarUrl, ChannelStatus.ACTIVE.name());
+            ChannelEntity channel = channelRepository.findByStreamerId(streamerId)
+                    .orElseThrow(() -> new AppException(ErrorCode.CHANNEL_DATA_UNAVAILABLE));
+            return toOwnChannelResponse(channel);
+        });
+    }
+
+    private OwnChannelResponse toOwnChannelResponse(ChannelEntity channel) {
+        List<CategoryEntity> categories = channelCategoryRepository.findCategoriesByChannelId(channel.getId()).stream()
+                .map(ChannelCategoryEntity::getCategory)
+                .toList();
+        return channelMapper.toOwnChannelResponse(channel, categories);
     }
 
     @Override

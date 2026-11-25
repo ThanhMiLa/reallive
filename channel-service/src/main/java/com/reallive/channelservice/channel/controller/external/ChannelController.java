@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -43,6 +44,19 @@ public class ChannelController {
 
     ChannelService channelService;
     ChannelFollowService channelFollowService;
+
+    @PostMapping("/me")
+    @PreAuthorize("hasRole('STREAMER')")
+    public ResponseEntity<ApiResponse<OwnChannelResponse>> createOwnChannel(@AuthenticationPrincipal Jwt jwt) {
+        OwnChannelResponse response = channelService.createOwnChannel(AuthenticationUserId.getAuthenticatedUserId(jwt));
+        return ResponseEntity.ok(ApiResponse.<OwnChannelResponse>builder()
+                .status(200)
+                .code(1000)
+                .message("Channel ready")
+                .result(response)
+                .timestamp(Instant.now().toString())
+                .build());
+    }
 
     @GetMapping("/me")
     @PreAuthorize("hasAuthority('CHANNEL_VIEW_OWN')")

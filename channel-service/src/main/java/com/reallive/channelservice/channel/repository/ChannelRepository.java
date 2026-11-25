@@ -51,6 +51,16 @@ public interface ChannelRepository extends JpaRepository<ChannelEntity, UUID>, J
             """, nativeQuery = true)
     boolean existsByStreamerIdIncludingDeleted(@Param("streamerId") UUID streamerId);
 
+    @Modifying
+    @Query(value = """
+            INSERT INTO {h-schema}channels (streamer_id, user_id, name, slug, avatar_url, status)
+            VALUES (:streamerId, :userId, :name, :slug, :avatarUrl, :status)
+            ON CONFLICT DO NOTHING
+            """, nativeQuery = true)
+    int insertIfAbsent(@Param("streamerId") UUID streamerId, @Param("userId") UUID userId,
+                       @Param("name") String name, @Param("slug") String slug,
+                       @Param("avatarUrl") String avatarUrl, @Param("status") String status);
+
     boolean existsBySlug(String slug);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)

@@ -5,8 +5,6 @@ import com.reallive.userservice.auth.entity.UserEntity;
 import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.service.AuthStateSyncService;
-import com.reallive.userservice.client.channel.ChannelClientResolver;
-import com.reallive.userservice.client.channel.CreateChannelRequest;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.util.UserValidator;
@@ -15,8 +13,6 @@ import com.reallive.userservice.streamer.entity.StreamerEntity;
 import com.reallive.userservice.streamer.entity.StreamerStatus;
 import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.streamer.service.StreamerRegistrationService;
-import com.reallive.userservice.user.entity.ProfileEntity;
-import com.reallive.userservice.user.repository.ProfileRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -36,8 +32,6 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
     AuthStateSyncService authStateSyncService;
     RoleRepository roleRepository;
     StreamerRepository streamerRepository;
-    ChannelClientResolver channelClientResolver;
-    ProfileRepository profileRepository;
 
     @Override
     @Transactional
@@ -59,7 +53,6 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
                 .build();
         StreamerEntity streamer = streamerRepository.save(streamerEntity);
 
-        channelClientResolver.createChannel(mapToCreateChannelRequest(streamer));
 
         return BecomeStreamerResponse.builder()
                 .streamerId(streamer.getId())
@@ -80,15 +73,4 @@ public class StreamerRegistrationServiceImpl implements StreamerRegistrationServ
         }
     }
 
-    private CreateChannelRequest mapToCreateChannelRequest(StreamerEntity streamerEntity) {
-        ProfileEntity profile = profileRepository.findByUserId(streamerEntity.getUser().getId())
-                .orElseThrow(() -> new AppException(ErrorCode.PROFILE_NOT_FOUND));
-
-        return CreateChannelRequest.builder()
-                .name(profile.getDisplayName())
-                .avatarUrl(profile.getAvatarUrl())
-                .streamerId(streamerEntity.getId())
-                .userId(streamerEntity.getUser().getId())
-                .build();
-    }
 }

@@ -2,7 +2,6 @@ package com.reallive.channelservice.channel.service;
 
 import com.reallive.channelservice.channel.dto.request.FollowingChannelListRequest;
 import com.reallive.channelservice.channel.dto.request.UnfollowedChannelListRequest;
-import com.reallive.channelservice.channel.dto.request.CreateChannelRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelProfileRequest;
 import com.reallive.channelservice.channel.dto.request.UpdateChannelRequest;
 import com.reallive.channelservice.channel.dto.response.ChannelResponse;
@@ -64,19 +63,20 @@ public interface ChannelService {
     PageResponse<ChannelListResponse> getUnfollowedChannels(UUID userId, UnfollowedChannelListRequest request);
 
     /**
-     * Creates an active channel with a deterministic slug for the supplied streamer and owner user.
+     * Returns the owner's existing channel or idempotently creates an active channel from their user profile.
      *
-     * <p>An existing channel for the streamer, including a soft-deleted record, is rejected without changing its data.
-     * Concurrent inserts are protected by database uniqueness constraints. The supplied owner user UUID
-     * is required and persisted without verifying its mapping to the streamer with User Service.
-     * Creation joins the current local transaction when present.</p>
+     * <p>Existing non-deleted channels are returned unchanged without calling User Service. Otherwise,
+     * User Service must resolve an active streamer and supply the owner's profile before the short local
+     * creation transaction starts. Concurrent requests return the same channel through database uniqueness
+     * constraints. A soft-deleted channel cannot be recreated. No remote call holds a database transaction
+     * or row lock. An ambient caller transaction is suspended, and channel creation commits independently.</p>
      *
-     * @param request the streamer UUID, owner user UUID, channel name and optional HTTP/HTTPS avatar URL
-     * @return {@code true} when the saved channel has an ID, otherwise {@code false}
-     * @throws AppException if the owner user UUID is missing, a channel already exists,
-     *                      or insertion violates a database constraint
+     * @param userId the authenticated owner's user UUID
+     * @return the existing or newly created channel with its assigned categories and follower count
+     * @throws AppException if the identity is missing, the streamer is missing or inactive, the channel is
+     *                      soft-deleted, User Service is unavailable, or the inserted channel cannot be read
      */
-    boolean createChannel(CreateChannelRequest request);
+    OwnChannelResponse createOwnChannel(UUID userId);
 
     /**
      * Synchronizes the supplied name and avatar URL of the streamer's non-deleted channel.

@@ -17,11 +17,6 @@ import java.util.UUID;
         name = "channel-service",
         url = "${app.service.channel}")
 public interface ChannelClient {
-    @PostMapping(
-            value = "/internal/api/channels",
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    ResponseEntity<ApiResponse<Boolean>> createChannel(@RequestBody CreateChannelRequest request);
-
     @PatchMapping(
             value = "/internal/api/channels/by-streamer/{streamerId}/avatar",
             consumes = MediaType.APPLICATION_JSON_VALUE,
