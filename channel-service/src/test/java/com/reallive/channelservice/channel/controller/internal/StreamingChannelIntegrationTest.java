@@ -38,6 +38,9 @@ class StreamingChannelIntegrationTest {
 
     @Test
     void rejectsInactiveDeletedMissingAndOwnerlessChannels() throws Exception {
+        var suspended = channel(ChannelStatus.SUSPENDED, UUID.randomUUID(), false);
+        mvc.perform(get("/channel/internal/api/channels/by-streamer/{id}/streaming-context", suspended.getStreamerId()).contextPath("/channel"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(1010));
         var banned = channel(ChannelStatus.BANNED, UUID.randomUUID(), false);
         var deleted = channel(ChannelStatus.ACTIVE, UUID.randomUUID(), true);
         var ownerless = channel(ChannelStatus.ACTIVE, null, false);

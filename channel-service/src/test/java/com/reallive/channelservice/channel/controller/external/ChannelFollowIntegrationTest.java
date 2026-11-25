@@ -140,7 +140,7 @@ class ChannelFollowIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"ACTIVE", "BANNED"})
+    @ValueSource(strings = {"ACTIVE", "SUSPENDED", "BANNED"})
     void ownerCannotFollowOwnChannelAndReceivesConflictWithoutChangingData(String channelStatus) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID channelId = insertChannel(channelStatus);
@@ -159,7 +159,7 @@ class ChannelFollowIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"ACTIVE", "BANNED"})
+    @ValueSource(strings = {"ACTIVE", "SUSPENDED", "BANNED"})
     void ownerCanUnfollowALegacySelfFollowWithoutRemovingOtherFollowers(String channelStatus) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID otherUser = UUID.randomUUID();

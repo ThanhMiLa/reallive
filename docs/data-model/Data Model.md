@@ -85,7 +85,7 @@ Composite Constraint:
 |---|---|---|---|---|
 | id | UUID | PK, NOT NULL | Primary | Streamer ID |
 | user_id | UUID | FK, UNIQUE, NOT NULL | UNIQUE | User ID |
-| status | VARCHAR(30) | NOT NULL | INDEX | `PENDING, ACTIVE, SUSPENDED, BANNED`|
+| status | VARCHAR(30) | NOT NULL | INDEX | `ACTIVE, SUSPENDED, BANNED` |
 | verified_at | TIMESTAMP | - | - | Time when streamer verification was completed |
 | suspended_at | TIMESTAMP | - | - | Time when streaming permission was suspended |
 | suspended_until | TIMESTAMP | - | INDEX | Suspension expiration time |
@@ -95,6 +95,11 @@ Composite Constraint:
 
 Composite Index:
 - `INDEX (status, suspended_until)`
+
+Constraints:
+- `CHECK (status IN ('ACTIVE', 'SUSPENDED', 'BANNED'))`
+
+Streamer registration creates an `ACTIVE` record after eligibility validation; there is no pending approval state. Flyway V15 converts legacy `PENDING` records to `SUSPENDED`, preserving their ineligible state and existing moderation fields.
 
 #### 1.1.10 user_category_preferences
 | Column | Type | Constraints | Index | Description |
@@ -148,7 +153,7 @@ One task exists per account. Synchronization publishes current committed state a
 | avatar_url | VARCHAR(500) | - | - | Channel avatar URL |
 | banner_url | VARCHAR(500) | - | - | Channel banner URL |
 | follower_count | BIGINT | NOT NULL, DEFAULT 0 | - | Stored total follower count |
-| status | VARCHAR(30) | NOT NULL | INDEX | `ACTIVE, BANNED` |
+| status | VARCHAR(30) | NOT NULL | INDEX | `ACTIVE, SUSPENDED, BANNED` |
 | created_at | TIMESTAMP | NOT NULL | - | Created time |
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
 | deleted_at | TIMESTAMP | - | INDEX | Soft delete time |
@@ -156,6 +161,9 @@ One task exists per account. Synchronization publishes current committed state a
 
 Constraints:
 - `follower_count >= 0`
+- `CHECK (status IN ('ACTIVE', 'SUSPENDED', 'BANNED'))`
+
+Flyway V8 adds `SUSPENDED` without changing existing channel statuses. Suspended channels are excluded from active channel lists and cannot be followed, updated, used for publishing, viewed live or chatted in, or managed through moderator/ban APIs. Unfollow and owner channel reads remain available.
 
 #### 2.1.2 categories
 | Column | Type | Constraints | Index | Description |
@@ -463,14 +471,14 @@ Constraints:
 | wallet_id | UUID | FK, NOT NULL | Composite index | Wallet associated with the transaction (`user_wallets.id`) |
 | type | VARCHAR(30) | NOT NULL | Composite unique | `DEPOSIT, GIFT_PURCHASE, REFUND` |
 | amount | BIGINT | NOT NULL | - | Coin amount involved in the transaction |
-| reference_id | UUID | - | Composite unique | Related business transaction ID (`payment_transactions.id` for `DEPOSIT`) |
+| reference_id | UUID | - | Composite unique | Related business transaction ID (`payment_transactions.id` for `DEPOSIT`, `donations.id` for `GIFT_PURCHASE`) |
 | created_at | TIMESTAMP | NOT NULL | Composite index | Transaction time |
 
 Constraints & Indexes:
 - `CHECK (type IN ('DEPOSIT', 'GIFT_PURCHASE', 'REFUND'))`
 - `CHECK (amount > 0)`
 - `CHECK (type <> 'DEPOSIT' OR reference_id IS NOT NULL)`
-- `CONSTRAINT uk_wallet_transactions_type_reference UNIQUE (type, reference_id)` (DB-level guard preventing duplicate `DEPOSIT` entries for the same payment transaction)
+- `CONSTRAINT uk_wallet_transactions_type_reference UNIQUE (type, reference_id)` (DB-level guard preventing duplicate `DEPOSIT` or `GIFT_PURCHASE` entries for the same business transaction)
 - `INDEX idx_wallet_transactions_wallet_created_at ON wallet_transactions (wallet_id, created_at DESC)`
 
 #### 5.1.3 payment_transactions
@@ -522,41 +530,48 @@ Settlement updates lock the `payment_transactions` row by `order_code` (`SELECT 
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
 
 Constraints:
-- `coin_price > 0`
+- `CHECK (coin_price > 0)`
+- `CHECK (status IN ('ACTIVE', 'INACTIVE'))`
 
 #### 5.1.5 donations
 
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
 | id | UUID | PK, NOT NULL | Primary | Donation ID |
-| donor_user_id | UUID | NOT NULL | INDEX | Donor user ID from User Service |
-| streamer_id | UUID | NOT NULL | INDEX | Recipient streamer ID from User Service |
+| donor_user_id | UUID | NOT NULL | Composite index, Composite unique | Donor user ID from User Service |
+| streamer_id | UUID | NOT NULL | Composite index | Recipient streamer ID from User Service |
 | channel_id | UUID | NOT NULL | INDEX | Channel where the donation occurred |
-| stream_id | UUID | NOT NULL | INDEX | Stream session where the donation occurred |
-| gift_id | UUID | FK, NOT NULL | INDEX | Donated virtual gift |
-| quantity | INT | NOT NULL | - | Number of gifts donated |
-| unit_coin_price | BIGINT | NOT NULL | - | Gift coin price at the time of donation |
-| streamer_revenue_amount | BIGINT | NOT NULL | - | Revenue credited to the streamer from this donation |
+| stream_id | UUID | NOT NULL | Composite index | Stream session where the donation occurred |
+| gift_id | UUID | FK, NOT NULL | INDEX | Donated virtual gift (`virtual_gifts.id`) |
+| idempotency_key | UUID | NOT NULL | Composite unique | Client-generated retry key per donor preventing duplicate debits |
+| coin_price | BIGINT | NOT NULL | - | Gift price snapshot in coins at the time of donation (1 gift per donation; 100% credited to the streamer) |
 | status | VARCHAR(30) | NOT NULL | INDEX | `COMPLETED, REFUNDED` |
-| created_at | TIMESTAMP | NOT NULL | INDEX | Donation time |
+| created_at | TIMESTAMP | NOT NULL | Composite index | Donation time |
 
-Constraints:
-- `quantity > 0`
-- `unit_coin_price > 0`
-- `streamer_revenue_amount >= 0`
+Constraints & Indexes:
+- `CONSTRAINT uk_donations_donor_idempotency UNIQUE (donor_user_id, idempotency_key)`
+- `CHECK (coin_price > 0)`
+- `CHECK (status IN ('COMPLETED', 'REFUNDED'))`
+- `INDEX idx_donations_donor_created_at ON donations (donor_user_id, created_at DESC, id DESC)`
+- `INDEX idx_donations_streamer_created_at ON donations (streamer_id, created_at DESC, id DESC)`
+- `INDEX idx_donations_stream_created_at ON donations (stream_id, created_at DESC, id DESC)`
+- `INDEX idx_donations_channel_id ON donations (channel_id)`
+- `INDEX idx_donations_gift_id ON donations (gift_id)`
 
-#### 5.1.7 streamer_wallets
+Each donation buys and sends one active virtual gift directly during a `PUBLIC` stream session in `LIVE` status (no gift inventory/backpack); all monetary amounts are denominated in coins with no platform fee split yet. Before opening a database transaction, Payment Service authenticates the donor via Redis auth state and calls Stream Service to verify that the target stream session is `PUBLIC` and `LIVE`, resolve `streamer_id`, `channel_id`, and `owner_user_id`, and reject self-donations (`donor_user_id <> owner_user_id`). Within a single PostgreSQL transaction, Payment Service reads the active `virtual_gifts` row, inserts one `COMPLETED` row into `donations` (guarded by `uk_donations_donor_idempotency`), atomically debits `user_wallets.balance` (`balance >= coin_price`), inserts one `GIFT_PURCHASE` row into `wallet_transactions` (`reference_id = donations.id`), ensures the recipient's `streamer_wallets` row exists, and atomically increments `streamer_wallets.available_balance` by `coin_price`.
+
+#### 5.1.6 streamer_wallets
 
 | Column | Type | Constraints | Index | Description |
 |---|---|---|---|---|
 | id | UUID | PK, NOT NULL | Primary | Streamer wallet ID |
 | streamer_id | UUID | UNIQUE, NOT NULL | UNIQUE | Streamer ID from User Service |
-| available_balance | BIGINT | NOT NULL | - | Revenue currently available for withdrawal |
+| available_balance | BIGINT | NOT NULL | - | Current coin balance credited to the streamer (all balances are tracked in coins) |
 | created_at | TIMESTAMP | NOT NULL | - | Created time |
 | updated_at | TIMESTAMP | NOT NULL | - | Last updated time |
 
 Constraints:
-- `available_balance >= 0`
+- `CHECK (available_balance >= 0)`
 
 ### 5.2 Relationships
 

@@ -138,16 +138,18 @@ class ChannelFollowingIntegrationTest {
     }
 
     @Test
-    void excludesOwnBannedAndDeletedChannelsAndOtherUsersMembership() throws Exception {
+    void excludesOwnInactiveAndDeletedChannelsAndOtherUsersMembership() throws Exception {
         UUID user = UUID.randomUUID();
         UUID visible = insertChannel("Visible", 100);
         UUID own = insertChannel("Own", 200);
         jdbc.update("UPDATE channels SET user_id = ? WHERE id = ?", user, own);
         UUID banned = insertChannel("Banned", 300);
+        UUID suspended = insertChannel("Suspended", 350);
+        jdbc.update("UPDATE channels SET status = 'SUSPENDED' WHERE id = ?", suspended);
         UUID deleted = insertChannel("Deleted", 400);
         jdbc.update("UPDATE channels SET status = 'BANNED' WHERE id = ?", banned);
         jdbc.update("UPDATE channels SET deleted_at = ? WHERE id = ?", TIME, deleted);
-        for (UUID channel : List.of(own, banned, deleted)) {
+        for (UUID channel : List.of(own, banned, suspended, deleted)) {
             follow(channel, user, TIME);
         }
         follow(visible, user, TIME);

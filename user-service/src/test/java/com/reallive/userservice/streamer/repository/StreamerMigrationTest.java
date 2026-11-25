@@ -6,6 +6,9 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDateTime;
@@ -15,6 +18,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class StreamerMigrationTest {
 
@@ -41,7 +45,7 @@ class StreamerMigrationTest {
     @Test
     void migratesFreshDatabaseAndGrantsChannelAndStreamPermissionsToStreamerRole() {
         Flyway flyway = migrations().load();
-        assertEquals(14, flyway.migrate().migrationsExecuted);
+        assertEquals(15, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
@@ -70,7 +74,7 @@ class StreamerMigrationTest {
         jdbc.update("INSERT INTO " + table("user_roles") + " (user_id, role_id) VALUES (?, ?)", userId, roleId);
 
         Flyway flyway = migrations().load();
-        assertEquals(11, flyway.migrate().migrationsExecuted);
+        assertEquals(12, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("roles", "WHERE name = 'STREAMER'"));
@@ -100,7 +104,7 @@ class StreamerMigrationTest {
                 profileId, userId);
 
         Flyway flyway = migrations().load();
-        assertEquals(10, flyway.migrate().migrationsExecuted);
+        assertEquals(11, flyway.migrate().migrationsExecuted);
         flyway.validate();
 
         assertEquals(1, count("users", ""));
@@ -266,7 +270,7 @@ class StreamerMigrationTest {
         jdbc.update("INSERT INTO " + table("auth_state_sync_tasks") + " (user_id, revision, attempts) VALUES (?, 0, 2)",
                 streamer);
 
-        assertEquals(1, migrations().load().migrate().migrationsExecuted);
+        assertEquals(1, migrations().target("14").load().migrate().migrationsExecuted);
         assertEquals(List.of("STREAMER"), jdbc.queryForList("SELECT role.name FROM " + table("roles") + " role"
                 + " JOIN " + table("role_permissions") + " grant_entry ON grant_entry.role_id = role.id"
                 + " JOIN " + table("permissions") + " permission ON permission.id = grant_entry.permission_id"
@@ -277,6 +281,42 @@ class StreamerMigrationTest {
                 Long.class, viewer));
         assertEquals(1, count("auth_state_sync_tasks", ""));
         assertEquals(1, count("auth_state_sync_tasks", "WHERE user_id = '" + streamer + "' AND revision = 1 AND attempts = 0"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"PENDING,SUSPENDED", "ACTIVE,ACTIVE", "SUSPENDED,SUSPENDED", "BANNED,BANNED"})
+    void removesPendingStatusWithoutGrantingAccessOrChangingModerationData(String oldStatus, String expectedStatus) {
+        migrations().target("14").load().migrate();
+        UUID userId = UUID.randomUUID();
+        UUID streamerId = UUID.randomUUID();
+        LocalDateTime verifiedAt = LocalDateTime.of(2026, 1, 1, 12, 0);
+        LocalDateTime suspendedAt = verifiedAt.plusDays(1);
+        LocalDateTime suspendedUntil = verifiedAt.plusDays(2);
+        jdbc.update("INSERT INTO " + table("users") + " (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+                userId, "legacy-streamer", "legacy-streamer@example.com", "test-hash");
+        jdbc.update("INSERT INTO " + table("streamers")
+                        + " (id, user_id, status, verified_at, suspended_at, suspended_until, suspension_reason)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                streamerId, userId, oldStatus, verifiedAt, suspendedAt, suspendedUntil, "Existing moderation history");
+
+        Flyway flyway = migrations().load();
+        assertEquals(1, flyway.migrate().migrationsExecuted);
+        flyway.validate();
+
+        assertEquals(expectedStatus, jdbc.queryForObject("SELECT status FROM " + table("streamers")
+                + " WHERE id = ? AND user_id = ?", String.class, streamerId, userId));
+        assertEquals(verifiedAt, jdbc.queryForObject("SELECT verified_at FROM " + table("streamers")
+                + " WHERE id = ?", LocalDateTime.class, streamerId));
+        assertEquals(suspendedAt, jdbc.queryForObject("SELECT suspended_at FROM " + table("streamers")
+                + " WHERE id = ?", LocalDateTime.class, streamerId));
+        assertEquals(suspendedUntil, jdbc.queryForObject("SELECT suspended_until FROM " + table("streamers")
+                + " WHERE id = ?", LocalDateTime.class, streamerId));
+        assertEquals("Existing moderation history", jdbc.queryForObject("SELECT suspension_reason FROM "
+                + table("streamers") + " WHERE id = ?", String.class, streamerId));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("UPDATE " + table("streamers")
+                + " SET status = 'PENDING' WHERE id = ?", streamerId));
+        assertEquals(0, count("streamers", "WHERE status = 'PENDING'"));
+        assertEquals(0, flyway.migrate().migrationsExecuted);
     }
 
     private List<String> streamerPermissions() {

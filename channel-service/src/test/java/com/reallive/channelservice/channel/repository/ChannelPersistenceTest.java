@@ -14,6 +14,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -88,7 +89,7 @@ class ChannelPersistenceTest {
     @Test
     void migrationCreatesAllTablesAndDoesNotReapply() {
         flyway.validate();
-        assertEquals("7", flyway.info().current().getVersion().toString());
+        assertEquals("8", flyway.info().current().getVersion().toString());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         for (String name : List.of("channels", "categories", "channel_categories", "channel_followers", "channel_user_bans")) {
             assertNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM " + table(name), Integer.class));
@@ -122,7 +123,7 @@ class ChannelPersistenceTest {
                         UUID.randomUUID(), channelId, unbanned, action, owner);
             }
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource()).schemas(schema).defaultSchema(schema).load();
-            assertEquals(2, upgraded.migrate().migrationsExecuted);
+            assertEquals(3, upgraded.migrate().migrationsExecuted);
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM " + banTable, Integer.class));
             assertEquals("FULL_BAN", jdbc.queryForObject("SELECT ban_type FROM " + banTable + " WHERE user_id = ?", String.class, target));
         } finally {
@@ -145,7 +146,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(6, upgraded.migrate().migrationsExecuted);
+            assertEquals(7, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             assertEquals(0L, jdbc.queryForObject("SELECT follower_count FROM " + channelsTable
                     + " WHERE id = ?", Long.class, channelId));
@@ -216,7 +217,7 @@ class ChannelPersistenceTest {
 
             Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
                     .schemas(schema).defaultSchema(schema).load();
-            assertEquals(4, upgraded.migrate().migrationsExecuted);
+            assertEquals(5, upgraded.migrate().migrationsExecuted);
             upgraded.validate();
             expectedRows.forEach((channelId, expected) -> assertEquals(expected,
                     jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId)));
@@ -224,6 +225,50 @@ class ChannelPersistenceTest {
         } finally {
             jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
         }
+    }
+
+    @Test
+    void suspendedStatusMigrationPreservesExistingRowsAndAllowsSuspension() {
+        String schema = "channel_status_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway initial = Flyway.configure().dataSource(jdbc.getDataSource())
+                .schemas(schema).defaultSchema(schema).target("7").load();
+        try {
+            initial.migrate();
+            String channelsTable = "\"" + schema + "\".channels";
+            Map<UUID, Map<String, Object>> expectedRows = new HashMap<>();
+            for (String status : List.of("ACTIVE", "BANNED")) {
+                UUID channelId = UUID.randomUUID();
+                jdbc.update("INSERT INTO " + channelsTable
+                                + " (id, streamer_id, name, slug, status) VALUES (?, ?, ?, ?, ?)",
+                        channelId, UUID.randomUUID(), "Existing channel", channelId.toString(), status);
+                expectedRows.put(channelId, jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", channelId));
+            }
+            UUID channelId = expectedRows.keySet().iterator().next();
+            assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("UPDATE " + channelsTable
+                    + " SET status = 'SUSPENDED' WHERE id = ?", channelId));
+
+            Flyway upgraded = Flyway.configure().dataSource(jdbc.getDataSource())
+                    .schemas(schema).defaultSchema(schema).load();
+            assertEquals(1, upgraded.migrate().migrationsExecuted);
+            upgraded.validate();
+            expectedRows.forEach((id, expected) -> assertEquals(expected,
+                    jdbc.queryForMap("SELECT * FROM " + channelsTable + " WHERE id = ?", id)));
+            jdbc.update("UPDATE " + channelsTable + " SET status = 'SUSPENDED' WHERE id = ?", channelId);
+            assertEquals("SUSPENDED", jdbc.queryForObject("SELECT status FROM " + channelsTable
+                    + " WHERE id = ?", String.class, channelId));
+            assertEquals(0, upgraded.migrate().migrationsExecuted);
+        } finally {
+            jdbc.execute("DROP SCHEMA IF EXISTS \"" + schema + "\" CASCADE");
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(ChannelStatus.class)
+    void persistsEverySupportedChannelStatus(ChannelStatus status) {
+        ChannelEntity channel = newChannel();
+        channel.setStatus(status);
+        channels.saveAndFlush(channel);
+        assertEquals(status, channels.findById(channel.getId()).orElseThrow().getStatus());
     }
 
     @Test

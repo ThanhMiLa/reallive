@@ -32,7 +32,7 @@ public class ChannelClient {
     public StreamingChannelContext requireContext(UUID streamerId, UUID ownerUserId) {
         var result = ClientResponses.read(() -> api.getContext(streamerId), ErrorCode.STREAM_CHANNEL_NOT_ELIGIBLE, Set.of(403, 404));
         if (result.channelId() == null || !streamerId.equals(result.streamerId()) || result.ownerUserId() == null
-                || result.status() == null || !Set.of("ACTIVE", "BANNED").contains(result.status())) {
+                || result.status() == null || !Set.of("ACTIVE", "SUSPENDED", "BANNED").contains(result.status())) {
             throw new AppException(ErrorCode.STREAM_DATA_UNAVAILABLE);
         }
         if (!ownerUserId.equals(result.ownerUserId()) || !"ACTIVE".equals(result.status())) {

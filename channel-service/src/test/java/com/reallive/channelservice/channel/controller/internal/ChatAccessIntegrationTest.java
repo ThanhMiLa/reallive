@@ -81,6 +81,8 @@ class ChatAccessIntegrationTest {
 
     @Test
     void inactiveOrDeletedChannelsCannotBeReadOrWritten() throws Exception {
+        jdbc.update("UPDATE channels SET status = 'SUSPENDED' WHERE id = ?", channelId);
+        assertAccess(false, false);
         jdbc.update("UPDATE channels SET status = 'BANNED' WHERE id = ?", channelId);
         assertAccess(false, false);
         jdbc.update("UPDATE channels SET status = 'ACTIVE', deleted_at = CURRENT_TIMESTAMP WHERE id = ?", channelId);

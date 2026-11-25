@@ -233,7 +233,7 @@ HTTP 200 returns `ApiResponse<ActiveStreamerResponse>` with a `result` object co
 |---|---|---|
 | Malformed user UUID | 400 | 4000 |
 | No streamer for the supplied user | 404 | 1038 |
-| Streamer is `PENDING`, `SUSPENDED`, or `BANNED` | 403 | 1039 |
+| Streamer is `SUSPENDED` or `BANNED` | 403 | 1039 |
 
 `StreamerControllerIntegrationTest` covers the real security filter, controller, service and database, including UUID mapping, missing records, every non-active status, status changes between requests and preservation of authentication requirements on other endpoints.
 
@@ -241,7 +241,7 @@ HTTP 200 returns `ApiResponse<ActiveStreamerResponse>` with a `result` object co
 
 V4 preserves the historical profiles migration with checksum `-843705742`. Databases that previously applied `V4__create_profiles_table.sql` must resolve that same migration; the streamer table uses V6 so the applied V4 version is not reused.
 
-Flyway V6 adds `streamers` with a unique, required `user_id` referencing `users`, status validation (`PENDING`, `ACTIVE`, `SUSPENDED`, `BANNED`), verification and suspension timestamps, and a suspension reason. `StreamerEntity` and `StreamerRepository.findByUserId` expose the record independently of the user's roles, including bans that remain after role removal. Status must be supplied explicitly when saving a streamer.
+Flyway V6 adds `streamers` with a unique, required `user_id` referencing `users`, status validation, verification and suspension timestamps, and a suspension reason. V15 restricts the supported statuses to `ACTIVE`, `SUSPENDED`, and `BANNED`. Legacy `PENDING` records become `SUSPENDED`, preserving their ineligible state and existing moderation fields; no streaming access is granted by this migration. Historical migrations remain unchanged. `StreamerEntity` and `StreamerRepository.findByUserId` expose the record independently of the user's roles, including bans that remain after role removal. Status must be supplied explicitly when saving a streamer. Registration creates an `ACTIVE` record after eligibility validation, without a pending approval step.
 
 V5 seeds the `STREAMER` role if absent, preserving any existing role ID, permissions and memberships. It does not grant roles to users or introduce new permissions. Streamer registration adds this role alongside existing roles through `user_roles`; account registration initializes a mutable role set.
 

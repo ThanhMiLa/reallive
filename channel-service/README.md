@@ -22,7 +22,7 @@ com.reallive.channelservice/
     └── repository/ChannelCategoryRepository.java
 ```
 
-Flyway migration `V1__create_channels_and_categories_tables.sql` implements Data Model sections 2.1.1–2.1.3. Hibernate validates the schema instead of creating it. Channels and categories share creation/update timestamps through the service-local `BaseEntity`. Status is required explicitly: channels use `ACTIVE`/`BANNED`, categories use `ACTIVE`/`INACTIVE`.
+Flyway migration `V1__create_channels_and_categories_tables.sql` implements Data Model sections 2.1.1–2.1.3. V8 extends the channel status constraint to `ACTIVE`, `SUSPENDED`, and `BANNED`, preserving existing rows and historical migrations. Hibernate validates the schema instead of creating it. Channels and categories share creation/update timestamps through the service-local `BaseEntity`. Status is required explicitly: channels use `ACTIVE`/`SUSPENDED`/`BANNED`, categories use `ACTIVE`/`INACTIVE`. Suspended channels follow the existing inactive-channel rules: active lists exclude them, and follow, update, publish, live viewing/chat, and moderator/ban management are denied. Unfollow, owner reads, and internal profile synchronization remain available.
 
 `channels.streamer_id` is a unique external UUID owned by User Service, without a cross-service foreign key or entity relationship. The channel slug and category name/slug are also unique. Unique constraints provide their own indexes; the composite primary key already indexes `channel_categories.channel_id`, and a separate index supports category lookups.
 

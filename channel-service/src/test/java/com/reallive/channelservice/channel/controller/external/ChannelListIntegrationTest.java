@@ -96,6 +96,7 @@ class ChannelListIntegrationTest {
     @Test
     void returnsOnlyActiveNonDeletedChannelsAndReadsStoredFollowerCount() throws Exception {
         UUID active = insertChannel("Visible", "ACTIVE", false, CREATED_AT);
+        insertChannel("Suspended", "SUSPENDED", false, CREATED_AT.plusDays(1));
         insertChannel("Banned", "BANNED", false, CREATED_AT.plusDays(1));
         insertChannel("Deleted", "ACTIVE", true, CREATED_AT.plusDays(2));
         jdbc.update("UPDATE channels SET banner_url = ?, avatar_url = ?, follower_count = ? WHERE id = ?",

@@ -76,9 +76,10 @@ class ChannelFollowServiceTest {
         verify(channelFollowerRepository).insertFollowIfAbsent(channelId, userId);
     }
 
-    @Test
-    void anotherUserCannotFollowABannedChannel() {
-        givenChannel(UUID.randomUUID(), ChannelStatus.BANNED);
+    @ParameterizedTest
+    @EnumSource(value = ChannelStatus.class, names = {"SUSPENDED", "BANNED"})
+    void anotherUserCannotFollowAnInactiveChannel(ChannelStatus status) {
+        givenChannel(UUID.randomUUID(), status);
 
         AppException exception = assertThrows(AppException.class, () -> service.followChannel(userId, channelId));
 

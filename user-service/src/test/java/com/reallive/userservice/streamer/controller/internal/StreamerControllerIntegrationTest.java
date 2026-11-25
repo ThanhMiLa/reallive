@@ -118,7 +118,7 @@ class StreamerControllerIntegrationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StreamerStatus.class, names = {"PENDING", "SUSPENDED", "BANNED"})
+    @EnumSource(value = StreamerStatus.class, names = {"SUSPENDED", "BANNED"})
     void rejectsEveryNonActiveStreamerStatus(StreamerStatus streamerStatus) throws Exception {
         UserEntity user = createUser();
         createStreamer(user, streamerStatus);
@@ -195,7 +195,7 @@ class StreamerControllerIntegrationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StreamerStatus.class, names = {"PENDING", "SUSPENDED", "BANNED"})
+    @EnumSource(value = StreamerStatus.class, names = {"SUSPENDED", "BANNED"})
     void eligibilityRejectsInactiveStreamers(StreamerStatus streamerStatus) throws Exception {
         UserEntity user = createUser();
         createStreamer(user, streamerStatus);

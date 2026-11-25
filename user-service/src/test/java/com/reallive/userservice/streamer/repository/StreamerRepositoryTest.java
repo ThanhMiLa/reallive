@@ -155,7 +155,7 @@ class StreamerRepositoryTest {
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(strings = "DISABLED")
+    @ValueSource(strings = {"PENDING", "DISABLED"})
     void databaseRejectsMissingOrUnknownStatus(String status) {
         UserEntity user = createUser();
         assertThrows(DataIntegrityViolationException.class, () -> insertStreamer(user.getId(), status));
