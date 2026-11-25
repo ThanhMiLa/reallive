@@ -8,7 +8,8 @@ export function useVirtualGifts({ enabled = true } = {}) {
     queryKey: VIRTUAL_GIFTS_QUERY_KEY,
     queryFn: ({ signal }) => paymentApi.getVirtualGifts(signal),
     enabled,
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
 }

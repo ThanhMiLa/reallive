@@ -62,6 +62,7 @@ export function useDonateGift({ streamId, onStreamNotLive }: UseDonateGiftOption
   const [celebrationState, setCelebrationState] = useState<{
     streamId: string
     donation: DonateGiftResponse
+    comboCount: number
     nonce: number
   } | null>(null)
 
@@ -95,6 +96,10 @@ export function useDonateGift({ streamId, onStreamNotLive }: UseDonateGiftOption
     celebrationState && celebrationState.streamId === streamId
       ? celebrationState.donation
       : null
+  const comboCount =
+    celebrationState && celebrationState.streamId === streamId
+      ? celebrationState.comboCount
+      : 0
 
   const executeAttempt = useCallback(
     async (attempt: PendingGiftAttempt) => {
@@ -142,10 +147,17 @@ export function useDonateGift({ streamId, onStreamNotLive }: UseDonateGiftOption
 
         const nextNonce = nonceRef.current + 1
         nonceRef.current = nextNonce
-        setCelebrationState({
-          streamId: attempt.streamId,
-          donation: result,
-          nonce: nextNonce,
+        setCelebrationState((previous) => {
+          const isSameGiftCombo =
+            previous !== null &&
+            previous.streamId === attempt.streamId &&
+            previous.donation.giftId === result.giftId
+          return {
+            streamId: attempt.streamId,
+            donation: result,
+            comboCount: isSameGiftCombo ? previous.comboCount + 1 : 1,
+            nonce: nextNonce,
+          }
         })
 
         if (celebrationTimerRef.current !== null) {
@@ -268,15 +280,27 @@ export function useDonateGift({ streamId, onStreamNotLive }: UseDonateGiftOption
     [streamId],
   )
 
+  const clearCelebration = useCallback(() => {
+    if (celebrationTimerRef.current !== null) {
+      clearTimeout(celebrationTimerRef.current)
+      celebrationTimerRef.current = null
+    }
+    setCelebrationState((previous) =>
+      previous?.streamId === streamId ? null : previous,
+    )
+  }, [streamId])
+
   return {
     pendingAttempt,
     activeGiftId,
     isSending,
     donationError,
     lastDonation,
+    comboCount,
     sendGift,
     retryPending,
     dismissRetry,
     showInsufficientCoins,
+    clearCelebration,
   }
 }
