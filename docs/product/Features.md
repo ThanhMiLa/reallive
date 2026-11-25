@@ -42,8 +42,9 @@
 ## VI - Donate / Coin / Payment
 - Create Wallet ✅
 - Ranking Donate
-- Buy Coin
-- View Coin Balance
+- Integrate Payment Gateway ✅
+- Buy Coin ✅
+- View Coin Balance ✅
 - Buy Virtual Gift
 - Donate Gift
 - Donation History
