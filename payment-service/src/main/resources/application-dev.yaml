@@ -15,6 +15,17 @@ spring:
       connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
       timeout: ${REDIS_TIMEOUT:2s}
 
+  cloud:
+    openfeign:
+      client:
+        config:
+          user-service:
+            connectTimeout: 2000
+            readTimeout: 5000
+          activeStreamer:
+            connectTimeout: 2000
+            readTimeout: 5000
+
   application:
     name: payment-service
 
@@ -36,6 +47,10 @@ auth:
   cookie:
     access-token:
       name: ${ACCESS_TOKEN_COOKIE_NAME:access_token}
+
+app:
+  service:
+    user: ${USER_SERVICE_BASE_URL:http://localhost:8080/user}
 
 vnpay:
   tmn-code: ${VNPAY_TMN_CODE:}

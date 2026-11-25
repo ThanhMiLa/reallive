@@ -52,7 +52,7 @@ export function StreamerDashboardLayout() {
     : '/dashboard/chat-bans'
   const visibleNavigationItems = [
     ...navigationItems,
-    ...(isStreamer ? [{ to: '/dashboard/revenue', label: 'Revenue', icon: CircleDollarSign }] : []),
+    ...(isStreamer ? [{ to: '/dashboard/revenue', label: 'Donation Statistics', icon: CircleDollarSign }] : []),
     ...(canManageModerators
       ? [{ to: '/dashboard/channel/moderators', label: 'Moderators', icon: Shield }]
       : []),

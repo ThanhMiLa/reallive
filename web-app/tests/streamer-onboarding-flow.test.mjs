@@ -204,7 +204,7 @@ test('StreamerRegistration renders CTA link to /dashboard when already registere
   }
 })
 
-test('StreamerDashboardLayout is SSR-safe and renders Revenue nav item for streamers', () => {
+test('StreamerDashboardLayout is SSR-safe and renders Donation Statistics nav item for streamers', () => {
   setAuth(streamerUser)
   const client = makeClient()
   client.setQueryData(channelModerationKeys.ownChannel(streamerUser.userId), sampleChannel)
@@ -235,7 +235,8 @@ test('StreamerDashboardLayout is SSR-safe and renders Revenue nav item for strea
     assert.match(html, /<aside/)
     assert.match(html, /aria-label="Streamer navigation"/)
     assert.match(html, /href="\/dashboard\/revenue"/)
-    assert.match(html, /Revenue/)
+    assert.match(html, /Donation Statistics/)
+    assert.doesNotMatch(html, />Revenue</)
     assert.match(html, /Dashboard Child Content/)
   } finally {
     client.clear()
@@ -336,7 +337,7 @@ test('StreamerDashboardLayout bootstraps POST /channel/api/channels/me, gates Ou
     assert.equal(channelRequests, 2)
     assert.ok(view.getByText('Protected Outlet Content'))
     assert.deepEqual(client.getQueryData(['own-channel']), sampleChannel)
-    assert.ok(view.getByRole('link', { name: 'Revenue' }))
+    assert.ok(view.getByRole('link', { name: 'Donation Statistics' }))
   } finally {
     apiClient.defaults.adapter = original
     client.clear()
@@ -443,7 +444,7 @@ test('StreamerDashboardLayout skips POST /channel/api/channels/me for non-stream
     await flushEffects()
 
     assert.ok(view.getByText('Moderator Banned Users Outlet'))
-    assert.equal(view.queryByRole('link', { name: 'Revenue' }), null)
+    assert.equal(view.queryByRole('link', { name: 'Donation Statistics' }), null)
     assert.equal(
       requests.some((req) => req.url === '/channel/api/channels/me'),
       false,
@@ -492,7 +493,7 @@ test('StreamerRevenuePage invokes POST /payment/api/streamer-wallets/me, display
     )
 
     // Loading state
-    assert.ok(view.getByRole('status', { name: /Setting up your revenue wallet/i }))
+    assert.ok(view.getByRole('status', { name: /Loading streamer wallet balance/i }))
 
     await flushEffects()
 
@@ -508,11 +509,13 @@ test('StreamerRevenuePage invokes POST /payment/api/streamer-wallets/me, display
     await flushEffects()
 
     assert.equal(walletCalls, 2)
-    assert.ok(view.getByText('Available Revenue Balance'))
-    assert.ok(view.getByText('Wallet Ready'))
+    assert.ok(view.getByRole('heading', { name: 'Donation Statistics' }))
+    assert.ok(view.getByText('Streamer Wallet Balance'))
+    assert.equal(view.queryByText('Wallet Ready'), null)
+    assert.equal(view.queryByText('How streamer revenue works'), null)
     assert.ok(view.getByText(/3,250/))
     assert.ok(view.getByText('Coins'))
-    assert.ok(view.getByRole('button', { name: /Refresh revenue balance/i }))
+    assert.ok(view.getByRole('button', { name: /Refresh streamer wallet balance/i }))
   } finally {
     apiClient.defaults.adapter = original
     client.clear()
