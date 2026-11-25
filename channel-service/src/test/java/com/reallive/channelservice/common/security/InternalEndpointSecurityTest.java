@@ -42,7 +42,6 @@ class InternalEndpointSecurityTest {
     @ParameterizedTest
     @CsvSource({
             "GET, /internal/api/channels/by-streamer/id/streaming-context",
-            "POST, /internal/api/channels",
             "POST, /internal/api/categories/validate",
             "POST, /internal/api/channels/livestream-summaries",
             "POST, /internal/api/channels/id/chat-access",
@@ -63,6 +62,7 @@ class InternalEndpointSecurityTest {
 
     @Test
     void clientFacingAndUnregisteredInternalPathsStayProtected() throws Exception {
+        mvc.perform(request(HttpMethod.POST, "/internal/api/channels")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/private")).andExpect(status().isUnauthorized());
         mvc.perform(get("/internal/api/unknown")).andExpect(status().isUnauthorized());
         verifyNoInteractions(decoder, authorities);
@@ -72,11 +72,6 @@ class InternalEndpointSecurityTest {
     static class TestController {
         @RequestMapping(path = "/internal/api/channels/by-streamer/id/streaming-context", method = RequestMethod.GET)
         String internal0() {
-            return "internal";
-        }
-
-        @RequestMapping(path = "/internal/api/channels", method = RequestMethod.POST)
-        String internal1() {
             return "internal";
         }
 

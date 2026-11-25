@@ -13,7 +13,7 @@ import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.auth.service.AuthStateSyncService;
 import com.reallive.userservice.auth.service.impl.AuthStateSyncProcessor;
-import com.reallive.userservice.client.channel.ChannelClientResolver;
+import com.reallive.userservice.streamer.repository.StreamerRepository;
 import com.reallive.userservice.common.exception.AppException;
 import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.user.entity.ProfileEntity;
@@ -36,7 +36,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -84,7 +83,7 @@ class AuthStateContractIntegrationTest {
     @Autowired private AuthStateSyncService synchronization;
     @Autowired private AuthStateSyncProcessor processor;
     @Autowired private TransactionTemplate transactions;
-    @MockitoBean private ChannelClientResolver channel;
+    @MockitoSpyBean private StreamerRepository streamers;
     @MockitoSpyBean private RedisAuthStateStore stateStore;
 
     private final List<String> cleanup = new ArrayList<>();
@@ -109,7 +108,6 @@ class AuthStateContractIntegrationTest {
         profiles.saveAndFlush(ProfileEntity.builder().user(user).displayName("Auth contract").build());
         cleanup.addAll(List.of("auth:authorities:" + user.getId(), "auth:status:" + user.getId(),
                 "auth:revision:" + user.getId()));
-        when(channel.createChannel(any())).thenReturn(true);
     }
 
     @AfterEach
@@ -152,7 +150,7 @@ class AuthStateContractIntegrationTest {
     @Test
     void businessRollbackDoesNotPublishRoleOrLeaveSyncTask() throws Exception {
         Cookie access = cookie(login(), "access_token");
-        doThrow(new AppException(ErrorCode.CHANNEL_SERVICE_UNAVAILABLE)).when(channel).createChannel(any());
+        doThrow(new AppException(ErrorCode.AUTH_STATE_UNAVAILABLE)).when(streamers).save(any());
         mvc.perform(post("/api/users/me/become-streamer").cookie(access)).andExpect(status().is5xxServerError());
         assertFalse(tasks.existsById(user.getId()));
         assertFalse(users.findWithAuthoritiesById(user.getId()).orElseThrow().getRoles().stream()

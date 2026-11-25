@@ -2,7 +2,6 @@ package com.reallive.userservice.client.channel;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -27,7 +26,6 @@ public class ChannelHttpTestServer implements AutoCloseable {
 
     private final HttpServer server;
     private final ExecutorService executor = Executors.newCachedThreadPool();
-    private final ObjectMapper mapper = new ObjectMapper();
     private final BlockingQueue<CapturedRequest> requests = new LinkedBlockingQueue<>();
     private final Set<UUID> channels = ConcurrentHashMap.newKeySet();
     private final AtomicInteger calls = new AtomicInteger();
@@ -79,8 +77,8 @@ public class ChannelHttpTestServer implements AutoCloseable {
         return request;
     }
 
-    public boolean hasChannel(UUID streamerId) {
-        return channels.contains(streamerId);
+    public void seedChannel(UUID streamerId) {
+        channels.add(streamerId);
     }
 
     public int callCount() {
@@ -114,7 +112,8 @@ public class ChannelHttpTestServer implements AutoCloseable {
                         return;
                     }
                 } else {
-                    channels.add(UUID.fromString(mapper.readTree(body).path("streamerId").asString()));
+                    send(exchange, 404, "{}");
+                    return;
                 }
             }
             switch (requestMode) {
@@ -179,7 +178,7 @@ public class ChannelHttpTestServer implements AutoCloseable {
     }
 
     private String envelope(String result) {
-        return "{\"status\":200,\"code\":1000,\"message\":\"Channel created successfully\",\"result\":"
+        return "{\"status\":200,\"code\":1000,\"message\":\"Channel profile updated successfully\",\"result\":"
                 + result + ",\"timestamp\":\"2026-01-01T00:00:00Z\"}";
     }
 

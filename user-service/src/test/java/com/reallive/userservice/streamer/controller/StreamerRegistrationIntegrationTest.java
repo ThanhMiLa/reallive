@@ -8,7 +8,6 @@ import com.reallive.userservice.auth.repository.RoleRepository;
 import com.reallive.userservice.auth.repository.UserRepository;
 import com.reallive.userservice.client.channel.ChannelHttpTestServer;
 import com.reallive.userservice.common.adapter.redis.RedisAuthoritiesReader;
-import com.reallive.userservice.common.exception.ErrorCode;
 import com.reallive.userservice.common.security.CustomJwtDecoder;
 import com.reallive.userservice.streamer.entity.StreamerEntity;
 import com.reallive.userservice.streamer.entity.StreamerStatus;
@@ -41,8 +40,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
@@ -56,12 +53,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -169,13 +163,6 @@ class StreamerRegistrationIntegrationTest {
                 .path("result").path("streamerId").asString());
         assertEquals(StreamerStatus.ACTIVE, streamer.getStatus());
         assertNotNull(streamer.getVerifiedAt());
-        var channelRequest = CHANNEL.takeRequest();
-        var channelPayload = mapper.readTree(channelRequest.body());
-        assertEquals(streamer.getId().toString(), channelPayload.path("streamerId").asString());
-        assertEquals("Test streamer", channelPayload.path("name").asString());
-        assertTrue(channelPayload.path("avatarUrl").isNull() || channelPayload.path("avatarUrl").isMissingNode());
-        assertEquals("/channel/internal/api/channels", channelRequest.path());
-        assertTrue(CHANNEL.hasChannel(streamer.getId()));
         assertEquals(1, streamerCount(user.getId()));
         assertEquals(0, streamerCount(otherUserId));
         assertEquals(3, roleCount(user.getId()));
@@ -185,107 +172,19 @@ class StreamerRegistrationIntegrationTest {
         mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(1030));
         assertEquals(1, streamerCount(user.getId()));
         assertEquals(3, roleCount(user.getId()));
-        assertEquals(1, CHANNEL.callCount());
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = ChannelHttpTestServer.Mode.class,
-            names = {"FALSE_RESULT", "NULL_RESULT", "EMPTY_BODY", "INVALID_JSON", "LOST_RESPONSE"})
-    void invalidOrLostChannelResponseRollsBackStreamerAndRole(ChannelHttpTestServer.Mode mode) throws Exception {
-        CHANNEL.setMode(mode);
-        var original = snapshot();
-
-        mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value(1037));
-
-        assertEquals(original, snapshot());
-        assertEquals(0, streamerCount(user.getId()));
-        assertEquals(1, CHANNEL.callCount());
-        if (mode == ChannelHttpTestServer.Mode.LOST_RESPONSE || mode == ChannelHttpTestServer.Mode.INVALID_JSON) {
-            UUID orphanStreamerId = UUID.fromString(mapper.readTree(CHANNEL.takeRequest().body()).path("streamerId").asString());
-            assertTrue(CHANNEL.hasChannel(orphanStreamerId));
-            assertTrue(streamers.findById(orphanStreamerId).isEmpty());
-        }
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {400, 401, 403, 404, 409, 500, 503})
-    void channelHttpFailureReturns1037AndRollsBackRegistrationWithoutRetry(int status) throws Exception {
-        CHANNEL.setErrorStatus(status);
-        var original = snapshot();
-
-        mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.status").value(500)).andExpect(jsonPath("$.code").value(1037))
-                .andExpect(jsonPath("$.message").value("Channel service unavailable"));
-
-        assertEquals(original, snapshot());
-        assertEquals(0, streamerCount(user.getId()));
-        assertEquals(1, CHANNEL.callCount());
-    }
-
-    @Test
-    void retryAfterLostResponseCreatesNewStreamerWhilePreviousChannelRemainsOrphaned() throws Exception {
-        CHANNEL.setMode(ChannelHttpTestServer.Mode.LOST_RESPONSE);
-        mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value(1037));
-        UUID orphanStreamerId = UUID.fromString(mapper.readTree(CHANNEL.takeRequest().body()).path("streamerId").asString());
-        CHANNEL.releaseResponse();
-        CHANNEL.setMode(ChannelHttpTestServer.Mode.SUCCESS);
-
-        mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isOk());
-
-        UUID streamerId = streamers.findByUserId(user.getId()).orElseThrow().getId();
-        assertNotEquals(orphanStreamerId, streamerId);
-        assertTrue(streamers.findById(orphanStreamerId).isEmpty());
-        assertTrue(CHANNEL.hasChannel(orphanStreamerId));
-        assertTrue(CHANNEL.hasChannel(streamerId));
-        assertEquals(1, streamerCount(user.getId()));
-        assertEquals(3, roleCount(user.getId()));
-        assertEquals(2, CHANNEL.callCount());
-    }
-
-    @Test
-    void localCommitFailureRollsBackRegistrationAfterSuccessfulRemoteSave() throws Exception {
-        var repositoryAnswer = mockingDetails(profiles).getMockCreationSettings().getDefaultAnswer();
-        doAnswer(invocation -> {
-            Object profile = repositoryAnswer.answer(invocation);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void beforeCommit(boolean readOnly) {
-                    throw new IllegalStateException("Simulated local commit failure");
-                }
-            });
-            return profile;
-        }).when(profiles).findByUserId(user.getId());
-        var original = snapshot();
-
-        assertThrows(ServletException.class, () -> mvc.perform(post(ENDPOINT).cookie(cookie())));
-
-        UUID orphanStreamerId = UUID.fromString(mapper.readTree(CHANNEL.takeRequest().body()).path("streamerId").asString());
-        assertEquals(original, snapshot());
-        assertEquals(0, streamerCount(user.getId()));
-        assertTrue(CHANNEL.hasChannel(orphanStreamerId));
-        assertTrue(streamers.findById(orphanStreamerId).isEmpty());
-        assertEquals(1, CHANNEL.callCount());
-    }
-
-    @Test
-    void missingProfileReturnsProfileErrorAndRollsBackRegistration() throws Exception {
-        profiles.delete(profiles.findByUserId(user.getId()).orElseThrow());
-        var original = snapshot();
-
-        mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value(ErrorCode.PROFILE_NOT_FOUND.getCode()));
-
-        assertEquals(original, snapshot());
-        assertEquals(0, streamerCount(user.getId()));
         assertEquals(0, CHANNEL.callCount());
+    }
 
-        profiles.saveAndFlush(ProfileEntity.builder().user(user).displayName("Restored profile").build());
+    @Test
+    void registrationSucceedsWithoutProfileOrChannelService() throws Exception {
+        profiles.delete(profiles.findByUserId(user.getId()).orElseThrow());
+        CHANNEL.setErrorStatus(503);
+
         mvc.perform(post(ENDPOINT).cookie(cookie())).andExpect(status().isOk());
+
         assertEquals(1, streamerCount(user.getId()));
         assertEquals(3, roleCount(user.getId()));
-        assertEquals(1, CHANNEL.callCount());
+        assertEquals(0, CHANNEL.callCount());
     }
 
     @ParameterizedTest
@@ -395,7 +294,7 @@ class StreamerRegistrationIntegrationTest {
         assertEquals(1, streamerCount(user.getId()));
         assertEquals(3, roleCount(user.getId()));
         assertEquals(StreamerStatus.ACTIVE, streamers.findByUserId(user.getId()).orElseThrow().getStatus());
-        assertEquals(1, CHANNEL.callCount());
+        assertEquals(0, CHANNEL.callCount());
     }
 
     private int registerAfterBarrier(CountDownLatch ready, CountDownLatch start) throws Exception {
