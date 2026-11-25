@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { StreamViewerCount } from '@/components/stream/StreamViewerCount'
-import { StreamGiftBar } from '@/components/stream/StreamGiftBar'
+import { StreamDonateControl } from '@/components/stream/StreamDonateControl'
 import { useWatchStream } from '@/hooks/useWatchStream'
 import { StreamChatPanel } from '@/components/chat/StreamChatPanel'
 
@@ -338,14 +338,6 @@ export function WatchStreamPage() {
             )}
           </section>
 
-          {/* In-Stream Virtual Gift Bar */}
-          <StreamGiftBar
-            sessionId={sessionId}
-            status={status}
-            ownerUserId={session?.ownerUserId}
-            onStreamNotLive={refreshMetadata}
-          />
-
           {/* Below Video: Channel Avatar, Channel Name, Stream Title, Category */}
           <section
             aria-label="Stream information"
@@ -363,21 +355,32 @@ export function WatchStreamPage() {
               )}
 
               <div className="flex-1 min-w-0">
-                <div className="flex min-w-0 items-center gap-3">
-                  {/* Channel Name */}
-                  {showDetailsSkeleton ? (
-                    <div className="h-5 w-40 max-w-full bg-[#14141a] rounded animate-pulse" />
-                  ) : (
-                    <h2 className="min-w-0 truncate text-base sm:text-lg font-extrabold text-white tracking-tight font-outfit">
-                      {channelName}
-                    </h2>
-                  )}
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    {/* Channel Name */}
+                    {showDetailsSkeleton ? (
+                      <div className="h-5 w-40 max-w-full bg-[#14141a] rounded animate-pulse" />
+                    ) : (
+                      <h2 className="min-w-0 truncate text-base sm:text-lg font-extrabold text-white tracking-tight font-outfit">
+                        {channelName}
+                      </h2>
+                    )}
+                    <div className="shrink-0">
+                      <StreamViewerCount
+                        count={session?.currentViewerCount}
+                        status={status}
+                        unavailable={metadata.isPending || metadata.isError}
+                        variant="watch"
+                      />
+                    </div>
+                  </div>
+
                   <div className="shrink-0">
-                    <StreamViewerCount
-                      count={session?.currentViewerCount}
+                    <StreamDonateControl
+                      sessionId={sessionId}
                       status={status}
-                      unavailable={metadata.isPending || metadata.isError}
-                      variant="watch"
+                      ownerUserId={session?.ownerUserId}
+                      onStreamNotLive={refreshMetadata}
                     />
                   </div>
                 </div>
